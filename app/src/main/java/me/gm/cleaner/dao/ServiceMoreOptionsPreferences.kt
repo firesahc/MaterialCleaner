@@ -2,64 +2,62 @@ package me.gm.cleaner.dao
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.res.Resources
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
-import me.gm.cleaner.R
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
 import me.gm.cleaner.util.toParcelable
 
+// Preference key constants (values match existing R.string values to preserve user data)
+private const val OPEN_WIZARD_BY_DEFAULT_KEY = "open_wizard_by_default"
+private const val APPS_TYPE_MARKS_REPO_KEY = "apps_type_marks_repo"
+private const val APPS_TYPE_MARKS_DEFAULT = "https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/"
+private const val AUTO_COMPLETE_BY_RECORD_MERGE_KEY = "auto_complete_by_record_merge"
+private const val AUTO_COMPLETE_BY_RECORD_RESPECT_KEY = "auto_complete_by_record_respect"
+private const val EDIT_MOUNT_RULES_TEMPLATE_KEY = "edit_mount_rules_template"
+private const val EDIT_READ_ONLY_TEMPLATE_KEY = "edit_read_only_template"
+private const val APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY = "apply_template_on_package_added"
+
 object ServiceMoreOptionsPreferences {
     private lateinit var preferences: SharedPreferences
-    private lateinit var res: Resources
 
     fun init(context: Context) {
         preferences = PreferenceManager.getDefaultSharedPreferences(context)
-        res = context.resources
     }
 
     val openWizardByDefault: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.open_wizard_by_default_key), false)
+        get() = preferences.getBoolean(OPEN_WIZARD_BY_DEFAULT_KEY, false)
 
     val appsTypeMarksRepo: String
         get() = preferences.getString(
-            res.getString(R.string.apps_type_marks_repo_key),
-            res.getString(R.string.apps_type_marks_default)
+            APPS_TYPE_MARKS_REPO_KEY,
+            APPS_TYPE_MARKS_DEFAULT
         )!!
 
     val isUsingDefaultRepo: Boolean
-        get() = appsTypeMarksRepo == res.getString(R.string.apps_type_marks_default)
+        get() = appsTypeMarksRepo == APPS_TYPE_MARKS_DEFAULT
 
     val autoCompleteByRecordMerge: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.auto_complete_by_record_merge_key), true
-        )
+        get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_MERGE_KEY, true)
 
     val autoCompleteByRecordRespect: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.auto_complete_by_record_respect_key), true
-        )
+        get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_RESPECT_KEY, true)
 
     val editMountRulesTemplate: WizardAnswers
         get() = try {
-            preferences.getString(res.getString(R.string.edit_mount_rules_template_key), null)
+            preferences.getString(EDIT_MOUNT_RULES_TEMPLATE_KEY, null)
                 ?.toParcelable()
                 ?: WizardAnswers(true)
         } catch (e: Throwable) {
             TempCodeRecords.fixBug("2.0.1")
             preferences.edit {
-                remove(res.getString(R.string.edit_mount_rules_template_key))
+                remove(EDIT_MOUNT_RULES_TEMPLATE_KEY)
             }
             WizardAnswers(true)
         }
 
     val editReadOnlyTemplate: Set<String>
-        get() = preferences.getStringSet(
-            res.getString(R.string.edit_read_only_template_key), emptySet()
-        )!!
+        get() = preferences.getStringSet(EDIT_READ_ONLY_TEMPLATE_KEY, emptySet())!!
 
     val applyTemplateOnPackageAdded: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.apply_template_on_package_added_key), false
-        )
+        get() = preferences.getBoolean(APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY, false)
 }

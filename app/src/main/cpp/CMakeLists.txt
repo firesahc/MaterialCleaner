@@ -34,7 +34,7 @@ add_library(cleaner SHARED
         ${BASE}
         include/misc.cpp include/socket.cpp
         FileUtils.cpp Mount.cpp ProcInfo.cpp
-        genuine_extra.cpp JNI_OnLoad.cpp
+        jni_extra.cpp JNI_OnLoad.cpp
         )
 target_link_libraries(cleaner ${log-lib} ${android-lib} ${jnigraphics-lib} ${z-lib} cxx::cxx absl::strings)
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")

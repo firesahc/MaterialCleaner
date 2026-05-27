@@ -7,17 +7,7 @@
     <string name="no">否</string>
     <string name="update">更新</string>
     <string name="new_version">質感清理 %s 已發布</string>
-    <string name="manual_tools">手動工具</string>
-    <string name="application_data">應用數據</string>
-    <string name="cache">快取文件</string>
-    <string name="temp">臨時文件</string>
-    <string name="log">日誌檔案</string>
-    <string name="nonpublic">非標準文件夾</string>
-    <string name="apk">安裝包</string>
-    <string name="small">小文件</string>
-    <string name="empty">空文件夾</string>
-    <string name="loading">正在載入…</string>
-    <string name="network_connection_failed">網路連接失敗</string>
+
     <string name="rationale_shouldShowRationale">%s需要寫入外部儲存空間權限</string>
     <string name="rationale_permanentlyDenied">%s需要寫入外部儲存空間權限，請在應用訊息中手動授予</string>
     <string name="rationale_external_storage_manager">%s需要所有文件訪問權限，請在下個頁面中授予</string>
@@ -256,66 +246,17 @@
     <string name="filesystem_record_flags_file">文件</string>
     <string name="filesystem_record_flags_dir">文件夾</string>
 
-    <!-- 工人 -->
-    <string name="deleting">正在刪除 %s</string>
-    <string name="failed_to_delete">刪除 %s 失敗</string>
-    <string name="failed_to_move_copy">%s 失敗</string>
-    <string name="creating_snapshot">正在創建 %s 的快照</string>
-    <string name="failed_to_create_snapshot">創建 %s 的快照失敗</string>
 
-    <!-- 手動工具 -->
-    <string name="explore">探索</string>
-    <string name="free_space_of_total_storage_label">剩餘 %1$s，共 %2$s</string>
-    <string name="browser">瀏覽器</string>
-    <string name="snapshot">快照</string>
-    <string name="create_backup">創建備份</string>
-    <string name="manage_backup_and_recycle_bin">管理備份和回收站</string>
-    <string name="machine_learning">機器學習</string>
 
-    <!-- 瀏覽器 -->
-    <string name="rationale_browsing_files">瀏覽文件</string>
-    <string name="bookmarks">書籤</string>
-    <string name="add_to_bookmarks">添加到書籤</string>
-    <string name="browser_go_to">跳轉到…</string>
-    <string name="browser_sort_by_name">名稱</string>
-    <string name="browser_sort_by_size">大小</string>
-    <string name="browser_sort_by_time">時間</string>
-    <string name="browser_sort_by_dirs_first">文件夾優先</string>
-    <string name="start_creating_snapshot">開始創建快照</string>
-    <plurals name="file_count">
-        <item quantity="other">%d個文件</item>
-    </plurals>
-    <plurals name="dir_count">
-        <item quantity="other">%d個文件夾</item>
-    </plurals>
-    <string name="file_dir_count_time">%s，%s，%s</string>
 
-    <!-- 垃圾 -->
-    <string name="rationale_scanning_files">掃描文件</string>
-    <string name="not_found">沒有%s</string>
-    <string name="maximum_reached">由於結果數目達到您設定的最大值，掃描已提前結束</string>
-    <string name="in_use">使用中</string>
+
     <string name="copied">已複製：%s</string>
-    <string name="standard_dir">已創建標準文件夾</string>
-    <string name="recommend_rescan">共享儲存空間中的文件已發生變化，當前展示的結果可能與實際情況不符</string>
-    <string name="rescan">重新掃描</string>
+    <string name="loading">載入中</string>
+    <string name="network_connection_failed">網路連線失敗</string>
+
     <string name="confirm_delete">刪除這些文件？</string>
-
-    <!-- 购买 -->
-    <string name="subscribing">訂閱中</string>
-    <string name="purchased">已購買</string>
-
-    <!-- 结算 -->
-    <string name="install_from_play">請注意，只有從 Play 商店獲取本應用才能進行交易</string>
-    <string name="billing_connecting">正在連接伺服器</string>
-    <string name="billing_connect_failed">連接伺服器失敗\n%s</string>
-    <string name="retry">重試</string>
-    <string name="acknowledging">確認中，請勿離開此頁面</string>
 
     <!-- 关于 -->
     <string name="slogan">質感設計的清理應用</string>
-    <string name="version">版本</string>
-    <string name="privacy_policy">隱私權政策</string>
-    <string name="developer">作者</string>
-    <string name="licenses">開源許可證</string>
+
 </resources>

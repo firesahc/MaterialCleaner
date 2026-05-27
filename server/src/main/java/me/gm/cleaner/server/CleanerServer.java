@@ -82,7 +82,7 @@ public class CleanerServer extends ContextWrapper {
 
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     public CleanerServer() {
-        super(null);
+        super((Context) null);
         waitSystemServices();
         packageInfo = SystemService.getPackageInfoNoThrow(ServerConstants.APPLICATION_ID, 0, 0);
         if (packageInfo == null) {

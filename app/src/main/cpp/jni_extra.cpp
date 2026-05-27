@@ -1,4 +1,4 @@
-#include "genuine_extra.h"
+#include "jni_extra.h"
 #include "obfuscate.h"
 #include "FileUtils.h"
 #include "Mount.h"

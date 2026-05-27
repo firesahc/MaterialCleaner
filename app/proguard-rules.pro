@@ -2,11 +2,6 @@
 -allowaccessmodification
 -overloadaggressively
 
-# field name and method name
--obfuscationdictionary dictionary-class.txt
-# class name
--classobfuscationdictionary dictionary-method.txt
-
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }

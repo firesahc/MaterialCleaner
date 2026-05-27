@@ -14,11 +14,6 @@
             android:key="@string/post_notification_key"
             android:title="@string/post_notification_title" />
 
-        <SwitchPreferenceCompat
-            android:icon="@drawable/ic_outline_standard_folder_24"
-            android:key="@string/nonpublic_key"
-            android:summary="@string/nonpublic_summary"
-            android:title="@string/nonpublic_title" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/language_header">

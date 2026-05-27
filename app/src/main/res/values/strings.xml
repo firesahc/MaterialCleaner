@@ -7,17 +7,7 @@
     <string name="no">No</string>
     <string name="update">Update</string>
     <string name="new_version">Material Cleaner %s is released</string>
-    <string name="manual_tools">Manual Tools</string>
-    <string name="application_data">Application Data</string>
-    <string name="cache">Cache Files</string>
-    <string name="temp">Temp Files</string>
-    <string name="log">Log Files</string>
-    <string name="nonpublic">Nonpublic Directories</string>
-    <string name="apk">Apks</string>
-    <string name="small">Small Files</string>
-    <string name="empty">Empty Directories</string>
-    <string name="loading">Loading…</string>
-    <string name="network_connection_failed">Network connection failed</string>
+
     <string name="rationale_shouldShowRationale">%s requires write external storage permission.</string>
     <string name="rationale_permanentlyDenied">%s requires write external storage permission.
         Please grant it manually in app info.</string>
@@ -65,13 +55,11 @@
     <string name="post_notification_key" translatable="false">post_notification</string>
     <string name="post_notification_title">Receive update notifications</string>
     <string name="nonpublic_key" translatable="false">nonpublic</string>
-    <string name="nonpublic_title" translatable="false">@string/nonpublic</string>
     <string name="nonpublic_summary">Mainly used to clean up files leaked from storage redirect.
         It is not recommended to enable it if you are not using storage redirect.</string>
     <string name="apk_key" translatable="false">apk</string>
     <string name="small_key" translatable="false">small</string>
     <string name="empty_key" translatable="false">empty</string>
-    <string name="empty_title" translatable="false">@string/empty</string>
     <string name="no_tick_key" translatable="false">no_tick</string>
     <string name="no_tick_title">No tick</string>
     <string name="no_tick_summary">Please enter a regular expression.
@@ -314,72 +302,13 @@
     <string name="filesystem_record_flags_file">file</string>
     <string name="filesystem_record_flags_dir">directory</string>
 
-    <!-- Worker -->
-    <string name="deleting">Deleting %s</string>
-    <string name="failed_to_delete">Failed to delete %s</string>
-    <string name="failed_to_move_copy">Failed to %s</string>
-    <string name="creating_snapshot">Creating snapshot of %s</string>
-    <string name="failed_to_create_snapshot">Failed to create snapshot of %s</string>
-
-    <!-- Manual Tools -->
-    <string name="explore">Explore</string>
-    <string name="free_space_of_total_storage_label">%1$s of %2$s free</string>
-    <string name="browser">Browser</string>
-    <string name="snapshot">Snapshot</string>
-    <string name="create_backup">Create backup</string>
-    <string name="manage_backup_and_recycle_bin">Manage backup and recycle bin</string>
-    <string name="machine_learning">Machine learning</string>
-
-    <!-- Browser -->
-    <string name="rationale_browsing_files">Browsing files</string>
-    <string name="bookmarks_key" translatable="false">bookmarks_key</string>
-    <string name="bookmarks">Bookmarks</string>
-    <string name="add_to_bookmarks">Add to bookmarks</string>
-    <string name="browser_go_to">Go to…</string>
-    <string name="browser_sort_by_key" translatable="false">browser_sort_by</string>
-    <string name="browser_sort_by_name">Name</string>
-    <string name="browser_sort_by_size">Size</string>
-    <string name="browser_sort_by_time">Time</string>
-    <string name="browser_sort_by_dirs_first_key" translatable="false">browser_sort_by_dirs_first</string>
-    <string name="browser_sort_by_dirs_first">Directories first</string>
-    <string name="start_creating_snapshot">Start creating snapshot</string>
-    <plurals name="file_count">
-        <item quantity="one">%d file</item>
-        <item quantity="other">%d files</item>
-    </plurals>
-    <plurals name="dir_count">
-        <item quantity="one">%d dir</item>
-        <item quantity="other">%d dirs</item>
-    </plurals>
-    <string name="file_dir_count_time">%s, %s, %s</string>
-
-    <!-- Trash -->
-    <string name="rationale_scanning_files">Scanning files</string>
-    <string name="not_found">%s not found</string>
-    <string name="maximum_reached">The scan ended prematurely because the number of results reached the maximum number you set.</string>
-    <string name="in_use">In use</string>
     <string name="copied">Copied: %s</string>
-    <string name="standard_dir">Standard directories created</string>
-    <string name="recommend_rescan">Files in the shared storage have changed.
-        The results currently displayed may not match the actual case.</string>
-    <string name="rescan">Rescan</string>
+    <string name="loading">Loading</string>
+    <string name="network_connection_failed">Network connection failed</string>
+
     <string name="confirm_delete">Delete these files?</string>
-
-    <!-- Purchase -->
-    <string name="subscribing">Subscribing</string>
-    <string name="purchased">Purchased</string>
-
-    <!-- Billing -->
-    <string name="install_from_play">Please note that you can only make transactions if you install this app from the Play Store.</string>
-    <string name="billing_connecting">Connecting to the server</string>
-    <string name="billing_connect_failed">Fail to connect to the server\n%s</string>
-    <string name="retry">Retry</string>
-    <string name="acknowledging">Acknowledging, please do not leave this page</string>
 
     <!-- About -->
     <string name="slogan">Material Design cleanup application</string>
-    <string name="version">Version</string>
-    <string name="privacy_policy">Privacy Policy</string>
-    <string name="developer">Developer</string>
-    <string name="licenses">Open Source Licenses</string>
+
 </resources>

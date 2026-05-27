@@ -7,17 +7,7 @@
     <string name="no">否</string>
     <string name="update">更新</string>
     <string name="new_version">质感清理 %s 已发布</string>
-    <string name="manual_tools">手动工具</string>
-    <string name="application_data">应用数据</string>
-    <string name="cache">缓存文件</string>
-    <string name="temp">临时文件</string>
-    <string name="log">日志文件</string>
-    <string name="nonpublic">非标准文件夹</string>
-    <string name="apk">安装包</string>
-    <string name="small">小文件</string>
-    <string name="empty">空文件夹</string>
-    <string name="loading">正在加载…</string>
-    <string name="network_connection_failed">网络连接失败</string>
+
     <string name="rationale_shouldShowRationale">%s需要写入外部存储空间权限</string>
     <string name="rationale_permanentlyDenied">%s需要写入外部存储空间权限，请在应用信息中手动授予</string>
     <string name="rationale_external_storage_manager">%s需要所有文件访问权限，请在下个页面中授予</string>
@@ -256,43 +246,9 @@
     <string name="filesystem_record_flags_file">文件</string>
     <string name="filesystem_record_flags_dir">文件夹</string>
 
-    <!-- 工人 -->
-    <string name="deleting">正在删除 %s</string>
-    <string name="failed_to_delete">删除 %s 失败</string>
-    <string name="failed_to_move_copy">%s 失败</string>
-    <string name="creating_snapshot">正在创建 %s 的快照</string>
-    <string name="failed_to_create_snapshot">创建 %s 的快照失败</string>
 
-    <!-- 手动工具 -->
-    <string name="explore">探索</string>
-    <string name="free_space_of_total_storage_label">剩余 %1$s，共 %2$s</string>
-    <string name="browser">浏览器</string>
-    <string name="snapshot">快照</string>
-    <string name="create_backup">创建备份</string>
-    <string name="manage_backup_and_recycle_bin">管理备份和回收站</string>
-    <string name="machine_learning">机器学习</string>
-    <!--    自定义清理：使用机器学习扫描指定文件夹</string>-->
 
-    <!-- 剩余空间 -->
-    <!--    <string name="app_usage_rationale">需要使用情况访问权限</string>-->
 
-    <!-- 浏览器 -->
-    <string name="rationale_browsing_files">浏览文件</string>
-    <string name="bookmarks">书签</string>
-    <string name="add_to_bookmarks">添加到书签</string>
-    <string name="browser_go_to">跳转到…</string>
-    <string name="browser_sort_by_name">名称</string>
-    <string name="browser_sort_by_size">大小</string>
-    <string name="browser_sort_by_time">时间</string>
-    <string name="browser_sort_by_dirs_first">文件夹优先</string>
-    <string name="start_creating_snapshot">开始创建快照</string>
-    <plurals name="file_count">
-        <item quantity="other">%d个文件</item>
-    </plurals>
-    <plurals name="dir_count">
-        <item quantity="other">%d个文件夹</item>
-    </plurals>
-    <string name="file_dir_count_time">%s，%s，%s</string>
 
     <!-- 管理备份和回收站 -->
     <!--    <string name="snapshot_diff">对比</string>-->
@@ -307,32 +263,13 @@
     <!--    <string name="shared">从共享的权重开始，并匿名共享训练数据（训练数据不包含文件内容）</string>-->
     <!--    <string name="standalone">从零开始，不共享训练数据</string>-->
 
-    <!-- 垃圾 -->
-    <string name="rationale_scanning_files">扫描文件</string>
-    <string name="not_found">没有%s</string>
-    <string name="maximum_reached">由于结果数目达到您设定的最大值，扫描已提前结束</string>
-    <string name="in_use">使用中</string>
     <string name="copied">已复制：%s</string>
-    <string name="standard_dir">已创建标准文件夹</string>
-    <string name="recommend_rescan">共享存储空间中的文件已发生变化，当前展示的结果可能与实际情况不符</string>
-    <string name="rescan">重新扫描</string>
+    <string name="loading">加载中</string>
+    <string name="network_connection_failed">网络连接失败</string>
+
     <string name="confirm_delete">删除这些文件？</string>
-
-    <!-- 购买 -->
-    <string name="subscribing">订阅中</string>
-    <string name="purchased">已购买</string>
-
-    <!-- 结算 -->
-    <string name="install_from_play">请注意，只有从 Play 商店获取本应用才能进行交易</string>
-    <string name="billing_connecting">正在连接服务器</string>
-    <string name="billing_connect_failed">连接服务器失败\n%s</string>
-    <string name="retry">重试</string>
-    <string name="acknowledging">确认中，请勿离开此页面</string>
 
     <!-- 关于 -->
     <string name="slogan">质感设计的清理应用</string>
-    <string name="version">版本</string>
-    <string name="privacy_policy">隐私权政策</string>
-    <string name="developer">作者</string>
-    <string name="licenses">开源许可证</string>
+
 </resources>

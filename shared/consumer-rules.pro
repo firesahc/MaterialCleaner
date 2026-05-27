@@ -1,0 +1,2 @@
+-keep class me.gm.cleaner.** { *; }
+-keep class me.gm.cleaner.shared.** { *; }

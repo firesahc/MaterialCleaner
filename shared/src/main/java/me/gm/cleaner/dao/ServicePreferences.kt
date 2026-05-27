@@ -2,8 +2,6 @@ package me.gm.cleaner.dao
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.res.Resources
-import androidx.annotation.StringRes
 import androidx.core.content.edit
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -11,7 +9,6 @@ import androidx.preference.PreferenceManager
 import me.gm.cleaner.SharedConstants
 import me.gm.cleaner.annotation.App
 import me.gm.cleaner.annotation.Server
-import me.gm.cleaner.shared.R
 import me.gm.cleaner.util.FileUtils
 import me.gm.cleaner.util.toList
 import org.json.JSONArray
@@ -20,6 +17,21 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.ByteBuffer
+
+// Preference key constants (values match existing R.string values to preserve user data)
+private const val SORT_BY_KEY = "sort_by"
+private const val MENU_RULE_COUNT_KEY = "rule_count"
+private const val MENU_MOUNT_STATE_KEY = "mount_state"
+private const val MENU_HIDE_SYSTEM_APP_KEY = "hide_system_app"
+private const val MENU_HIDE_DISABLED_APP_KEY = "hide_disabled_app"
+private const val MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY = "hide_no_storage_permissions"
+private const val MENU_HIDE_APP_SPECIFIC_STORAGE_KEY = "hide_app_specific_storage"
+private const val ENABLE_RELATIME_KEY = "enable_relatime"
+private const val AGGRESSIVELY_PROMPT_FOR_READING_MEDIA_FILES_KEY = "aggressively_prompt_for_reading_media_files"
+private const val AUTO_LOGGING_KEY = "auto_logging"
+private const val RECORD_SHARED_STORAGE_KEY = "record_shared_storage"
+private const val RECORD_EXTERNAL_APP_SPECIFIC_STORAGE_KEY = "record_external_app_specific_storage"
+private const val UPSERT_KEY = "upsert"
 
 object ServicePreferences {
     const val SORT_BY_NAME: Int = 0
@@ -30,7 +42,6 @@ object ServicePreferences {
         get() = _preferencesChangeLiveData
     lateinit var preferences: SharedPreferences
         private set
-    private lateinit var res: Resources
 
     private lateinit var storageRedirectFile: File
     private var inBatch: Boolean = false
@@ -46,7 +57,6 @@ object ServicePreferences {
     @Server
     fun init(context: Context) {
         preferences = PreferenceManager.getDefaultSharedPreferences(context)
-        res = context.resources
         storageRedirectFile = context.filesDir.resolve(SharedConstants.PREF_STORAGE_REDIRECT)
         readOnlyFile = context.filesDir.resolve(SharedConstants.READ_ONLY)
         denylistFile = context.filesDir.resolve(SharedConstants.DENY_LIST_KEY)
@@ -65,51 +75,47 @@ object ServicePreferences {
     // APP LIST CONFIG
     @App
     var sortBy: Int
-        get() = preferences.getInt(res.getString(R.string.sort_by_key), SORT_BY_NAME)
+        get() = preferences.getInt(SORT_BY_KEY, SORT_BY_NAME)
         set(value) {
             preferences.edit {
-                putInt(res.getString(R.string.sort_by_key), value)
+                putInt(SORT_BY_KEY, value)
             }
             notifyListeners()
         }
 
     @App
     var ruleCount: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.menu_rule_count_key), true)
-        set(value) = putBoolean(R.string.menu_rule_count_key, value)
+        get() = preferences.getBoolean(MENU_RULE_COUNT_KEY, true)
+        set(value) = putBoolean(MENU_RULE_COUNT_KEY, value)
 
     @App
     var mountState: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.menu_mount_state_key), true)
-        set(value) = putBoolean(R.string.menu_mount_state_key, value)
+        get() = preferences.getBoolean(MENU_MOUNT_STATE_KEY, true)
+        set(value) = putBoolean(MENU_MOUNT_STATE_KEY, value)
 
     @App
     var isHideSystemApp: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.menu_hide_system_app_key), true)
-        set(value) = putBoolean(R.string.menu_hide_system_app_key, value)
+        get() = preferences.getBoolean(MENU_HIDE_SYSTEM_APP_KEY, true)
+        set(value) = putBoolean(MENU_HIDE_SYSTEM_APP_KEY, value)
 
     @App
     var isHideDisabledApp: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.menu_hide_disabled_app_key), true)
-        set(value) = putBoolean(R.string.menu_hide_disabled_app_key, value)
+        get() = preferences.getBoolean(MENU_HIDE_DISABLED_APP_KEY, true)
+        set(value) = putBoolean(MENU_HIDE_DISABLED_APP_KEY, value)
 
     @App
     var isHideNoStoragePermissionApp: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.menu_hide_no_storage_permissions_key), false
-        )
-        set(value) = putBoolean(R.string.menu_hide_no_storage_permissions_key, value)
+        get() = preferences.getBoolean(MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY, false)
+        set(value) = putBoolean(MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY, value)
 
     @App
     var isHideAppSpecificStorage: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.menu_hide_app_specific_storage_key), false
-        )
-        set(value) = putBoolean(R.string.menu_hide_app_specific_storage_key, value)
+        get() = preferences.getBoolean(MENU_HIDE_APP_SPECIFIC_STORAGE_KEY, false)
+        set(value) = putBoolean(MENU_HIDE_APP_SPECIFIC_STORAGE_KEY, value)
 
-    private fun putBoolean(@StringRes key: Int, value: Boolean) {
+    private fun putBoolean(key: String, value: Boolean) {
         preferences.edit {
-            putBoolean(res.getString(key), value)
+            putBoolean(key, value)
         }
         notifyListeners()
     }
@@ -390,34 +396,30 @@ object ServicePreferences {
     // EXTRA
     @Server
     val enableRelatime: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.enable_relatime_key), false)
+        get() = preferences.getBoolean(ENABLE_RELATIME_KEY, false)
 
     @App
     @Server
     val aggressivelyPromptForReadingMediaFiles: Boolean
-        get() = preferences.getBoolean(
-            res.getString(R.string.aggressively_prompt_for_reading_media_files_key), true
-        )
+        get() = preferences.getBoolean(AGGRESSIVELY_PROMPT_FOR_READING_MEDIA_FILES_KEY, true)
 
     @App
     @Server
     val autoLogging: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.auto_logging_key), true)
+        get() = preferences.getBoolean(AUTO_LOGGING_KEY, true)
 
     @App
     @Server
     val recordSharedStorage: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.record_shared_storage_key), false)
+        get() = preferences.getBoolean(RECORD_SHARED_STORAGE_KEY, false)
 
     @App
     @Server
     val recordExternalAppSpecificStorage: Boolean
-        get() = recordSharedStorage && preferences.getBoolean(
-            res.getString(R.string.record_external_app_specific_storage_key), false
-        )
+        get() = recordSharedStorage && preferences.getBoolean(RECORD_EXTERNAL_APP_SPECIFIC_STORAGE_KEY, false)
 
     @App
     @Server
     val upsert: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.upsert_key), true)
+        get() = preferences.getBoolean(UPSERT_KEY, true)
 }

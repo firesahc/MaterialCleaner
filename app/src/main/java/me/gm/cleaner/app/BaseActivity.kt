@@ -40,7 +40,7 @@ abstract class BaseActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
     }
 
-    override fun setContentView(view: View) {
+    override fun setContentView(view: View?) {
         super.setContentView(view)
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)

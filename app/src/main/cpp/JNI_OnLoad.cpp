@@ -1,5 +1,5 @@
 #include <jni.h>
-#include "genuine_extra.h"
+#include "jni_extra.h"
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
     JNIEnv *env = nullptr;

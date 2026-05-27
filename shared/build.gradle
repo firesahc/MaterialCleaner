@@ -58,7 +58,5 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"
     implementation "androidx.preference:preference-ktx:$rootProject.preferenceVersion"
     implementation "androidx.security:security-crypto-ktx:$rootProject.securityCryptoVersion"
-    implementation "androidx.security:security-app-authenticator:$rootProject.securityAppAuthenticatorVersion"
-    implementation "androidx.security:security-identity-credential:$rootProject.securityIdentityCredentialVersion"
     implementation "com.google.flatbuffers:flatbuffers-java:$rootProject.flatbuffersVersion"
 }
