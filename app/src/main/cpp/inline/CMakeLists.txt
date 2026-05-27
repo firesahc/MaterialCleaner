@@ -1,5 +1,8 @@
+include_directories(xhook)
+
 add_library(inline SHARED
         inline.cpp bpf_hook.cpp
+        xhook/xhook.c
         )
 target_link_libraries(inline ${log-lib} cxx::cxx)
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")

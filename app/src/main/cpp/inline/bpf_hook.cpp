@@ -5,6 +5,7 @@
 #include <sys/system_properties.h>
 
 #include "bpf_hook.h"
+#include "xhook/xhook.h"
 #include "fuse_i.h"
 #include "fuse_lowlevel.h"
 #include "logging.h"
@@ -106,7 +107,7 @@ namespace bpf_hook {
         return strcmp(prop, "true") == 0;
     }
 
-    void Hook(void *handle, HookFunType hook_func) {
+    void Hook(void *handle) {
         if (!IsFuse()) {
             return;
         }
@@ -115,7 +116,7 @@ namespace bpf_hook {
             auto startsWith = dlsym(handle, AY_OBFUSCATE(
                     "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_"));
             if (startsWith != nullptr) {
-                hook_func((void *) startsWith, (void *) new_StartsWith, (void **) &old_StartsWith);
+                xhook_register("libfuse_jni\\.so", "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_", (void *) new_StartsWith, (void **) &old_StartsWith);
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str());
             }
@@ -123,13 +124,13 @@ namespace bpf_hook {
         auto containsMount_31 = dlsym(handle, AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"));
         if (containsMount_31 != nullptr) {
-            hook_func((void *) containsMount_31, (void *) new_containsMount_31,
+            xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE", (void *) new_containsMount_31,
                       (void **) &old_containsMount_31);
         } else {
             auto containsMount_30 = dlsym(handle, AY_OBFUSCATE(
                     "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_"));
             if (containsMount_30 != nullptr) {
-                hook_func((void *) containsMount_30, (void *) new_containsMount_30,
+                xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_", (void *) new_containsMount_30,
                           (void **) &old_containsMount_30);
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str());
@@ -138,13 +139,13 @@ namespace bpf_hook {
         auto IsFuseBpfEnabled = dlsym(handle, AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv"));
         if (IsFuseBpfEnabled != nullptr) {
-            hook_func((void *) IsFuseBpfEnabled, (void *) new_IsFuseBpfEnabled,
+            xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv", (void *) new_IsFuseBpfEnabled,
                       (void **) &old_IsFuseBpfEnabled);
 
-            return; // Deprecated
+
             auto fuse_req_userdata = dlsym(handle, AY_OBFUSCATE("fuse_req_userdata"));
             if (fuse_req_userdata != nullptr) {
-                hook_func((void *) fuse_req_userdata, (void *) new_fuse_req_userdata,
+                xhook_register("libfuse_jni\\.so", "fuse_req_userdata", (void *) new_fuse_req_userdata,
                           (void **) &old_fuse_req_userdata);
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str());
@@ -153,7 +154,7 @@ namespace bpf_hook {
             auto fuse_bpf_install = dlsym(handle, AY_OBFUSCATE(
                     "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi"));
             if (fuse_bpf_install != nullptr) {
-                hook_func((void *) fuse_bpf_install, (void *) new_fuse_bpf_install,
+                xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi", (void *) new_fuse_bpf_install,
                           (void **) &old_fuse_bpf_install);
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str());
@@ -161,6 +162,7 @@ namespace bpf_hook {
         } else {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str());
         }
+        xhook_refresh(0);
     }
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value) {

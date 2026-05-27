@@ -3,7 +3,6 @@
 #include <jni.h>
 #include <set>
 #include <string>
-#include "native_api.h"
 
 namespace bpf_hook {
 
@@ -11,7 +10,7 @@ namespace bpf_hook {
 
     extern bool recordExternalAppSpecificStorage;
 
-    void Hook(void *handle, HookFunType hook_func);
+    void Hook(void *handle);
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value);
 
