@@ -44,17 +44,6 @@
             android:label="@string/service_settings" />
 
         <activity
-            android:name=".browser.BrowsingActivity"
-            android:exported="true"
-            android:label="@string/browser">
-            <intent-filter tools:ignore="AppLinkUrlError">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="vnd.android.document/directory" />
-            </intent-filter>
-        </activity>
-
-        <activity
             android:name=".client.ServerReceiver"
             android:directBootAware="true"
             android:excludeFromRecents="true"
