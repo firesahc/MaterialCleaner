@@ -19,7 +19,6 @@ import me.gm.cleaner.databinding.SettingsActivityBinding
 import me.gm.cleaner.net.NOTIFICATION_CHANNEL
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.starter.Starter
-import me.gm.cleaner.util.BuildConfigUtils
 import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.RequesterFragment
@@ -105,7 +104,7 @@ class SettingsActivity : BaseActivity() {
 
             val postNotification =
                 findPreference<SwitchPreferenceCompat>(getString(R.string.post_notification_key))!!
-            postNotification.isVisible = BuildConfigUtils.isGithubFlavor
+            postNotification.isVisible = true
             postNotification.isChecked = RootPreferences.isPostNotification &&
                     PermissionUtils.checkSelfPostNotificationPermission(
                         requireContext(), NOTIFICATION_CHANNEL
