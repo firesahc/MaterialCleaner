@@ -31,7 +31,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -46,7 +45,6 @@ import kotlin.io.path.PathsKt;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
 import me.gm.cleaner.client.CleanerHooksClient;
-import me.gm.cleaner.dao.PurchaseVerification;
 import me.gm.cleaner.dao.ServicePreferences;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
@@ -425,11 +423,7 @@ public class CleanerService extends ICleanerService.Stub {
         enforceManager(BuildConfig.DEBUG ? "remount" : 33);
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer != null) {
-            if (PurchaseVerification.INSTANCE.isLoosePro()) {
-                observer.remountForPackages(packageNames);
-            } else {
-                observer.forceStopPackages(packageNames);
-            }
+            observer.remountForPackages(packageNames);
         }
     }
 
@@ -575,9 +569,6 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public boolean move(String from, String to) {
         enforceManager(BuildConfig.DEBUG ? "move" : 52);
-        if (!PurchaseVerification.INSTANCE.isLoosePro()) {
-            return true;
-        }
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
         return FileUtils.INSTANCE.move(srcPath, dstPath);
@@ -586,9 +577,6 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public boolean copy(final String from, final String to) {
         enforceManager(BuildConfig.DEBUG ? "copy" : 53);
-        if (!PurchaseVerification.INSTANCE.isLoosePro()) {
-            return true;
-        }
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
         return FileUtils.INSTANCE.copy(srcPath, dstPath);
@@ -646,24 +634,6 @@ public class CleanerService extends ICleanerService.Stub {
                 );
             }
         }
-    }
-
-    @Override
-    public void syncCertificates(final List<String> certificates) {
-        enforceManager(BuildConfig.DEBUG ? "syncCertificates" : 70);
-        ObserverManager.INSTANCE.stopAllObservers();
-
-        mServer.onStorageManagerServiceReady();
-    }
-
-    @Override
-    public void syncSignatures(final List<String> signatures) {
-        enforceManager(BuildConfig.DEBUG ? "syncSignatures" : 71);
-        ObserverManager.INSTANCE.stopAllObservers();
-
-        PurchaseVerification.INSTANCE.setSignatures(new HashSet<>(signatures));
-
-        mServer.onStorageManagerServiceReady();
     }
 
     @Override

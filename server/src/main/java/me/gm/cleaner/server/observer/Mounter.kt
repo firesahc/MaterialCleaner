@@ -12,7 +12,6 @@ import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 import me.gm.cleaner.client.CleanerHooksClient
 import me.gm.cleaner.dao.MountRules
-import me.gm.cleaner.dao.PurchaseVerification.isLoosePro
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.dao.ServicePreferences.getPackageSr
 import me.gm.cleaner.dao.ServicePreferences.getPackageSrZipped
@@ -70,10 +69,6 @@ class Mounter {
         }
     }
 
-    private val unsupportedForFreeUsers: Boolean by lazy {
-        Build.VERSION.SDK_INT >= 35 && !isLoosePro
-    }
-
     private fun getMkdirList(rules: MountRules): List<String> = rules.mountPoint + rules.sources
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
@@ -90,10 +85,6 @@ class Mounter {
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
                 emptyArray(), emptyArray()
             )
-        }
-
-        if (unsupportedForFreeUsers) {
-            return true
         }
 
         pidRecords.put(packageName, pid)

@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import api.SystemService;
 import me.gm.cleaner.dao.MountRules;
-import me.gm.cleaner.dao.PurchaseVerification;
 import me.gm.cleaner.dao.ServicePreferences;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
@@ -72,10 +71,8 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
                                 SystemService.getPackageInfoNoThrow(packageName, 0, 0))
                         .putExtra(Intent.EXTRA_TEXT, mountedPath)
                         .setType(String.valueOf(type));
-                if (PurchaseVerification.INSTANCE.isLoosePro()) {
-                    broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                            FileUtils.INSTANCE.getPathAsUser(finalPath, 0));
-                }
+                broadcastIntent.putExtra(Intent.EXTRA_STREAM,
+                        FileUtils.INSTANCE.getPathAsUser(finalPath, 0));
             });
         }
         return mountedPath;
@@ -111,10 +108,8 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
                                         SystemService.getPackageInfoNoThrow(packageName, 0, 0))
                                 .putExtra(Intent.EXTRA_TEXT, path)
                                 .setType(Intent.EXTRA_SUBJECT);
-                        if (PurchaseVerification.INSTANCE.isLoosePro()) {
-                            broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                                    FileUtils.INSTANCE.getPathAsUser(path, 0));
-                        }
+                        broadcastIntent.putExtra(Intent.EXTRA_STREAM,
+                                FileUtils.INSTANCE.getPathAsUser(path, 0));
                     });
                     return false;
                 } else {
@@ -146,10 +141,8 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
                         .putExtra(Intent.EXTRA_PACKAGE_NAME,
                                 SystemService.getPackageInfoNoThrow(packageName, 0, 0))
                         .putExtra(Intent.EXTRA_TEXT, path);
-                if (PurchaseVerification.INSTANCE.isLoosePro()) {
-                    broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                            FileUtils.INSTANCE.getPathAsUser(path, 0));
-                }
+                broadcastIntent.putExtra(Intent.EXTRA_STREAM,
+                        FileUtils.INSTANCE.getPathAsUser(path, 0));
             });
         }
         return true;

@@ -9,7 +9,6 @@ import me.gm.cleaner.dao.FileSystemRecord.Companion.create
 import me.gm.cleaner.dao.FileSystemRecordDao
 import me.gm.cleaner.dao.FileSystemRecordDatabase
 import me.gm.cleaner.dao.MIGRATION_1_2
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.observer.PruneMethod.Companion.DELETE_ALL
@@ -151,9 +150,6 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver(), Zy
         method: Long, packageNames: Array<String>?,
         isHideAppSpecificStorage: Boolean, queryText: String?
     ) {
-        if (method.toInt() != DELETE_ALL && !PurchaseVerification.isLoosePro) {
-            return
-        }
         when (method.toInt()) {
             DELETE_ALL -> database.clearAllTables()
             DELETE_APP_SPECIFIC -> dao.deleteAppSpecificStorageRecords()

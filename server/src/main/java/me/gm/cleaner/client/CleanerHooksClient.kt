@@ -4,7 +4,6 @@ import android.os.IBinder
 import android.os.RemoteException
 import api.SystemService
 import me.gm.cleaner.dao.MountRules
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
@@ -80,9 +79,7 @@ object CleanerHooksClient {
 
     @JvmStatic
     fun ICleanerHooksService.syncReadOnlyPaths() {
-        if (PurchaseVerification.isLoosePro) {
-            setReadOnlyPaths(ServicePreferences.getAllReadOnly())
-        }
+        setReadOnlyPaths(ServicePreferences.getAllReadOnly())
     }
 
     @JvmStatic
