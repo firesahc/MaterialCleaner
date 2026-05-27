@@ -4,7 +4,6 @@ import android.content.pm.PackageInfo
 import android.os.IBinder
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.server.ICleanerService
 
 object CleanerClient {
@@ -35,7 +34,6 @@ object CleanerClient {
         binder?.linkToDeath(DEATH_RECIPIENT, 0)
         service = ICleanerService.Stub.asInterface(newBinder)
         serverVersion = service!!.serverVersion
-        maybeSyncCertificate()
     }
 
     val zygiskEnabled: Boolean
@@ -50,35 +48,6 @@ object CleanerClient {
         } catch (e: SecurityException) {
             emptyList()
         }
-
-    fun updateCertificate(responseBody: String) {
-        PurchaseVerification.updateCertificate(responseBody)
-        if (pingBinder()) {
-            service!!.syncCertificates(PurchaseVerification.maybeCertificates)
-            service!!.syncSignatures(PurchaseVerification.signatures.toList())
-        } else {
-            PurchaseVerification.isSyncNeeded = true
-        }
-    }
-
-    fun removeCertificate(purchaseToken: String) {
-        PurchaseVerification.removeCertificate(purchaseToken)
-        PurchaseVerification.signatures = emptySet()
-        if (pingBinder()) {
-            service!!.syncCertificates(PurchaseVerification.maybeCertificates)
-            service!!.syncSignatures(PurchaseVerification.signatures.toList())
-        } else {
-            PurchaseVerification.isSyncNeeded = true
-        }
-    }
-
-    fun maybeSyncCertificate() {
-        if (PurchaseVerification.isSyncNeeded && pingBinder()) {
-            service!!.syncCertificates(PurchaseVerification.maybeCertificates)
-            service!!.syncSignatures(PurchaseVerification.signatures.toList())
-            PurchaseVerification.isSyncNeeded = false
-        }
-    }
 
     fun exit() {
         runCatching {

@@ -86,10 +86,5 @@ interface ICleanerService {
 
     void switchAllAppsOwner() = 63;
 
-    // purchase
-    void syncCertificates(in List<String> certificates) = 70;
-
-    void syncSignatures(in List<String> signatures) = 71;
-
     void exit() = 100;
 }

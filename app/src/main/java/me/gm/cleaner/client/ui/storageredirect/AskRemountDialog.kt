@@ -7,7 +7,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.R
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
-import me.gm.cleaner.dao.PurchaseVerification
 
 class AskRemountDialog : AppCompatDialogFragment() {
     private val parentFragment: StorageRedirectFragment
@@ -15,13 +14,7 @@ class AskRemountDialog : AppCompatDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
         MaterialAlertDialogBuilder(requireContext())
-            .setMessage(
-                if (PurchaseVerification.isExpressPro) {
-                    R.string.storage_redirect_remount_instantly
-                } else {
-                    R.string.storage_redirect_forcestop_instantly
-                }
-            )
+            .setMessage(R.string.storage_redirect_remount_instantly)
             .setPositiveButton(R.string.yes) { _, _ ->
                 navigateUp(SAVE_AND_REMOUNT_AND_EXIT)
             }

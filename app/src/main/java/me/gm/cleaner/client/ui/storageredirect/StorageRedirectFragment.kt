@@ -35,7 +35,6 @@ import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.databinding.StorageRedirectFragmentBinding
@@ -177,7 +176,7 @@ class StorageRedirectFragment : BaseFragment() {
                 )
             }
             viewModel.initSettings(args.pi)
-            if (ServiceMoreOptionsPreferences.openWizardByDefault && PurchaseVerification.isExpressPro) {
+            if (ServiceMoreOptionsPreferences.openWizardByDefault) {
                 viewModel.mode = Mode.Wizard
             } else if (viewModel.mountRules.isNotEmpty()) {
                 viewModel.mode = Mode.Editor
@@ -186,7 +185,7 @@ class StorageRedirectFragment : BaseFragment() {
         viewModel.initMountWizard(args.pi)
 
         if (SystemPropertiesUtils.getBoolean("persist.sys.fuse", false)!! &&
-            CleanerClient.zygiskEnabled && PurchaseVerification.isExpressPro
+            CleanerClient.zygiskEnabled
         ) {
             val readOnlyHeaderAdapter = ReadOnlyHeaderAdapter()
             val readOnlyAdapter = ReadOnlyAdapter(this, viewModel)
@@ -300,9 +299,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
         }
         inflater.inflate(R.menu.toolbar_save, menu)
-        if (PurchaseVerification.isExpressPro) {
-            inflater.inflate(R.menu.toolbar_add_read_only_template, menu)
-        }
+        inflater.inflate(R.menu.toolbar_add_read_only_template, menu)
         inflater.inflate(R.menu.applist_item, menu)
     }
 
@@ -316,52 +313,48 @@ class StorageRedirectFragment : BaseFragment() {
                 }
             }
             if (preferenceChanged) {
-                if (!PurchaseVerification.isExpressPro) {
-                    onNavigateUp(SAVE_AND_REMOUNT_AND_EXIT)
-                } else {
-                    val rules = viewModel.rules
-                    val inaccessibleReadOnlyPaths = viewModel.readOnlyPaths.filter { path ->
-                        rules.getAccessiblePlaces(path).isEmpty()
-                    }
-                    if (inaccessibleReadOnlyPaths.isNotEmpty()) {
-                        ConfirmationDialog
-                            .newInstance(
-                                getString(
-                                    R.string.storage_redirect_read_only_paths_inaccessible,
-                                    inaccessibleReadOnlyPaths.joinToString("\n")
-                                )
+                val rules = viewModel.rules
+                val inaccessibleReadOnlyPaths = viewModel.readOnlyPaths.filter { path ->
+                    rules.getAccessiblePlaces(path).isEmpty()
+                }
+                if (inaccessibleReadOnlyPaths.isNotEmpty()) {
+                    ConfirmationDialog
+                        .newInstance(
+                            getString(
+                                R.string.storage_redirect_read_only_paths_inaccessible,
+                                inaccessibleReadOnlyPaths.joinToString("\n")
                             )
-                            .apply {
-                                addOnPositiveButtonClickListener {
-                                    onNavigateUp(SAVE_AND_REMOUNT_AND_EXIT)
-                                }
-                            }
-                            .show(childFragmentManager, null)
-                    } else {
-                        val dirOps = viewModel.wizard.getRecommendDirOps(
-                            ServicePreferences.getPackageSrZipped(args.pi.packageName),
-                            viewModel.mountRules
                         )
-                        if (dirOps.isEmpty()) {
-                            onNavigateUp(SAVE_AND_REMOUNT_AND_EXIT)
-                        } else {
-                            val entries = ArrayList<Pair<String, String>>(dirOps.size)
-                            val moveItems = ArrayList<Boolean>(dirOps.size)
-                            val checkedItems = ArrayList<Boolean>(dirOps.size)
-                            dirOps.forEach { op ->
-                                entries += op.from to op.to
-                                moveItems += op is MountWizard.DirOp.Move
-                                checkedItems += op.checkByDefault
+                        .apply {
+                            addOnPositiveButtonClickListener {
+                                onNavigateUp(SAVE_AND_REMOUNT_AND_EXIT)
                             }
-                            RecommendDirOpsDialog
-                                .newInstance(
-                                    args.pi.packageName,
-                                    entries,
-                                    moveItems.toBooleanArray(),
-                                    checkedItems.toBooleanArray()
-                                )
-                                .show(childFragmentManager, null)
                         }
+                        .show(childFragmentManager, null)
+                } else {
+                    val dirOps = viewModel.wizard.getRecommendDirOps(
+                        ServicePreferences.getPackageSrZipped(args.pi.packageName),
+                        viewModel.mountRules
+                    )
+                    if (dirOps.isEmpty()) {
+                        onNavigateUp(SAVE_AND_REMOUNT_AND_EXIT)
+                    } else {
+                        val entries = ArrayList<Pair<String, String>>(dirOps.size)
+                        val moveItems = ArrayList<Boolean>(dirOps.size)
+                        val checkedItems = ArrayList<Boolean>(dirOps.size)
+                        dirOps.forEach { op ->
+                            entries += op.from to op.to
+                            moveItems += op is MountWizard.DirOp.Move
+                            checkedItems += op.checkByDefault
+                        }
+                        RecommendDirOpsDialog
+                            .newInstance(
+                                args.pi.packageName,
+                                entries,
+                                moveItems.toBooleanArray(),
+                                checkedItems.toBooleanArray()
+                            )
+                            .show(childFragmentManager, null)
                     }
                 }
             } else if (viewModel.runningStatus?.isNotEmpty() == true &&

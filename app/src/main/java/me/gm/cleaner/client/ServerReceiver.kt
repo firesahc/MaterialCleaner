@@ -6,7 +6,6 @@ import android.content.pm.PackageInfo
 import android.os.Bundle
 import me.gm.cleaner.R
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.util.getParcelableExtraCompat
 
 class ServerReceiver : Activity() {
@@ -55,18 +54,11 @@ class ServerReceiver : Activity() {
                 }
                 intent.putExtra(Intent.EXTRA_TITLE, prompt)
 
-                if (PurchaseVerification.isStrictPro) {
-                    startActivity(
-                        Intent(this, PromptActivity::class.java)
-                            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                            .putExtra(Intent.EXTRA_INTENT, intent)
-                    )
-                } else {
-                    startService(
-                        Intent(this, NotificationService::class.java)
-                            .putExtra(Intent.EXTRA_INTENT, intent)
-                    )
-                }
+                startActivity(
+                    Intent(this, PromptActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                        .putExtra(Intent.EXTRA_INTENT, intent)
+                )
             }
 
             NotificationService.ACTION_LOGCAT_SHUTDOWN,

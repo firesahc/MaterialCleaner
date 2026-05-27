@@ -16,7 +16,6 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.databinding.MtrlAlertSelectDialogItemBinding
 import me.gm.cleaner.server.observer.FileSystemObserver
 import me.gm.cleaner.server.observer.PruneMethod.Companion.DELETE_ALL
@@ -42,55 +41,14 @@ class PruneRecordsDialog : AppCompatDialogFragment() {
         val itemToAction = mutableListOf(
             // 0
             getString(R.string.filesystem_record_clear) to {
-                if (PurchaseVerification.isExpressPro) {
-                    ConfirmationDialog
-                        .newInstance(getString(R.string.filesystem_record_clear))
-                        .apply {
-                            addOnPositiveButtonClickListener {
-                                it.lifecycleScope.launch(Dispatchers.IO) {
-                                    parentViewModel.setLoading()
-                                    CleanerClient.service!!.pruneRecords(
-                                        DELETE_ALL.toLong(), null, false, null
-                                    )
-                                    parentViewModel.reload()
-                                }
-                            }
-                        }
-                        .show(parentFragmentManager, null)
-                } else {
-                    parentViewModel.setLoading()
-                    CleanerClient.service!!.pruneRecords(DELETE_ALL.toLong(), null, false, null)
-                    parentViewModel.reload()
-                }
-            }
-        )
-        if (PurchaseVerification.isExpressPro) {
-            // 1
-            itemToAction += getString(R.string.filesystem_record_app_specific_storage) to {
-                CleanerClient.service!!.pruneRecords(
-                    DELETE_APP_SPECIFIC.toLong(), null, false, null
-                )
-            }
-            // 2
-            itemToAction += getString(R.string.filesystem_record_uninstalled_apps) to {
-                CleanerClient.service!!.pruneRecords(UNINSTALLED.toLong(), null, false, null)
-            }
-            // 3
-            itemToAction += getString(R.string.filesystem_record_distinct) to {
-                CleanerClient.service!!.pruneRecords(DISTINCT.toLong(), null, false, null)
-            }
-            // 4
-            itemToAction += getString(R.string.filesystem_record_queried) to {
                 ConfirmationDialog
-                    .newInstance(getString(R.string.filesystem_record_queried))
+                    .newInstance(getString(R.string.filesystem_record_clear))
                     .apply {
                         addOnPositiveButtonClickListener {
                             it.lifecycleScope.launch(Dispatchers.IO) {
                                 parentViewModel.setLoading()
                                 CleanerClient.service!!.pruneRecords(
-                                    QUERIED.toLong(), null,
-                                    parentViewModel.isHideAppSpecificStorage,
-                                    if (parentViewModel.isSearching) parentViewModel.queryText else null
+                                    DELETE_ALL.toLong(), null, false, null
                                 )
                                 parentViewModel.reload()
                             }
@@ -98,6 +56,39 @@ class PruneRecordsDialog : AppCompatDialogFragment() {
                     }
                     .show(parentFragmentManager, null)
             }
+        )
+        // 1
+        itemToAction += getString(R.string.filesystem_record_app_specific_storage) to {
+            CleanerClient.service!!.pruneRecords(
+                DELETE_APP_SPECIFIC.toLong(), null, false, null
+            )
+        }
+        // 2
+        itemToAction += getString(R.string.filesystem_record_uninstalled_apps) to {
+            CleanerClient.service!!.pruneRecords(UNINSTALLED.toLong(), null, false, null)
+        }
+        // 3
+        itemToAction += getString(R.string.filesystem_record_distinct) to {
+            CleanerClient.service!!.pruneRecords(DISTINCT.toLong(), null, false, null)
+        }
+        // 4
+        itemToAction += getString(R.string.filesystem_record_queried) to {
+            ConfirmationDialog
+                .newInstance(getString(R.string.filesystem_record_queried))
+                .apply {
+                    addOnPositiveButtonClickListener {
+                        it.lifecycleScope.launch(Dispatchers.IO) {
+                            parentViewModel.setLoading()
+                            CleanerClient.service!!.pruneRecords(
+                                QUERIED.toLong(), null,
+                                parentViewModel.isHideAppSpecificStorage,
+                                if (parentViewModel.isSearching) parentViewModel.queryText else null
+                            )
+                            parentViewModel.reload()
+                        }
+                    }
+                }
+                .show(parentFragmentManager, null)
         }
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.filesystem_record_prune_records)
