@@ -29,7 +29,7 @@ import kotlin.io.path.pathString
 class FileSystemRecordViewModel(application: Application) :
     BaseServiceSettingsViewModel(application) {
     internal val eventModelMapper: (FileSystemEvent) -> FileSystemRecordModel = { event ->
-        val pi = CleanerClient.service!!.getPackageInfo(
+        val pi = CleanerClient.service?.getPackageInfo(
             event.packageName, PackageManager.GET_PERMISSIONS
         )
         val readOnlyPaths = ServicePreferences.getPackageReadOnly(
@@ -127,20 +127,20 @@ class FileSystemRecordViewModel(application: Application) :
             if (::bulkCursor.isInitialized) {
                 bulkCursor.close()
             }
-            bulkCursor = CleanerClient.service!!.queryAllRecords(
+            bulkCursor = CleanerClient.service?.queryAllRecords(
                 isHideAppSpecificStorage, if (isSearching) queryText else null
-            )
+            ) ?: return@launch
             fileSystemRecord += loadMoreInternal(LOAD_SIZE)
             _fileSystemRecordLiveData.postValue(FileSystemRecordState.Done(fileSystemRecord.toList()))
         }
     }
 
     private val _checkedFilterAppsFlow: MutableStateFlow<Set<String>> =
-        MutableStateFlow(CleanerClient.service!!.denyList.toSet())
+        MutableStateFlow(CleanerClient.service?.denyList?.toSet() ?: emptySet())
     var checkedFilterApps: Set<String>
         get() = _checkedFilterAppsFlow.value
         set(value) {
-            CleanerClient.service!!.setDenyList(value.toTypedArray())
+            CleanerClient.service?.setDenyList(value.toTypedArray())
             _checkedFilterAppsFlow.value = value
         }
     private val _isHideAppSpecificStorageFlow: MutableStateFlow<Boolean> =
@@ -164,7 +164,7 @@ class FileSystemRecordViewModel(application: Application) :
                 reload()
             }
         }
-        CleanerClient.service!!.registerFileChangeObserver(fileSystemChangeObserver)
+        CleanerClient.service?.registerFileChangeObserver(fileSystemChangeObserver)
     }
 
     init {
@@ -188,7 +188,7 @@ class FileSystemRecordViewModel(application: Application) :
             bulkCursor.close()
         }
         dispatcher.close()
-        CleanerClient.service!!.unregisterFileChangeObserver(fileSystemChangeObserver)
+        CleanerClient.service?.unregisterFileChangeObserver(fileSystemChangeObserver)
     }
 
     companion object {

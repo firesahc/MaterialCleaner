@@ -215,7 +215,8 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver implements 
             try {
                 try {
                     Runtime.getRuntime().exec(new String(clearLogcat));
-                } catch (final Throwable ignored) {
+                } catch (final Throwable e) {
+                    Log.e("AMLogs", "clear logcat failed", e);
                 }
 
                 while (true) {

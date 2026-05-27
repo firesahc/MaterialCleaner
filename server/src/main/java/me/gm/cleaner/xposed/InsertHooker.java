@@ -11,6 +11,7 @@ import android.os.FileUtils;
 import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.annotation.RequiresApi;
 
@@ -141,7 +142,7 @@ public class InsertHooker extends XC_MethodHook {
                     values.put(MediaStore.MediaColumns.DATA, mountedPath);
                 }
             } catch (RemoteException e) {
-                e.printStackTrace();
+                Log.e("InsertHooker", "error", e);
             }
         });
     }

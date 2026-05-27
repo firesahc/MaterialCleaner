@@ -10,7 +10,6 @@ import androidx.core.os.postDelayed
 import api.SystemService
 import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
-import me.gm.cleaner.client.CleanerHooksClient
 import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.dao.ServicePreferences.getPackageSr
@@ -43,7 +42,7 @@ class Mounter {
 
     fun bindMountAsync(packageName: String, pid: Int, uid: Int) {
         handler.post {
-            bindMountLocked(packageName, pid, uid)
+            synchronized(lock) { bindMountLocked(packageName, pid, uid) }
         }
     }
 
@@ -76,8 +75,7 @@ class Mounter {
                 !ServicePreferences.denylist.contains(packageName)
         val recordExternalAppSpecificStorage =
             ServicePreferences.recordExternalAppSpecificStorage &&
-                    !ServicePreferences.denylist.contains(packageName) &&
-                    CleanerHooksClient.pingBinder()
+                    !ServicePreferences.denylist.contains(packageName)
 
         if (ServicePreferences.getPackageSrCount(packageName) == 0) {
             return FileUtils.bind_mount(

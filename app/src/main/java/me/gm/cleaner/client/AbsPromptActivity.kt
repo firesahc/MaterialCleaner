@@ -155,9 +155,9 @@ abstract class AbsPromptActivity : AppCompatActivity() {
                         ) {
                             filesToMigrate.forEach { (path, mountedPath) ->
                                 val newPath = MountRules(rules).getMountedPath(path)
-                                CleanerClient.service!!.move(mountedPath, newPath)
+                                CleanerClient.service?.move(mountedPath, newPath)
                                 // Also try move for origin path to support media store insert.
-                                CleanerClient.service!!.move(path, newPath)
+                                CleanerClient.service?.move(path, newPath)
                                 MediaScannerConnection.scanFile(
                                     applicationContext, arrayOf(mountedPath, path, newPath),
                                     null, null
@@ -170,8 +170,8 @@ abstract class AbsPromptActivity : AppCompatActivity() {
                         val sharedProcessPackages = getSharedProcessPackages(packageInfo)
                             .map { it.packageName }
                         ServicePreferences.putStorageRedirect(rules, sharedProcessPackages)
-                        CleanerClient.service!!.notifySrChanged()
-                        CleanerClient.service!!.remount(sharedProcessPackages.toTypedArray())
+                        CleanerClient.service?.notifySrChanged()
+                        CleanerClient.service?.remount(sharedProcessPackages.toTypedArray())
                     }
                     finish()
                 }
@@ -193,7 +193,7 @@ abstract class AbsPromptActivity : AppCompatActivity() {
     }
 
     private fun updateDenyList(isChecked: Boolean, packageName: String) {
-        val service = CleanerClient.service!!
+        val service = CleanerClient.service ?: return
         val denyList = if (isChecked) {
             service.denyList + packageName
         } else {
@@ -204,7 +204,7 @@ abstract class AbsPromptActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (CleanerClient.service!!.denyList.contains(packageInfo.packageName) ||
+        if (CleanerClient.service?.denyList?.contains(packageInfo.packageName) == true ||
             !recommendMountRuleToFilesToMigrate.containsKey(recommendMountRuleToken)
         ) {
             finish()

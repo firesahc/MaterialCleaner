@@ -3,6 +3,7 @@ package me.gm.cleaner.xposed;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -40,7 +41,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         try {
             iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
         } catch (final RemoteException e) {
-            e.printStackTrace();
+            Log.e("MediaProviderHooksSvc", "error", e);
         }
     }
 

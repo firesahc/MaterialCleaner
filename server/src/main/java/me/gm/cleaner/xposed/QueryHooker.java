@@ -8,6 +8,7 @@ import android.os.CancellationSignal;
 import android.os.RemoteException;
 import android.provider.MediaStore.Files.FileColumns;
 import android.util.ArraySet;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -138,7 +139,7 @@ public class QueryHooker extends XC_MethodHook {
                 try {
                     service.setQueriedPaths(callingPackage, data);
                 } catch (RemoteException e) {
-                    e.printStackTrace();
+                    Log.e("QueryHooker", "error", e);
                 }
             });
         }

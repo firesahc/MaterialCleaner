@@ -8,6 +8,7 @@ import android.os.FileObserver
 import android.os.Parcel
 import android.os.Parcelable
 import android.provider.MediaStore.Files.FileColumns
+import android.util.Log
 import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -17,6 +18,7 @@ import androidx.core.view.forEach
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
@@ -53,7 +55,7 @@ import me.gm.cleaner.widget.recyclerview.UpdatingList
 import me.gm.cleaner.widget.recyclerview.submitDiffList
 import java.io.File
 
-data class WizardAnswers(
+class WizardAnswers(
     var q1: Boolean = false,
     var q2: Boolean = false,
     var q3: Boolean = false,
@@ -102,6 +104,23 @@ data class WizardAnswers(
         inaccessiblePlacesLiveData.postValue(inaccessiblePlacesLiveData.value!!.also { action(it) })
     }
 
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is WizardAnswers) return false
+        return q1 == other.q1 && q2 == other.q2 && q3 == other.q3 &&
+                q4 == other.q4 && q11 == other.q11 && q12 == other.q12
+    }
+
+    override fun hashCode(): Int {
+        var result = q1.hashCode()
+        result = 31 * result + q2.hashCode()
+        result = 31 * result + q3.hashCode()
+        result = 31 * result + q4.hashCode()
+        result = 31 * result + q11.hashCode()
+        result = 31 * result + q12.hashCode()
+        return result
+    }
+
     override fun writeToParcel(parcel: Parcel, flags: Int) {
         ParcelCompat.writeBoolean(parcel, q1)
         ParcelCompat.writeBoolean(parcel, q2)
@@ -138,7 +157,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
             q12 = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                     packageInfo.applicationInfo.category and ApplicationInfo.CATEGORY_GAME != 0 ||
                     packageInfo.applicationInfo.flags and ApplicationInfo.FLAG_IS_GAME != 0) ||
-                    CleanerClient.service!!.createFileModel(obbDir).isDirectory
+                    CleanerClient.service?.createFileModel(obbDir)?.isDirectory ?: false
         )
 
     // BIND
@@ -170,7 +189,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
         binding.autoCompleteByRecord.setOnClickListener {
             fragment.lifecycleScope.launch {
                 val record = withContext(Dispatchers.IO) {
-                    CleanerClient.service!!.queryDistinctRecordsInclude(arrayOf(packageName)).list
+                    CleanerClient.service?.queryDistinctRecordsInclude(arrayOf(packageName))?.list ?: emptyList()
                 }
                 val rationale = withContext(Dispatchers.Default) {
                     answerBasedOnRecord(answers, record, appTypeMarks())
@@ -273,12 +292,13 @@ class MountWizard(private val packageInfo: PackageInfo) {
             q2List.layoutManager = InfiniteGridLayoutManager(fragment.requireContext(), 1)
             q2List.setHasFixedSize(true)
             q2List.itemAnimator = ChildItemAnimator(q2List)
-            answers.accessiblePlacesLiveData.removeObservers(fragment.viewLifecycleOwner)
-            answers.accessiblePlacesLiveData.observe(fragment.viewLifecycleOwner) { accessiblePlaces ->
+            val accessiblePlacesObserver = Observer<DiffArrayList<String?>> { accessiblePlaces ->
                 binding.q2.maybePost(q2Adapter, accessiblePlaces.size) {
                     q2Adapter.submitDiffList(accessiblePlaces)
                 }
             }
+            answers.accessiblePlacesLiveData.removeObserver(accessiblePlacesObserver)
+            answers.accessiblePlacesLiveData.observe(fragment.viewLifecycleOwner, accessiblePlacesObserver)
 
             binding.q3.setOnClickListener {
                 answers.q3 = binding.q3.isChecked
@@ -289,12 +309,13 @@ class MountWizard(private val packageInfo: PackageInfo) {
             q3List.layoutManager = InfiniteGridLayoutManager(fragment.requireContext(), 1)
             q3List.setHasFixedSize(true)
             q3List.itemAnimator = ChildItemAnimator(q3List)
-            answers.mountRulesLiveData.removeObservers(fragment.viewLifecycleOwner)
-            answers.mountRulesLiveData.observe(fragment.viewLifecycleOwner) { mountRules ->
+            val mountRulesObserver = Observer<DiffArrayList<Pair<String?, String?>>> { mountRules ->
                 binding.q3.maybePost(q3Adapter, mountRules.size) {
                     q3Adapter.submitDiffList(mountRules)
                 }
             }
+            answers.mountRulesLiveData.removeObserver(mountRulesObserver)
+            answers.mountRulesLiveData.observe(fragment.viewLifecycleOwner, mountRulesObserver)
 
             binding.q4.setOnClickListener {
                 answers.q4 = binding.q4.isChecked
@@ -305,12 +326,13 @@ class MountWizard(private val packageInfo: PackageInfo) {
             q4List.layoutManager = InfiniteGridLayoutManager(fragment.requireContext(), 1)
             q4List.setHasFixedSize(true)
             q4List.itemAnimator = ChildItemAnimator(q4List)
-            answers.inaccessiblePlacesLiveData.removeObservers(fragment.viewLifecycleOwner)
-            answers.inaccessiblePlacesLiveData.observe(fragment.viewLifecycleOwner) { inaccessiblePlaces ->
+            val inaccessiblePlacesObserver = Observer<DiffArrayList<String?>> { inaccessiblePlaces ->
                 binding.q4.maybePost(q4Adapter, inaccessiblePlaces.size) {
                     q4Adapter.submitDiffList(inaccessiblePlaces)
                 }
             }
+            answers.inaccessiblePlacesLiveData.removeObserver(inaccessiblePlacesObserver)
+            answers.inaccessiblePlacesLiveData.observe(fragment.viewLifecycleOwner, inaccessiblePlacesObserver)
         }
 
         private fun restoreCheckedState(
@@ -742,7 +764,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
             }
         }
         return AutoAnswerRationale(
-            CleanerClient.service!!.countRecordsInclude(arrayOf(packageName)),
+            CleanerClient.service?.countRecordsInclude(arrayOf(packageName)) ?: 0,
             q1Reasons, accessiblePlacesReasons, mountRulesReasons, inaccessiblePlacesReasons
         )
     }
@@ -789,7 +811,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 File(sdDir, Environment.DIRECTORY_DOWNLOADS),
             )
 
-            else -> throw AssertionError()
+            else -> {
+                Log.w("MountWizard", "unexpected mediaType: $mediaType")
+                listOf(File(sdDir, Environment.DIRECTORY_DOWNLOADS))
+            }
         }.toMutableList()
         val downloadDir = File(sdDir, Environment.DIRECTORY_DOWNLOADS)
         if (downloadDir !in recommendDirs) {
@@ -860,7 +885,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
             .distinct()
             .filter {
                 // validate dir exist
-                CleanerClient.service!!.createFileModel(it.from).isDirectory
+                CleanerClient.service?.createFileModel(it.from)?.isDirectory ?: false
             }
             .toList()
     }
@@ -900,7 +925,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                     oldDirExternal && newDirExternal -> Move(from, to, true)
                     oldDirInternal && newDirExternal -> Move(from, to, false)
                     oldDirExternal && newDirInternal -> Move(from, to, true)
-                    else -> throw AssertionError()
+                    else -> {
+                        Log.w("MountWizard", "unexpected dir state for $packageName: oldInternal=$oldDirInternal newInternal=$newDirInternal")
+                        Move(from, to, true)
+                    }
                 }
             }
         }

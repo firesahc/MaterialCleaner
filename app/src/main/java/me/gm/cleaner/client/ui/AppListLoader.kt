@@ -15,9 +15,9 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
     suspend fun load(): List<AppListModel> = withContext(defaultDispatcher) {
         val installedPackages = CleanerClient.getInstalledPackages(PackageManager.GET_PERMISSIONS)
         AppLabelCache.updatePackageLabelCacheInBulk(installedPackages, true)
-        val srPackageStatus = CleanerClient.service!!.getSrPackagesStatus(
+        val srPackageStatus = CleanerClient.service?.getSrPackagesStatus(
             PackageStatus.GET_FROM_ALL_PROCESS
-        )
+        ) ?: emptyMap()
         installedPackages.map { pi ->
             ensureActive()
             AppListModel(

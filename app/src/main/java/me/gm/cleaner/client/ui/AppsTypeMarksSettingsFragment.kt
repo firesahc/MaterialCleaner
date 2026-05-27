@@ -128,7 +128,7 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                                     )
                                 }
                                 ServicePreferences.endBatchOperation()
-                                CleanerClient.service!!.notifySrChanged()
+                                CleanerClient.service?.notifySrChanged()
                             }
                         }
                     }

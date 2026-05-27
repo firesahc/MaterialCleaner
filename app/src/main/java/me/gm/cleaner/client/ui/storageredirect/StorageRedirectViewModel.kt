@@ -105,9 +105,9 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     // Don't use "application" to support language setting.
     fun loadRunningStatusAsync(packageName: String, context: Context) =
         viewModelScope.async(Dispatchers.Default) {
-            val packageStatus = CleanerClient.service!!.getPackageStatus(
+            val packageStatus = CleanerClient.service?.getPackageStatus(
                 packageName, PackageStatus.GET_FROM_ALL_PROCESS
-            )
+            ) ?: return@async
             if (packageStatus.pids.isEmpty()) {
                 runningStatus = ""
                 return@async
@@ -214,7 +214,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     fun loadIsInMagiskDenyListAsync(packageName: String) =
         viewModelScope.async(Dispatchers.Default) {
             isInMagiskDenyList = CleanerClient.zygiskEnabled &&
-                    CleanerClient.service!!.isInMagiskDenyList(packageName)
+                    CleanerClient.service?.isInMagiskDenyList(packageName) ?: false
         }
 
     var sharedUserIdPackages: List<PackageInfo>? = null
@@ -266,9 +266,11 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     fun writeMountRules() {
         val packageNames = sharedProcessPackages?.map { it.packageName } ?: emptyList()
         ServicePreferences.putStorageRedirect(mountRules, packageNames)
-        CleanerClient.service!!.notifySrChanged()
-        if (CleanerClient.service!!.isFuseBpfEnabled) {
-            CleanerClient.service!!.switchSpecificAppsOwner(packageNames.toTypedArray())
+        CleanerClient.service?.let { service ->
+            service.notifySrChanged()
+            if (service.isFuseBpfEnabled) {
+                service.switchSpecificAppsOwner(packageNames.toTypedArray())
+            }
         }
     }
 
@@ -297,7 +299,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         ServicePreferences.putReadOnly(
             readOnlyPaths, sharedUserIdPackages?.map { it.packageName } ?: emptyList()
         )
-        CleanerClient.service!!.notifyReadOnlyChanged()
+        CleanerClient.service?.notifyReadOnlyChanged()
     }
 
     private val _appTypeMarksFlow: MutableStateFlow<NetworkConnectionState<AppTypeMarks?>> =
@@ -355,7 +357,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
 
     fun setPackagePermission(ai: ApplicationInfo, permission: String, grant: Boolean) {
         val userId = ai.uid.toUserId()
-        CleanerClient.service!!.setPackagePermission(
+        CleanerClient.service?.setPackagePermission(
             ai, permission, isRuntime(permission), userId, grant
         )
     }

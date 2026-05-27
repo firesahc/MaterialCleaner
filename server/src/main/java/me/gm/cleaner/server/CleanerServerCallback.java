@@ -5,6 +5,7 @@ import android.os.RemoteException;
 
 import java.io.File;
 import java.io.IOException;
+import android.util.Log;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,7 +54,8 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
     public String getMountedPath(final String packageName, String path, final int type) {
         try {
             path = new File(path).getCanonicalPath();
-        } catch (final IOException ignored) {
+        } catch (final IOException e) {
+            Log.w("SrvCallback", "getCanonicalPath failed", e);
         }
         final var userId = FileUtils.INSTANCE.extractUserIdFromPath(path, 0);
         final var ruleZipped = ServicePreferences.INSTANCE

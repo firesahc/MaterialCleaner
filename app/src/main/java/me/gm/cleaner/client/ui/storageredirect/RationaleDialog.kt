@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.databinding.ListDialogBinding
+import me.gm.cleaner.util.getSerializableCompat
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import me.gm.cleaner.widget.recyclerview.StickyHeader
 
@@ -51,7 +52,7 @@ class RationaleDialog : AppCompatDialogFragment() {
         })
 
         adapter.submitList(
-            requireArguments().getSerializable(KEY_CONTENT) as ArrayList<Pair<String, String>>
+            requireArguments().getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_CONTENT)!!
         )
         return dialog
     }

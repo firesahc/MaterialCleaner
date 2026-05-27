@@ -52,7 +52,7 @@ class NotificationService : Service() {
                         computeHashCode(packageInfo.packageName, name)
                     )
                     MainScope().launch(Dispatchers.IO) {
-                        val service = CleanerClient.service!!
+                        val service = CleanerClient.service ?: return@launch
                         val denyList = service.denyList + packageInfo.packageName
                         service.setDenyList(denyList.toTypedArray())
                     }
@@ -83,7 +83,7 @@ class NotificationService : Service() {
                             getSharedProcessPackages(packageInfo).map { it.packageName }
                         )
                         if (CleanerClient.pingBinder()) {
-                            CleanerClient.service!!.notifySrChanged()
+                            CleanerClient.service?.notifySrChanged()
                         }
                     }
                 }
@@ -95,7 +95,7 @@ class NotificationService : Service() {
                         computeHashCode(packageInfo.packageName, NOTIFICATION_CHANNEL_ADDED)
                     )
                     MainScope().launch(Dispatchers.IO) {
-                        val service = CleanerClient.service!!
+                        val service = CleanerClient.service ?: return@launch
                         val denyList = service.denyList + packageInfo.packageName
                         service.setDenyList(denyList.toTypedArray())
                     }
@@ -142,7 +142,7 @@ class NotificationService : Service() {
                 ServicePreferences.putStorageRedirect(
                     rulesByTemplate, getSharedProcessPackages(packageInfo).map { it.packageName }
                 )
-                CleanerClient.service!!.notifySrChanged()
+                CleanerClient.service?.notifySrChanged()
                 buildPackageAddedNotification(context, packageInfo)
                 MainScope().launch {
                     OnlineAppTypeMarks.fetch(context, packageInfo).onSuccess { appTypeMarks ->
@@ -156,7 +156,7 @@ class NotificationService : Service() {
                                 wizard.createRules(answers),
                                 getSharedProcessPackages(packageInfo).map { it.packageName }
                             )
-                            CleanerClient.service!!.notifySrChanged()
+                            CleanerClient.service?.notifySrChanged()
                         }
                     }
                 }

@@ -9,6 +9,7 @@ import android.os.CancellationSignal;
 import android.os.FileObserver;
 import android.os.RemoteException;
 import android.system.OsConstants;
+import android.util.Log;
 import android.util.SparseLongArray;
 
 import java.io.File;
@@ -120,7 +121,7 @@ public class MediaProviderHook {
                             }
                         }
                     } catch (RemoteException e) {
-                        e.printStackTrace();
+                        Log.e("MediaProviderHook", "error", e);
                     }
                 });
             }
@@ -243,6 +244,8 @@ public class MediaProviderHook {
                         final var uid = (int) param.args[0];
                         final var path = (String) param.args[1];
                         final int i;
+                        final var gcPackages = new ArrayList<String>();
+                        final var gcIndices = new ArrayList<Integer>();
                         synchronized (mQueryRecord) {
                             final var size = mQueryRecord.size();
                             if (size == 0) {
@@ -250,26 +253,30 @@ public class MediaProviderHook {
                             }
                             i = mQueryRecord.indexOfKey(uid);
                             if (i < 0) {
-                                // gc
+                                // gc — collect stale entries inside lock, release outside
                                 if (size > 1) {
-                                    final var indicesToRemove = new ArrayList<Integer>();
                                     for (var j = 0; j < size; j++) {
                                         final var key = mQueryRecord.keyAt(j);
                                         final var value = mQueryRecord.valueAt(j);
                                         if (TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - value) > 5) {
-                                            final var packageName = getCallingPackageName(param.thisObject, key);
-                                            service.onReleaseQueriedPaths(packageName);
-                                            indicesToRemove.add(j);
+                                            gcPackages.add(getCallingPackageName(param.thisObject, key));
+                                            gcIndices.add(j);
                                         }
                                     }
-                                    final var iterator = indicesToRemove.listIterator(indicesToRemove.size());
+                                    final var iterator = gcIndices.listIterator(gcIndices.size());
                                     while (iterator.hasPrevious()) {
                                         final int index = iterator.previous();
                                         mQueryRecord.removeAt(index);
                                     }
                                 }
-                                return;
                             }
+                        }
+                        // IPC calls outside synchronized block to avoid deadlocks
+                        for (int idx = 0; idx < gcPackages.size(); idx++) {
+                            service.onReleaseQueriedPaths(gcPackages.get(idx));
+                        }
+                        if (i < 0) {
+                            return;
                         }
                         final var packageName = getCallingPackageName(param.thisObject, uid);
                         if (service.onMaybeAccessQueriedPaths(packageName, path)) {
@@ -279,7 +286,7 @@ public class MediaProviderHook {
                             service.onReleaseQueriedPaths(packageName);
                         }
                     } catch (RemoteException e) {
-                        e.printStackTrace();
+                        Log.e("MediaProviderHook", "error", e);
                     }
                 });
             }
@@ -297,7 +304,7 @@ public class MediaProviderHook {
             try {
                 service.onFileSystemEvent(System.currentTimeMillis(), packageName, path, flags);
             } catch (RemoteException e) {
-                e.printStackTrace();
+                Log.e("MediaProviderHook", "error", e);
             }
         });
     }

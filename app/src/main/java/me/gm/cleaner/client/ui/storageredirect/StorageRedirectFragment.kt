@@ -1,5 +1,6 @@
 package me.gm.cleaner.client.ui.storageredirect
 
+import android.util.Log
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -124,7 +125,10 @@ class StorageRedirectFragment : BaseFragment() {
                 is Mode.Welcome -> emptyList()
                 is Mode.Editor -> listOf(mountRuleTitleAdapter, mountRulesAdapter)
                 is Mode.Wizard -> listOf(wizardAdapter)
-                else -> throw IllegalStateException()
+                else -> {
+                    Log.w("StorageRedirect", "unexpected mode: $mode")
+                    emptyList()
+                }
             }
             (dynamicAdapters - currentAdapters).forEach {
                 adapters.removeAdapter(it)
@@ -194,8 +198,10 @@ class StorageRedirectFragment : BaseFragment() {
                 toolbar.subtitle =
                     if (preferenceChanged) getString(R.string.storage_redirect_not_saved) else null
             }
-            adapters.addAdapter(readOnlyHeaderAdapter)
-            adapters.addAdapter(readOnlyAdapter)
+            if (savedInstanceState == null) {
+                adapters.addAdapter(readOnlyHeaderAdapter)
+                adapters.addAdapter(readOnlyAdapter)
+            }
         }
 
         val permissions = viewModel.loadStoragePermissions(args.pi)
@@ -203,7 +209,9 @@ class StorageRedirectFragment : BaseFragment() {
             val permissionsAdapter = PermissionsCategoryAdapter(
                 permissions, args.pi.applicationInfo, viewModel
             )
-            adapters.addAdapter(permissionsAdapter)
+            if (savedInstanceState == null) {
+                adapters.addAdapter(permissionsAdapter)
+            }
         }
 
         lifecycleScope.launch {
@@ -213,7 +221,9 @@ class StorageRedirectFragment : BaseFragment() {
             val runningStatus = viewModel.runningStatus
             if (runningStatus?.isNotEmpty() == true) {
                 val statusAdapter = StatusCategoryAdapter(runningStatus)
-                adapters.addAdapter(0, statusAdapter)
+                if (savedInstanceState == null) {
+                    adapters.addAdapter(0, statusAdapter)
+                }
                 if (savedInstanceState == null && layoutManager.findFirstCompletelyVisibleItemPosition() == 0) {
                     list.scrollToPosition(0)
                 }
@@ -512,7 +522,7 @@ class StorageRedirectFragment : BaseFragment() {
                             }
                         }
                         if (viewModel.runningStatus?.isNotEmpty() == true) {
-                            CleanerClient.service!!.remount(
+                            CleanerClient.service?.remount(
                                 viewModel.sharedProcessPackages!!
                                     .map { it.packageName }
                                     .toTypedArray()

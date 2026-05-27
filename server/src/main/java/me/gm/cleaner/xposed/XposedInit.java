@@ -2,9 +2,9 @@ package me.gm.cleaner.xposed;
 
 import android.content.ContentProvider;
 import android.content.Context;
+import android.util.Log;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ProviderInfo;
-import android.os.RemoteException;
 import android.provider.MediaStore;
 
 import java.nio.file.Path;
@@ -16,8 +16,8 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import me.gm.cleaner.client.CleanerHooksBinderRetriever;
-import me.gm.cleaner.server.ICleanerHooksService;
 import me.gm.cleaner.util.LibUtils;
+import me.gm.cleaner.xposed.InlineHookConfig;
 import me.gm.cleaner.util.PathKt;
 
 public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit {
@@ -29,11 +29,10 @@ public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit
             final var mediaProviderClass = XposedHelpers.findClass(
                     "com.android.providers.media.MediaProvider", lpparam.classLoader
             );
-            var binder = CleanerHooksBinderRetriever.get();
-            ICleanerHooksService service = ICleanerHooksService.Stub.asInterface(binder);
-            service.setMediaProviderBinder(mediaProviderHooksService);
+            CleanerHooksBinderRetriever.registerHooksCallback(context, mediaProviderHooksService);
             new MediaProviderHook(mediaProviderHooksService, lpparam.classLoader, mediaProviderClass);
-        } catch (XposedHelpers.ClassNotFoundError | RemoteException ignored) {
+        } catch (XposedHelpers.ClassNotFoundError e) {
+            Log.e("XposedInit", "MediaProvider hook setup failed", e);
         }
     }
 
@@ -45,6 +44,7 @@ public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit
         }
         try {
             System.loadLibrary("inline");
+            InlineHookConfig.INSTANCE.initializeXHook();
         } catch (UnsatisfiedLinkError e) {
             LibUtils.loadLibrary(
                     LibUtils.findLibSourceDir(
@@ -53,6 +53,7 @@ public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit
                                     .map(Path::toString)
                                     .toArray(String[]::new)),
                     "inline");
+            InlineHookConfig.INSTANCE.initializeXHook();
         }
         XposedHelpers.findAndHookMethod(ContentProvider.class, "attachInfo",
                 Context.class, ProviderInfo.class, new XC_MethodHook() {

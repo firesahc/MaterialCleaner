@@ -2,6 +2,7 @@ package me.gm.cleaner.client
 
 import android.os.IBinder
 import android.os.RemoteException
+import android.util.Log
 import api.SystemService
 import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServicePreferences
@@ -12,17 +13,13 @@ import me.gm.cleaner.util.SystemPropertiesUtils
 import java.util.function.Consumer
 
 object CleanerHooksClient {
-    /**
-     * Minimum required module version.
-     */
-    const val MIN_REQUIRED_ZYGISK_MODULE_VERSION: Int = 1494
 
     private var binder: IBinder? = null
     private var service: ICleanerHooksService? = null
     private var deathRecipient: IBinder.DeathRecipient? = null
 
     fun onStart(server: CleanerServer) {
-        binder = CleanerHooksBinderRetriever.get() ?: return
+        binder = CleanerHooksBinderRetriever.get(server) ?: return
         service = ICleanerHooksService.Stub.asInterface(binder)
         deathRecipient = object : SystemServiceDeathRecipient(binder) {
             override fun binderDied() {
@@ -37,28 +34,12 @@ object CleanerHooksClient {
         try {
             binder?.linkToDeath(deathRecipient!!, 0)
         } catch (e: RemoteException) {
-            e.printStackTrace()
+            Log.e("CleanerHooksClient", "error", e)
         }
     }
 
-    private fun pingBinderInternal(): Boolean = binder?.pingBinder() == true
-
     @JvmStatic
-    fun pingBinder(): Boolean =
-        pingBinderInternal() && zygiskModuleVersion >= MIN_REQUIRED_ZYGISK_MODULE_VERSION
-
-    val zygiskModuleVersion: Int
-        get() = if (pingBinderInternal()) {
-            service!!.moduleVersion
-        } else {
-            -1
-        }
-
-    val zygiskNeedUpgrade: Boolean
-        get() = pingBinderInternal() && zygiskModuleVersion < MIN_REQUIRED_ZYGISK_MODULE_VERSION
-
-    val needEnableInLsp: Boolean
-        get() = pingBinderInternal() && !service!!.hasMediaProviderBinder()
+    fun pingBinder(): Boolean = binder?.pingBinder() == true
 
     @JvmStatic
     fun whileAlive(c: Consumer<ICleanerHooksService>) {
@@ -103,11 +84,11 @@ object CleanerHooksClient {
     }
 
     fun onDestroy() {
-        if (pingBinderInternal()) {
+        if (pingBinder()) {
             try {
                 binder?.unlinkToDeath(deathRecipient!!, 0)
             } catch (e: RemoteException) {
-                e.printStackTrace()
+                Log.e("CleanerHooksClient", "error", e)
             }
         }
     }

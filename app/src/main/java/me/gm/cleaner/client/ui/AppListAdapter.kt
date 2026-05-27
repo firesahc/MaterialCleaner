@@ -103,9 +103,9 @@ class AppListAdapter(private val fragment: AppListFragment) :
                     val sharedProcessPackages = getSharedProcessPackages(model.packageInfo)
                         .map { it.packageName }
                     ServicePreferences.removeStorageRedirect(sharedProcessPackages)
-                    CleanerClient.service!!.notifySrChanged()
+                    CleanerClient.service?.notifySrChanged()
                     if (model.mountState != AppListModel.STATE_UNMOUNTED) {
-                        CleanerClient.service!!.remount(sharedProcessPackages.toTypedArray())
+                        CleanerClient.service?.remount(sharedProcessPackages.toTypedArray())
                     }
                 }
                 true
@@ -116,7 +116,7 @@ class AppListAdapter(private val fragment: AppListFragment) :
                     val sharedUserIdPackages = getSharedUserIdPackages(model.packageInfo)
                         .map { it.packageName }
                     ServicePreferences.removeReadOnly(sharedUserIdPackages)
-                    CleanerClient.service!!.notifyReadOnlyChanged()
+                    CleanerClient.service?.notifyReadOnlyChanged()
                 }
                 true
             }

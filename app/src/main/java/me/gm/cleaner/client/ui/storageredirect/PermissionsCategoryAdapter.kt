@@ -55,9 +55,9 @@ class PermissionsCategoryAdapter(
             return
         }
         val permission = permissions[position - 1]
-        val grantResult = CleanerClient.service!!.getPackagePermission(
+        val grantResult = CleanerClient.service?.getPackagePermission(
             ai, permission, viewModel.isRuntime(permission)
-        )
+        ) ?: PackageManager.PERMISSION_DENIED
         viewModel.permissionToGrant[permission] = grantResult
         val binding = (holder as ItemViewHolder).binding
         binding.title.setText(storagePermissionTranslations[permission]!!)

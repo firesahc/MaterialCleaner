@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
+import me.gm.cleaner.util.getSerializableCompat
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
 
 class RecommendDirOpsDialog : AppCompatDialogFragment() {
@@ -19,8 +20,7 @@ class RecommendDirOpsDialog : AppCompatDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val packageName = requireArguments().getString(KEY_PACKAGE_NAME)
-        val dirOps = requireArguments().getSerializable(KEY_ENTRIES)
-                as ArrayList<Pair<String, String>>
+        val dirOps = requireArguments().getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_ENTRIES)!!
         val moveItems = requireArguments().getBooleanArray(KEY_MOVE_ITEMS)!!
         val entries = dirOps
             .mapIndexed { index, (from, to) ->
@@ -44,14 +44,14 @@ class RecommendDirOpsDialog : AppCompatDialogFragment() {
                         dirOps.forEachIndexed { index, (from, to) ->
                             if (checkedItems[index]) {
                                 if (moveItems[index]) {
-                                    CleanerClient.service!!.move(from, to)
+                                    CleanerClient.service?.move(from, to)
                                 } else {
-                                    CleanerClient.service!!.copy(from, to)
+                                    CleanerClient.service?.copy(from, to)
                                 }
                             }
                         }
-                        if (!CleanerClient.service!!.isFuseBpfEnabled) {
-                            CleanerClient.service!!.switchSpecificAppsOwner(arrayOf(packageName))
+                        if (CleanerClient.service?.isFuseBpfEnabled == false) {
+                            CleanerClient.service?.switchSpecificAppsOwner(arrayOf(packageName))
                         }
                     }
                     navigateUp()

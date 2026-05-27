@@ -91,7 +91,7 @@ class AppListViewModel(application: Application) : BaseServiceSettingsViewModel(
             val uninstalledPackages =
                 (ServicePreferences.getUninstalledSrPackages(installedPackages) +
                         ServicePreferences.getUninstalledReadOnlyPackages(installedPackages) +
-                        CleanerClient.service!!.denyList - installedPackages).distinct()
+                        (CleanerClient.service?.denyList ?: emptySet()) - installedPackages).distinct()
             if (uninstalledPackages.isNotEmpty()) {
                 _uninstalledPackagesLiveData.postValue(uninstalledPackages.toMutableList())
             }

@@ -48,7 +48,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
             lifecycleScope.launch {
                 delay(100)
                 preferenceManager.sharedPreferences?.edit(true) { }
-                CleanerClient.service!!.notifyPreferencesChanged()
+                CleanerClient.service?.notifyPreferencesChanged()
             }
         }
     }
@@ -80,7 +80,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                     AppPickerDialog()
                         .apply {
                             val inputApps = inputPackageNames.mapNotNull {
-                                CleanerClient.service!!.getPackageInfo(it, 0)
+                                CleanerClient.service?.getPackageInfo(it, 0)
                             }
                             setAllAppsSupplier { inputApps }
                             setSelection(
@@ -103,7 +103,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                                         )
                                     }
                                     ServicePreferences.endBatchOperation()
-                                    CleanerClient.service!!.notifySrChanged()
+                                    CleanerClient.service?.notifySrChanged()
                                 }
                             }
                         }
@@ -208,7 +208,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                                 )
                             }
                             ServicePreferences.endBatchOperation()
-                            CleanerClient.service!!.notifyReadOnlyChanged()
+                            CleanerClient.service?.notifyReadOnlyChanged()
                         }
                     }
                 }
@@ -240,7 +240,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                                 )
                             }
                             ServicePreferences.endBatchOperation()
-                            CleanerClient.service!!.notifySrChanged()
+                            CleanerClient.service?.notifySrChanged()
                         }
                     }
                 }
@@ -291,7 +291,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                 } finally {
                     if (!(newValue as Boolean)) {
                         lifecycleScope.launch(Dispatchers.IO) {
-                            CleanerClient.service!!.switchAllAppsOwner()
+                            CleanerClient.service?.switchAllAppsOwner()
                         }
                     }
                 }
