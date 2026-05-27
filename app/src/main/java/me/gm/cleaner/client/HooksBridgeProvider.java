@@ -1,0 +1,216 @@
+package me.gm.cleaner.client;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.content.IntentFilter;
+import android.content.IIntentReceiver;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.IBinder;
+import android.os.RemoteException;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import java.util.List;
+import java.util.Map;
+
+import me.gm.cleaner.server.ICleanerHooksService;
+import me.gm.cleaner.server.ICleanerServerCallback;
+import me.gm.cleaner.server.IMediaProviderHooksService;
+
+/**
+ * ContentProvider-based Binder bridge that replaces the Zygisk IPC channel.
+ *
+ * <p>This provider runs in the app process (me.gm.cleaner) and mediates communication
+ * between the root Server process and the Xposed hooks in the MediaProvider process.
+ * Both sides access it via {@link android.content.ContentResolver#call}.</p>
+ *
+ * <p>The Xposed side registers its {@link IMediaProviderHooksService} binder via
+ * {@code register_hooks_callback}. The Server side receives an {@link ICleanerHooksService}
+ * proxy that forwards relevant sync methods (setReadOnlyPaths, setMountPoint, etc.) to
+ * the registered Xposed service.</p>
+ *
+ * <p>Authority: {@code me.gm.cleaner.hooks_bridge}</p>
+ */
+public class HooksBridgeProvider extends ContentProvider {
+    private static final String TAG = "HooksBridge";
+
+    /** Xposed-side service registered from MediaProvider process. */
+    private static volatile IMediaProviderHooksService sMediaProviderService;
+
+    /** Server-side callback registered from root process. */
+    private static volatile ICleanerServerCallback sServerCallback;
+
+    /**
+     * Singleton {@link ICleanerHooksService} implementation that runs in the app process
+     * and forwards calls to the Xposed-side service where appropriate.
+     */
+    private static final ICleanerHooksService sHooksService = new ICleanerHooksService.Stub() {
+        @Override
+        public int getModuleVersion() {
+            return 0; // No Zygisk module — always returns 0
+        }
+
+        @Override
+        public void setCleanerServerBinder(ICleanerServerCallback callback) {
+            sServerCallback = callback;
+            // Forward to Xposed if registered
+            IMediaProviderHooksService xposed = sMediaProviderService;
+            if (xposed != null) {
+                try {
+                    xposed.setCleanerServerBinder(callback);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
+                }
+            }
+        }
+
+        @Override
+        public void setMediaProviderBinder(IMediaProviderHooksService service) {
+            sMediaProviderService = service;
+        }
+
+        @Override
+        public boolean hasMediaProviderBinder() {
+            return sMediaProviderService != null;
+        }
+
+        @Override
+        public boolean waitMount(String packageName, int pid, int uid) {
+            return false; // Zygisk-specific, no-op
+        }
+
+        @Override
+        public String getMountedPath(String packageName, String path, int type) {
+            return null; // Zygisk-specific, no-op
+        }
+
+        @Override
+        public void setSrPackages(List<String> packages) {
+            // Zygisk-specific, no-op without Zygisk
+        }
+
+        @Override
+        public boolean isSrPackage(String[] packageNames) {
+            return false; // Zygisk-specific, no-op
+        }
+
+        @Override
+        public void registerReceiver(IIntentReceiver receiver, IntentFilter filter,
+                                     int userId, int flags) {
+            // Zygisk-specific, no-op
+        }
+
+        @Override
+        public void unregisterReceiver(IIntentReceiver receiver) {
+            // Zygisk-specific, no-op
+        }
+
+        @Override
+        public void finishReceiver(IIntentReceiver receiver, int resultCode,
+                                   String resultData, Bundle map, boolean abortBroadcast,
+                                   int flags) {
+            // Zygisk-specific, no-op
+        }
+
+        @Override
+        public void setReadOnlyPaths(Map<String, List> paths) {
+            IMediaProviderHooksService xposed = sMediaProviderService;
+            if (xposed != null) {
+                try {
+                    xposed.setReadOnlyPaths(paths);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward setReadOnlyPaths to Xposed", e);
+                }
+            }
+        }
+
+        @Override
+        public void setMountPoint(List<String> value) {
+            IMediaProviderHooksService xposed = sMediaProviderService;
+            if (xposed != null) {
+                try {
+                    xposed.setMountPoint(value);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward setMountPoint to Xposed", e);
+                }
+            }
+        }
+
+        @Override
+        public void setRecordExternalAppSpecificStorage(boolean value) {
+            IMediaProviderHooksService xposed = sMediaProviderService;
+            if (xposed != null) {
+                try {
+                    xposed.setRecordExternalAppSpecificStorage(value);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward setRecordExternalAppSpecificStorage to Xposed", e);
+                }
+            }
+        }
+    };
+
+    @Override
+    public boolean onCreate() {
+        return true;
+    }
+
+    @Nullable
+    @Override
+    public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
+        switch (method) {
+            case "register_hooks_callback": {
+                if (extras == null) break;
+                IBinder binder = extras.getBinder("binder");
+                if (binder != null) {
+                    sHooksService.setMediaProviderBinder(
+                            IMediaProviderHooksService.Stub.asInterface(binder));
+                }
+                break;
+            }
+            case "get_hooks_service": {
+                Bundle result = new Bundle();
+                result.putBinder("binder", sHooksService.asBinder());
+                return result;
+            }
+        }
+        return Bundle.EMPTY;
+    }
+
+    // ---- ContentProvider required stubs ----
+
+    @Nullable
+    @Override
+    public Cursor query(@NonNull Uri uri, @Nullable String[] projection,
+                        @Nullable String selection, @Nullable String[] selectionArgs,
+                        @Nullable String sortOrder) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public String getType(@NonNull Uri uri) {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public Uri insert(@NonNull Uri uri, @Nullable ContentValues values) {
+        return null;
+    }
+
+    @Override
+    public int delete(@NonNull Uri uri, @Nullable String selection,
+                      @Nullable String[] selectionArgs) {
+        return 0;
+    }
+
+    @Override
+    public int update(@NonNull Uri uri, @Nullable ContentValues values,
+                      @Nullable String selection, @Nullable String[] selectionArgs) {
+        return 0;
+    }
+}

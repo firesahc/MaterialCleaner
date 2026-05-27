@@ -96,12 +96,6 @@ public class CleanerService extends ICleanerService.Stub {
         if (observers.isEmpty() && !CleanerHooksClient.pingBinder()) {
             return 4;
         }
-        if (CleanerHooksClient.INSTANCE.getZygiskNeedUpgrade()) {
-            return 1;
-        }
-        if (CleanerHooksClient.INSTANCE.getNeedEnableInLsp()) {
-            return 7;
-        }
         for (final var observer : observers) {
             if (observer instanceof final ActivityManagerLogsObserver activityManagerObserver) {
                 if (activityManagerObserver.isLogcatShutdown()) {
@@ -129,7 +123,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int getZygiskModuleVersion() {
-        return CleanerHooksClient.INSTANCE.getZygiskModuleVersion();
+        return -1; // Zygisk module no longer available
     }
 
     @Override
