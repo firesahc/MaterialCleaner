@@ -29,12 +29,12 @@ find_library(z-lib z)
 add_subdirectory(external)
 
 include_directories(include)
-aux_source_directory(genuine GENUINE)
 aux_source_directory(include/android-base BASE)
 add_library(cleaner SHARED
-        ${GENUINE} ${BASE}
+        ${BASE}
         include/misc.cpp include/socket.cpp
         FileUtils.cpp Mount.cpp ProcInfo.cpp
+        genuine_extra.cpp JNI_OnLoad.cpp
         )
 target_link_libraries(cleaner ${log-lib} ${android-lib} ${jnigraphics-lib} ${z-lib} cxx::cxx absl::strings)
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")

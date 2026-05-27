@@ -1,8 +1,8 @@
 #include "genuine_extra.h"
 #include "obfuscate.h"
-#include "../FileUtils.h"
-#include "../Mount.h"
-#include "../ProcInfo.h"
+#include "FileUtils.h"
+#include "Mount.h"
+#include "ProcInfo.h"
 
 #ifdef DEBUG
 
