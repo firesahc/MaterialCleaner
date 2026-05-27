@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
-import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.fragment.app.commit
 import androidx.preference.ListPreference
@@ -17,7 +16,6 @@ import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseActivity
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.databinding.SettingsActivityBinding
-import me.gm.cleaner.home.scanner.ScannerManager
 import me.gm.cleaner.net.NOTIFICATION_CHANNEL
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.starter.Starter
@@ -26,8 +24,6 @@ import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.RequesterFragment
 import java.util.Locale
-import java.util.regex.Pattern
-import java.util.regex.PatternSyntaxException
 
 class SettingsActivity : BaseActivity() {
 
@@ -129,47 +125,6 @@ class SettingsActivity : BaseActivity() {
                         }
                     }
                     hasPermission
-                }
-
-            findPreference<Preference>(getString(R.string.no_tick_key))?.onPreferenceChangeListener =
-                Preference.OnPreferenceChangeListener { _, newValue ->
-                    if ((newValue as String).isNotEmpty()) {
-                        try {
-                            Pattern.compile(newValue)
-                        } catch (e: PatternSyntaxException) {
-                            Toast.makeText(requireActivity(), e.message, Toast.LENGTH_SHORT).show()
-                            return@OnPreferenceChangeListener false
-                        }
-                    }
-                    if (RootPreferences.isMonitor) {
-                        ScannerManager.shScanners.forEach { it.onDestroy() }
-                    }
-                    true
-                }
-
-            findPreference<Preference>(getString(R.string.no_scan_key))?.onPreferenceChangeListener =
-                Preference.OnPreferenceChangeListener { _, _ ->
-                    if (RootPreferences.isMonitor) {
-                        ScannerManager.shScanners.forEach { it.onDestroy() }
-                    }
-                    true
-                }
-
-            findPreference<Preference>(getString(R.string.monitor_key))?.onPreferenceChangeListener =
-                Preference.OnPreferenceChangeListener { _, newValue ->
-                    if (newValue as Boolean) {
-                        ScannerManager.startMonitor()
-                    } else {
-                        ScannerManager.stopMonitor()
-                        ScannerManager.shScanners.forEach { it.onDestroy() }
-                    }
-                    true
-                }
-
-            findPreference<Preference>(getString(R.string.length_key))?.onPreferenceChangeListener =
-                Preference.OnPreferenceChangeListener { _, _ ->
-                    ScannerManager.unregisterAll()
-                    true
                 }
 
             val language = findPreference<ListPreference>(getString(R.string.language_key))!!

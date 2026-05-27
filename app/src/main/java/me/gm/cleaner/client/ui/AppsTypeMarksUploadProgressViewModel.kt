@@ -11,7 +11,6 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.net.OnlineAppTypeMarks
-import me.gm.cleaner.net.UploadByUsers
 import java.util.concurrent.atomic.AtomicInteger
 
 class AppsTypeMarksUploadProgressViewModel(private val application: Application) :
@@ -33,9 +32,6 @@ class AppsTypeMarksUploadProgressViewModel(private val application: Application)
                                 .openStream()
                                 .close()
                         }
-                    }.onFailure {
-                        // onFailure means the marks not exist
-                        UploadByUsers.uploadAppTypeMarks(packageName, content)
                     }
                     _progressLiveData.postValue(
                         AppsTypeMarksUploadState.Uploading(

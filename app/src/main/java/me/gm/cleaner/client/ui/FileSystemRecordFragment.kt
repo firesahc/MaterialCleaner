@@ -30,9 +30,7 @@ import me.gm.cleaner.util.fitsSystemWindowInsets
 import me.gm.cleaner.util.fixEdgeEffect
 import me.gm.cleaner.util.isItemCompletelyVisible
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
-import me.gm.cleaner.widget.recyclerview.fastscroll.LinearLayoutViewHelper
-import me.gm.cleaner.widget.recyclerview.fastscroll.useThemeStyle
-import me.zhanghai.android.fastscroll.FastScrollerBuilder
+
 
 class FileSystemRecordFragment : BaseServiceSettingsFragment() {
     override val viewModel: FileSystemRecordViewModel by viewModels()
@@ -52,13 +50,9 @@ class FileSystemRecordFragment : BaseServiceSettingsFragment() {
         list.adapter = adapters
         list.layoutManager = layoutManager
         list.setHasFixedSize(true)
-        val fastScroll = FastScrollerBuilder(list)
-            .setViewHelper(LinearLayoutViewHelper(list))
-            .useThemeStyle(requireContext())
-            .build()
         list.fixEdgeEffect()
         list.overScrollIfContentScrollsPersistent()
-        list.fitsSystemWindowInsets(fastScroll, savedInstanceState == null)
+        list.fitsSystemWindowInsets(savedInstanceState == null)
 
         viewModel.fileSystemRecordLiveData.observe(viewLifecycleOwner) { record ->
             when (record) {
@@ -229,7 +223,7 @@ class FileSystemRecordFragment : BaseServiceSettingsFragment() {
                     setAllAppsSupplier { CleanerClient.getInstalledPackages(0) }
                     setSelection(viewModel.checkedFilterApps)
                     addOnPositiveButtonClickListener { checkedApps ->
-                        viewModel.checkedFilterApps = checkedApps
+                        viewModel.checkedFilterApps = checkedApps.map { it.packageName }.toSet()
                     }
                 }
                 .show(childFragmentManager, null)

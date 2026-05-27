@@ -21,66 +21,6 @@
             android:title="@string/nonpublic_title" />
     </PreferenceCategory>
 
-    <PreferenceCategory
-        android:key="@string/scan_header"
-        android:title="@string/scan_header"
-        app:initialExpandedChildrenCount="2">
-
-        <EditTextPreference
-            android:icon="@drawable/ic_outline_no_check_24"
-            android:key="@string/no_tick_key"
-            android:summary="@string/no_tick_summary"
-            android:title="@string/no_tick_title" />
-
-        <me.gm.cleaner.settings.PathListPreference
-            android:icon="@drawable/ic_outline_block_24"
-            android:key="@string/no_scan_key"
-            android:title="@string/no_scan_title" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="false"
-            android:icon="@drawable/ic_outline_android_24"
-            android:key="@string/scan_system_app_key"
-            android:title="@string/scan_system_app_title" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:icon="@drawable/ic_outline_confirm_24"
-            android:key="@string/confirm_delete_key"
-            android:title="@string/confirm_delete_title" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:icon="@drawable/ic_outline_autorenew_24"
-            android:key="@string/monitor_key"
-            android:summary="@string/monitor_summary"
-            android:title="@string/monitor_title" />
-
-        <EditTextPreference
-            android:defaultValue="50000"
-            android:icon="@drawable/baseline_maximize_24"
-            android:inputType="number"
-            android:key="@string/maximize_key"
-            android:summary="@string/maximize_summary"
-            android:title="@string/maximize_title" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:icon="@drawable/ic_outline_size_24"
-            android:key="@string/length_key"
-            android:summary="@string/length_summary"
-            android:title="@string/length_title" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:dependency="@string/length_key"
-            android:icon="@drawable/ic_outline_sort_24"
-            android:key="@string/sort_key"
-            android:summaryOff="@string/sort_summary_off"
-            android:summaryOn="@string/sort_summary_on"
-            android:title="@string/sort_title" />
-    </PreferenceCategory>
-
     <PreferenceCategory android:title="@string/language_header">
 
         <rikka.preference.SimpleMenuPreference

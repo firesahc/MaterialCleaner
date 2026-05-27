@@ -10,9 +10,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FOLDER
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountButtonsBinding
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountHeaderBinding
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountRuleHeaderBinding
@@ -100,7 +100,7 @@ class MountRulesAdapter(
                         val position = holder.bindingAdapterPosition
                         if (position != RecyclerView.NO_POSITION) {
                             viewModel.updateMountRules {
-                                set(position, dir to rule.second)
+                                set(position, dir.toString() to rule.second)
                                 if (position == itemCount - 1 && rule.second != null) {
                                     add(null to null)
                                 }
@@ -121,7 +121,7 @@ class MountRulesAdapter(
                         val position = holder.bindingAdapterPosition
                         if (position != RecyclerView.NO_POSITION) {
                             viewModel.updateMountRules {
-                                set(position, rule.first to dir)
+                                set(position, rule.first to dir.toString())
                                 if (position == itemCount - 1 && rule.first != null) {
                                     add(null to null)
                                 }
@@ -277,7 +277,7 @@ class ButtonsAdapter(
                         .apply {
                             setSelectType(SELECT_FILE_AND_FOLDER)
                             addOnPositiveButtonClickListener { dir ->
-                                viewModel.test = dir
+                                viewModel.test = dir.toString()
                             }
                         }
                         .show(fragment.childFragmentManager, null)

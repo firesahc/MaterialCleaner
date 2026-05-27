@@ -9,9 +9,6 @@ import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.GridLayoutManager
 import me.gm.cleaner.databinding.ListDialogBinding
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
-import me.gm.cleaner.widget.recyclerview.fastscroll.LinearLayoutViewHelper
-import me.gm.cleaner.widget.recyclerview.fastscroll.useThemeStyle
-import me.zhanghai.android.fastscroll.FastScrollerBuilder
 
 class FileListFragment : PickerFragment() {
 
@@ -26,10 +23,6 @@ class FileListFragment : PickerFragment() {
         val list = binding.recyclerView
         list.adapter = adapters
         list.layoutManager = GridLayoutManager(requireContext(), 1)
-        FastScrollerBuilder(list)
-            .setViewHelper(LinearLayoutViewHelper(list))
-            .useThemeStyle(requireContext())
-            .build()
         list.overScrollIfContentScrollsPersistent()
         list.itemAnimator = null
         parentViewModel.fileListFlow.asLiveData().observe(viewLifecycleOwner) { files ->

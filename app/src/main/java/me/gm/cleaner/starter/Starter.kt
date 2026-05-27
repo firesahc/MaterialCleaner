@@ -2,7 +2,6 @@ package me.gm.cleaner.starter
 
 import android.content.Context
 import android.system.Os
-import me.gm.cleaner.R
 import me.gm.cleaner.util.LibUtils
 import java.io.*
 import java.util.zip.ZipFile
@@ -32,15 +31,8 @@ object Starter {
         if (!out.exists()) {
             out.createNewFile()
         }
-        val br = BufferedReader(InputStreamReader(context.resources.openRawResource(R.raw.start)))
-        val pw = PrintWriter(FileWriter(out))
-        var line = br.readLine()
-        while (line != null) {
-            pw.println(line.replace("@SOURCE@", "\"$starter\""))
-            line = br.readLine()
-        }
-        pw.flush()
-        pw.close()
+        val script = "#!/system/bin/sh\nexport LD_LIBRARY_PATH=\"\$(dirname \"\$0\")\"\nexec \"$starter\" --apk=\"@SOURCE@\"\n"
+        out.writeText(script.replace("@SOURCE@", "\"$starter\""))
         return out.absolutePath
     }
 

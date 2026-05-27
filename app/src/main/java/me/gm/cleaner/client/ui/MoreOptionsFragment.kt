@@ -13,7 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.fragment.findNavController
 import androidx.preference.*
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +25,6 @@ import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.MountRules
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.net.Website
@@ -93,15 +91,15 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                             addOnPositiveButtonClickListener { checkedApps ->
                                 MainScope().launch(Dispatchers.IO) {
                                     ServicePreferences.beginBatchOperation()
-                                    for (packageName in checkedApps) {
+                                    for (packageInfo in checkedApps) {
                                         val list = mutableListOf<Pair<String, String>>()
-                                        val rules = input.getJSONArray(packageName)
+                                        val rules = input.getJSONArray(packageInfo.packageName)
                                         for (i in 0 until rules.length()) {
                                             val rule = rules.getJSONArray(i)
                                             list.add(rule.getString(0) to rule.getString(1))
                                         }
                                         ServicePreferences.putStorageRedirect(
-                                            list, listOf(packageName)
+                                            list, listOf(packageInfo.packageName)
                                         )
                                     }
                                     ServicePreferences.endBatchOperation()
@@ -129,19 +127,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.setStorageDeviceProtected()
         addPreferencesFromResource(R.xml.service_more_options_preferences)
-
-        val automaticCleanup = findPreference<Preference>(
-            getString(R.string.automatic_cleanup_key)
-        )!!
-        automaticCleanup.setOnPreferenceClickListener {
-            val navController = findNavController()
-            if (navController.currentDestination?.id == R.id.service_settings_fragment) {
-//                val direction = ServiceSettingsFragmentDirections
-//                    .serviceSettingsToAppsTypeMarksSettingsAction()
-//                navController.navigate(direction)
-            }
-            true
-        }
 
         val enableAtime = findPreference<SwitchPreferenceCompat>(
             getString(me.gm.cleaner.shared.R.string.enable_relatime_key)
@@ -178,16 +163,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
             getString(R.string.open_wizard_by_default_key)
         )!!
 
-        findPreference<Preference>(getString(R.string.apps_type_marks_key))?.setOnPreferenceClickListener {
-            val navController = findNavController()
-            if (navController.currentDestination?.id == R.id.service_settings_fragment) {
-                val direction = ServiceSettingsFragmentDirections
-                    .serviceSettingsToAppsTypeMarksSettingsAction()
-                navController.navigate(direction)
-            }
-            true
-        }
-
         findPreference<Preference>(getString(R.string.share_key))?.setOnPreferenceClickListener {
             shareLauncher.launch("storage_redirect")
             true
@@ -213,8 +188,8 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                             ServiceMoreOptionsPreferences.editReadOnlyTemplate.sorted()
                         MainScope().launch(Dispatchers.IO) {
                             ServicePreferences.beginBatchOperation()
-                            val selectedApps = checkedApps.mapNotNull { packageName ->
-                                installedNonsystemApps.firstOrNull { packageName == it.packageName }
+                            val selectedApps = checkedApps.mapNotNull { packageInfo ->
+                                installedNonsystemApps.firstOrNull { it.packageName == packageInfo.packageName }
                             }
                             for (pi in selectedApps) {
                                 val rules = MountRules(
@@ -255,8 +230,8 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                         val answers = ServiceMoreOptionsPreferences.editMountRulesTemplate
                         MainScope().launch(Dispatchers.IO) {
                             ServicePreferences.beginBatchOperation()
-                            val selectedApps = checkedApps.mapNotNull { packageName ->
-                                installedNonSystemApps.firstOrNull { packageName == it.packageName }
+                            val selectedApps = checkedApps.mapNotNull { packageInfo ->
+                                installedNonSystemApps.firstOrNull { it.packageName == packageInfo.packageName }
                             }
                             for (pi in selectedApps) {
                                 val wizard = MountWizard(pi)
@@ -327,25 +302,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
         )
         upsert?.onPreferenceChangeListener = notifyPreferencesChangedListener
 
-        if (!PurchaseVerification.isCleanupPro) {
-            automaticCleanup.isVisible = false
-        }
-        if (!PurchaseVerification.isExpressPro) {
-            (preferenceScreen[1] as PreferenceCategory).initialExpandedChildrenCount -= 1
-            openWizardByDefault.isVisible = false
-            val editReadOnlyTemplate = findPreference<Preference>(
-                getString(R.string.edit_read_only_template_key)
-            )
-            if (editReadOnlyTemplate != null) {
-                (preferenceScreen[1] as PreferenceCategory).initialExpandedChildrenCount -= 1
-                editReadOnlyTemplate.isVisible = false
-            }
-            if (applyReadOnlyTemplateTo != null) {
-                (preferenceScreen[1] as PreferenceCategory).initialExpandedChildrenCount -= 1
-                applyReadOnlyTemplateTo.isVisible = false
-            }
-            upsert?.isVisible = false
-        }
     }
 
     @Suppress("DEPRECATION")

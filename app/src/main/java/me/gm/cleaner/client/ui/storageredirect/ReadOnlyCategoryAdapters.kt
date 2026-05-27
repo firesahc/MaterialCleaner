@@ -10,8 +10,8 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
 import me.gm.cleaner.databinding.StorageRedirectCategoryReadOnlyHeaderBinding
 import me.gm.cleaner.databinding.StorageRedirectCategoryReadOnlyItemBinding
 import me.gm.cleaner.util.ClipboardUtils
@@ -61,7 +61,7 @@ class ReadOnlyAdapter(
                         val position = holder.bindingAdapterPosition
                         if (position != RecyclerView.NO_POSITION) {
                             viewModel.updateReadOnlyPaths {
-                                set(position, path)
+                                set(position, path.toString())
                                 if (position == itemCount - 1) {
                                     add(null)
                                 }

@@ -14,12 +14,6 @@
     native <methods>;
 }
 
--keepclassmembers class * extends me.gm.cleaner.home.scanner.BaseScanner {
-    <init>(me.gm.cleaner.home.StaticScanner);
-}
-
--keep class me.gm.cleaner.xposed.XposedInit
-
 -keepclassmembers class hidden.ProcessObserverAdapter {
     <methods>;
 }
@@ -28,16 +22,6 @@
 }
 -keepclassmembers class hidden.UidObserverAdapter {
     <methods>;
-}
-
--keep class me.gm.cleaner.server.CleanerServerLoader {
-    public static void main(java.lang.String[]);
-    public static void entry(java.lang.String[]);
-}
-
--assumenosideeffects class kotlin.jvm.internal.Intrinsics {
-	public static void check*(...);
-	public static void throw*(...);
 }
 
 # Please add these rules to your existing keep rules in order to suppress warnings.

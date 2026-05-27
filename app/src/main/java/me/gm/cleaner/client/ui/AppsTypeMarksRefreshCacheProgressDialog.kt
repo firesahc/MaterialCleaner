@@ -1,6 +1,7 @@
 package me.gm.cleaner.client.ui
 
 import android.app.Dialog
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import androidx.appcompat.app.AppCompatDialogFragment
@@ -23,7 +24,11 @@ class AppsTypeMarksRefreshCacheProgressDialog : AppCompatDialogFragment() {
         viewModel.progressLiveData.observe(this) { state ->
             when (state) {
                 is AppsTypeMarksRefreshCacheState.Downloading -> {
-                    binding.progress.setProgressCompat(state.progress, true)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        binding.progress.setProgress(state.progress, true)
+                    } else {
+                        binding.progress.progress = state.progress
+                    }
                     binding.text.text = state.packageName
                 }
 

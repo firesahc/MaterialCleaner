@@ -10,15 +10,12 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.asLiveData
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.R
-import me.gm.cleaner.browser.VirtualFileSystemProvider
-import me.gm.cleaner.browser.VirtualFileSystemProvider.schemeRoot
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.InputMode.Companion.INPUT_MODE_FILE_LIST
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.InputMode.Companion.INPUT_MODE_KEY
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.InputMode.Companion.INPUT_MODE_TEXT
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FOLDER
 import me.gm.cleaner.databinding.FilePickerDialogBinding
-import me.gm.cleaner.util.copy
 import java.nio.file.Path
 import java.util.function.Consumer
 import kotlin.io.path.Path
@@ -151,7 +148,7 @@ class FilePickerDialog : AppCompatDialogFragment() {
     }
 
     private fun stringToPath(pathString: String): Path =
-        VirtualFileSystemProvider.getPath(Path(pathString).toUri().copy(scheme = schemeRoot))
+        Path(pathString)
 
     fun setPath(path: String) = handleAction {
         viewModel.path = stringToPath(path)

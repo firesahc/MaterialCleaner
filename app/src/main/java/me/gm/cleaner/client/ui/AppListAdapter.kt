@@ -9,7 +9,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.gm.cleaner.R
@@ -32,7 +31,7 @@ class AppListAdapter(private val fragment: AppListFragment) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
         val model = getItem(position)
-        binding.icon.load(model.packageInfo)
+        binding.icon.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(fragment.requireContext().packageManager))
         binding.title.text = model.label
         binding.summary.text = run {
             val summary = mutableListOf<CharSequence>()

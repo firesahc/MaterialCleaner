@@ -18,7 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
 import me.gm.cleaner.client.ui.storageredirect.MimeUtils
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.AppLabelCache
@@ -101,8 +101,8 @@ abstract class AbsPromptActivity : AppCompatActivity() {
                     setPath(recommendMountRule.first)
                     setSelectType(FilePickerDialog.Companion.SelectType.SELECT_FOLDER)
                     addOnPositiveButtonClickListener { dir ->
-                        recommendMountRule = dir to recommendMountRule.second
-                        binding.mountRule.text1.text = dir
+                        recommendMountRule = dir.toString() to recommendMountRule.second
+                        binding.mountRule.text1.text = dir.toString()
                     }
                 }
                 .show(supportFragmentManager, null)
@@ -113,8 +113,8 @@ abstract class AbsPromptActivity : AppCompatActivity() {
                     setPath(recommendMountRule.second)
                     setSelectType(FilePickerDialog.Companion.SelectType.SELECT_FOLDER)
                     addOnPositiveButtonClickListener { dir ->
-                        recommendMountRule = recommendMountRule.first to dir
-                        binding.mountRule.text2.text = dir
+                        recommendMountRule = recommendMountRule.first to dir.toString()
+                        binding.mountRule.text2.text = dir.toString()
                     }
                 }
                 .show(supportFragmentManager, null)

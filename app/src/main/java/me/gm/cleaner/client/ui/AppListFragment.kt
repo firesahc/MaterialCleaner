@@ -1,6 +1,5 @@
 package me.gm.cleaner.client.ui
 
-import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -8,23 +7,16 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.MenuCompat
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.asLiveData
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy
-import com.topjohnwu.superuser.Shell
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import me.gm.cleaner.R
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.databinding.ApplistFragmentBinding
-import me.gm.cleaner.util.LogUtils
 import me.gm.cleaner.util.buildStyledTitle
 import me.gm.cleaner.util.colorAccent
 import me.gm.cleaner.util.fitsSystemWindowInsets
@@ -32,17 +24,9 @@ import me.gm.cleaner.util.fixEdgeEffect
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import me.gm.cleaner.util.submitListKeepPosition
 import me.gm.cleaner.widget.ThemedTabBorderSwipeRefreshLayout
-import me.gm.cleaner.widget.recyclerview.fastscroll.useThemeStyle
-import me.zhanghai.android.fastscroll.FastScrollerBuilder
-import java.io.IOException
-import java.io.PrintWriter
-import java.text.SimpleDateFormat
-import java.util.Date
 
 class AppListFragment : BaseServiceSettingsFragment() {
     override val viewModel: AppListViewModel by viewModels()
-    private lateinit var saveLogsLauncher: ActivityResultLauncher<String>
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -55,12 +39,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
         list.adapter = adapter
         list.layoutManager = GridLayoutManager(requireContext(), 1)
         list.setHasFixedSize(true)
-        val fastScroll = FastScrollerBuilder(list)
-            .useThemeStyle(requireContext())
-            .build()
         list.fixEdgeEffect()
         list.overScrollIfContentScrollsPersistent()
-        list.fitsSystemWindowInsets(fastScroll, savedInstanceState == null)
+        list.fitsSystemWindowInsets(savedInstanceState == null)
         binding.listContainer.setOnRefreshListener {
             viewModel.loadApps()
         }
@@ -111,26 +92,6 @@ class AppListFragment : BaseServiceSettingsFragment() {
         }
         ServicePreferences.preferencesChangeLiveData.observe(viewLifecycleOwner) {
             viewModel.updateAppsRuleCount()
-        }
-
-        saveLogsLauncher = registerForActivityResult(
-            ActivityResultContracts.CreateDocument("text/*")
-        ) { uri ->
-            if (uri == null) return@registerForActivityResult
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    requireContext().contentResolver.openOutputStream(uri)?.use {
-                        val writer = PrintWriter(it)
-                        Shell.cmd("logcat -d").exec().out.forEach { line ->
-                            writer.println(line)
-                        }
-                        writer.flush()
-                        writer.close()
-                    }
-                } catch (e: IOException) {
-                    LogUtils.handleThrowable(e)
-                }
-            }
         }
         super.onCreateView(inflater, container, savedInstanceState)
         return binding.root
@@ -213,19 +174,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 viewModel.loadApps()
             }
 
-            R.id.menu_logcat -> {
-                val formatter = SimpleDateFormat.getDateTimeInstance()
-                val date = formatter.format(Date(System.currentTimeMillis()))
-                saveLogsLauncher.launch("logcat_${Build.VERSION.SDK_INT}_$date.log")
-            }
-
             else -> return super.onOptionsItemSelected(item)
         }
         return true
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        saveLogsLauncher.unregister()
-    }
 }

@@ -30,8 +30,6 @@ import androidx.recyclerview.widget.BaseListAdapter
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import me.zhanghai.android.fastscroll.FastScroller
-
 private val rect = Rect()
 
 fun <T, VH : RecyclerView.ViewHolder> BaseListAdapter<T, VH>.submitListKeepPosition(
@@ -281,7 +279,7 @@ fun RecyclerView.isItemCompletelyVisible(position: Int): Boolean {
     return layoutManager?.isViewPartiallyVisible(vh.itemView, true, true) == true
 }
 
-fun View.fitsSystemWindowInsets(fastScroller: FastScroller? = null, fixScroll: Boolean = false) {
+fun View.fitsSystemWindowInsets(fixScroll: Boolean = false) {
     val paddingLeft = paddingLeft
     val paddingTop = paddingTop
     val paddingRight = paddingRight
@@ -296,10 +294,6 @@ fun View.fitsSystemWindowInsets(fastScroller: FastScroller? = null, fixScroll: B
             scrollFixed = true
             view.scrollBy(0, -insets.systemWindowInsetTop)
         }
-        fastScroller?.setPadding(
-            0, paddingTop + insets.systemWindowInsetTop,
-            0, paddingBottom + insets.systemWindowInsetBottom
-        )
         insets
     }
 }

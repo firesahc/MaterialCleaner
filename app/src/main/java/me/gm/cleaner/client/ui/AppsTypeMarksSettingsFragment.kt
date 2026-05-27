@@ -108,8 +108,8 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                             val context = requireParentFragment().requireContext()
                             MainScope().launch(Dispatchers.IO) {
                                 ServicePreferences.beginBatchOperation()
-                                val selectedApps = checkedApps.mapNotNull { packageName ->
-                                    ruledApps.firstOrNull { packageName == it.packageName }
+                                val selectedApps = checkedApps.mapNotNull { packageInfo ->
+                                    ruledApps.firstOrNull { it.packageName == packageInfo.packageName }
                                 }
                                 for (pi in selectedApps) {
                                     val wizard = MountWizard(pi)

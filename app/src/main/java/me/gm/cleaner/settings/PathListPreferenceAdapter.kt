@@ -8,7 +8,7 @@ import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
 import me.gm.cleaner.databinding.PathListItemBinding
 import java.io.File
 
@@ -26,10 +26,10 @@ class PathListPreferenceAdapter(private val fragment: PathListPreferenceFragment
         binding.root.setOnClickListener {
             FilePickerDialog()
                 .apply {
-                    setRoot(File.separator)
+                    setRoots(listOf(File.separator))
                     setPath(path)
                     addOnPositiveButtonClickListener { dir ->
-                        fragment.newValues = fragment.newValues - path + dir
+                        fragment.newValues = fragment.newValues - path + dir.toString()
                     }
                 }
                 .show(fragment.childFragmentManager, null)

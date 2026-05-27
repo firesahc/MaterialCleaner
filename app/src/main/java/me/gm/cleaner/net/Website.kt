@@ -3,6 +3,8 @@ package me.gm.cleaner.net
 import me.gm.cleaner.dao.RootPreferences
 import java.util.Locale
 
+const val NOTIFICATION_CHANNEL: String = "update"
+
 object Website {
     const val latestReleases: String =
         "https://github.com/MaterialCleaner/MaterialCleaner/releases/latest"
@@ -25,12 +27,8 @@ object Website {
     const val zygiskUpdateJson: String =
         "https://materialcleaner.github.io/MaterialCleaner/releases/module.json"
     val wikiInstallZygiskModule: String
-        get() = LocaleAdapter(
-            Locale.US to {
-                "https://github.com/MaterialCleaner/MaterialCleaner/wiki/Install-Zygisk-Module"
-            },
-            Locale.SIMPLIFIED_CHINESE to {
-                "https://github.com/MaterialCleaner/MaterialCleaner/wiki/Zygisk-%E6%A8%A1%E5%9D%97%E5%AE%89%E8%A3%85"
-            }
-        ).getContentForLocale(RootPreferences.locale)
+        get() = when (RootPreferences.locale) {
+            Locale.SIMPLIFIED_CHINESE -> "https://github.com/MaterialCleaner/MaterialCleaner/wiki/Zygisk-%E6%A8%A1%E5%9D%97%E5%AE%89%E8%A3%85"
+            else -> "https://github.com/MaterialCleaner/MaterialCleaner/wiki/Install-Zygisk-Module"
+        }
 }

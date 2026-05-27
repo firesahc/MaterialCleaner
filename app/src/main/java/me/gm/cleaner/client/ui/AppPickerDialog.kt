@@ -17,8 +17,6 @@ import me.gm.cleaner.R
 import me.gm.cleaner.databinding.AppPickerDialogBinding
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import me.gm.cleaner.util.submitListKeepPosition
-import me.gm.cleaner.widget.recyclerview.fastscroll.useThemeStyle
-import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import java.util.function.Consumer
 import java.util.function.Supplier
 
@@ -57,9 +55,6 @@ class AppPickerDialog : AppCompatDialogFragment() {
         val list = binding.listContainer.recyclerView
         list.adapter = adapter
         list.layoutManager = GridLayoutManager(requireContext(), 1)
-        FastScrollerBuilder(list)
-            .useThemeStyle(requireContext())
-            .build()
         list.overScrollIfContentScrollsPersistent()
 
         binding.filterEdit.doAfterTextChanged { viewModel.filterText = it.toString() }

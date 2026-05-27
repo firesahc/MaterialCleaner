@@ -27,9 +27,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FOLDER
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getPathWithEvent
 import me.gm.cleaner.client.getSharedUserIdPackages
@@ -936,7 +936,7 @@ class RedirectAdapter(
                         val position = holder.bindingAdapterPosition
                         if (position != RecyclerView.NO_POSITION) {
                             answers.updateMountRules {
-                                set(position, dir to rule.second)
+                                set(position, dir.toString() to rule.second)
                                 if (position == itemCount - 1 && rule.second != null) {
                                     add(null to null)
                                 }
@@ -957,7 +957,7 @@ class RedirectAdapter(
                         val position = holder.bindingAdapterPosition
                         if (position != RecyclerView.NO_POSITION) {
                             answers.updateMountRules {
-                                set(position, rule.first to dir)
+                                set(position, rule.first to dir.toString())
                                 if (position == itemCount - 1 && rule.first != null) {
                                     add(null to null)
                                 }
@@ -1076,14 +1076,14 @@ class PathsAdapter(
                         if (position != RecyclerView.NO_POSITION) {
                             when (selectType) {
                                 SELECT_FOLDER -> answers.updateAccessiblePlaces {
-                                    set(position, dir)
+                                    set(position, dir.toString())
                                     if (position == itemCount - 1) {
                                         add(null)
                                     }
                                 }
 
                                 SELECT_FILE_AND_FOLDER -> answers.updateInaccessiblePlaces {
-                                    set(position, dir)
+                                    set(position, dir.toString())
                                     if (position == itemCount - 1) {
                                         add(null)
                                     }

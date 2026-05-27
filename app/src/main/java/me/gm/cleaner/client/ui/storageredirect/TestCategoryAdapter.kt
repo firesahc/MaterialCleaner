@@ -4,8 +4,8 @@ import android.text.Selection
 import android.text.Spannable
 import androidx.core.view.isVisible
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
-import me.gm.cleaner.app.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Companion.SELECT_FILE_AND_FOLDER
 import me.gm.cleaner.databinding.StorageRedirectCategoryTestBinding
 import me.gm.cleaner.util.listFormat
 
@@ -38,7 +38,7 @@ class TestCategoryAdapter(
                         }
                         setSelectType(SELECT_FILE_AND_FOLDER)
                         addOnPositiveButtonClickListener { dir ->
-                            viewModel.test = dir
+                            viewModel.test = dir.toString()
                         }
                     }
                     .show(fragment.childFragmentManager, null)

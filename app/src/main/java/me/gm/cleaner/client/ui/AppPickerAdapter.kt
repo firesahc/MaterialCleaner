@@ -5,7 +5,6 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
 import me.gm.cleaner.databinding.AppPickerItemBinding
 
 class AppPickerAdapter(private val viewModel: AppPickerViewModel) :
@@ -18,7 +17,7 @@ class AppPickerAdapter(private val viewModel: AppPickerViewModel) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
         val model = getItem(position)
-        binding.iconImage.load(model.packageInfo)
+        binding.iconImage.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(binding.root.context.packageManager))
         binding.principalText.text = model.label
         binding.labelText.text = model.packageInfo.packageName
         binding.checkbox.isChecked = model.isChecked

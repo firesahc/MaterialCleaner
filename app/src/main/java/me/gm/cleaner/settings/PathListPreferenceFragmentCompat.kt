@@ -17,7 +17,7 @@ import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import me.gm.cleaner.R
-import me.gm.cleaner.app.filepicker.FilePickerDialog
+import me.gm.cleaner.browser.filepicker.FilePickerDialog
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.util.fileNameComparator
 import me.gm.cleaner.util.fixEdgeEffect
@@ -117,10 +117,10 @@ class PathListPreferenceFragmentCompat : PreferenceDialogFragmentCompat() {
         view.findViewById<FloatingActionButton>(R.id.fab).setOnClickListener {
             FilePickerDialog()
                 .apply {
-                    setRoot(File.separator)
+                    setRoots(listOf(File.separator))
                     addOnPositiveButtonClickListener { dir ->
                         // newValues may need to be stored in the viewModel.
-                        newValues += dir
+                        newValues += dir.toString()
                     }
                 }
                 .show(childFragmentManager, null)

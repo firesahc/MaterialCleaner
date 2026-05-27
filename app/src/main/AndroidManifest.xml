@@ -37,22 +37,12 @@
             android:name=".settings.SettingsActivity"
             android:exported="false"
             android:label="@string/settings" />
-        <activity
-            android:name=".purchase.PurchaseActivity"
-            android:exported="false"
-            android:label="@string/purchase" />
-        <activity
-            android:name=".about.AboutActivity"
-            android:exported="false"
-            android:label="@string/about" />
+
         <activity
             android:name=".client.ui.ServiceSettingsActivity"
             android:exported="false"
             android:label="@string/service_settings" />
-        <activity
-            android:name=".tools.ManualToolsActivity"
-            android:exported="true"
-            android:label="@string/manual_tools" />
+
         <activity
             android:name=".browser.BrowsingActivity"
             android:exported="true"
@@ -63,13 +53,7 @@
                 <data android:mimeType="vnd.android.document/directory" />
             </intent-filter>
         </activity>
-        <activity
-            android:name="android.app.NativeActivity"
-            android:exported="false">
-            <meta-data
-                android:name="android.app.lib_name"
-                android:value="cleaner" />
-        </activity>
+
         <activity
             android:name=".client.ServerReceiver"
             android:directBootAware="true"

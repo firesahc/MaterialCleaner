@@ -12,17 +12,12 @@ import com.google.android.material.tabs.TabLayoutMediator
 import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseActivity
 import me.gm.cleaner.app.BaseFragment
-import me.gm.cleaner.dao.PurchaseVerification
 import me.gm.cleaner.databinding.ServiceSettingsFragmentBinding
 import java.lang.ref.WeakReference
 
 class ServiceSettingsFragment : BaseFragment() {
     val viewPagerItems: List<Class<out BaseServiceSettingsFragment>> = listOfNotNull(
-        if (Build.VERSION.SDK_INT >= 35 && !PurchaseVerification.isExpressPro) {
-            AppListUnsupportedFragment::class.java
-        } else {
-            AppListFragment::class.java
-        },
+        AppListFragment::class.java,
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             FileSystemRecordFragment::class.java
         } else {
@@ -37,9 +32,6 @@ class ServiceSettingsFragment : BaseFragment() {
     ): View {
         val binding = ServiceSettingsFragmentBinding.inflate(layoutInflater)
         val toolbar = setAppBar(binding.root)
-        if (!PurchaseVerification.isExpressPro) {
-            toolbar.setSubtitle(R.string.free_version)
-        }
         (requireActivity() as BaseActivity).supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         val viewPager = binding.viewPager
@@ -55,7 +47,7 @@ class ServiceSettingsFragment : BaseFragment() {
         TabLayoutMediator(binding.root.findViewById(R.id.tabs), viewPager) { tab, position ->
             tab.text = getString(
                 when (viewPagerItems[position]) {
-                    AppListFragment::class.java, AppListUnsupportedFragment::class.java -> R.string.storage_redirect_title
+                    AppListFragment::class.java -> R.string.storage_redirect_title
                     FileSystemRecordFragment::class.java -> R.string.filesystem_record_title
                     MoreOptionsFragmentStub::class.java -> androidx.appcompat.R.string.abc_action_menu_overflow_description
                     else -> throw IndexOutOfBoundsException()

@@ -13,7 +13,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import coil.load
 import com.google.android.material.snackbar.Snackbar
 import me.gm.cleaner.R
 import me.gm.cleaner.client.getPathWithEvent
@@ -38,7 +37,7 @@ class FileSystemRecordAdapter(private val fragment: FileSystemRecordFragment) :
         val binding = holder.binding
         val model = getItem(position)
         val packageInfo = model.packageInfo
-        binding.icon.load(packageInfo)
+        binding.icon.setImageDrawable(packageInfo?.applicationInfo?.loadIcon(binding.root.context.packageManager))
         binding.title.text = if (packageInfo != null) {
             model.label
         } else {
