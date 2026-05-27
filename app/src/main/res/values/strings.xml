@@ -25,18 +25,13 @@
         Please grant it in the next page.</string>
 
     <!-- Menu -->
-    <string name="action_start_or_stop">Start or stop Cleaner service</string>
     <string name="settings">Settings</string>
-    <string name="help">Help</string>
-    <string name="contact">Contact</string>
-    <string name="contact_message_googleplay">You can contact us through the following ways; for order-related issues, please prioritize using email, and for application-related issues, please prioritize using GitHub or Telegram.</string>
-    <string name="contact_message_github">You can contact us through the following ways; for order-related issues, please prioritize using email, and for application-related issues, please prioritize using GitHub or QQ Channel.</string>
+    <string name="menu_open">Open</string>
+    <string name="menu_copy">Copy</string>
     <string name="email">Email</string>
     <string name="github" translatable="false">GitHub</string>
     <string name="telegram" translatable="false">Telegram</string>
     <string name="qq_channel">QQ Channel</string>
-    <string name="purchase">Purchase</string>
-    <string name="about">About</string>
     <string name="view">View</string>
     <string name="menu_sort_by_name_title">App name</string>
     <string name="menu_sort_by_update_time_title">Update time</string>
@@ -54,10 +49,6 @@
     <string name="menu_hide_app_specific_storage">App-specific storage</string>
     <string name="refresh">Refresh</string>
     <string name="logcat">Grab logs</string>
-    <string name="menu_open">Open</string>
-    <string name="menu_copy">Copy</string>
-    <string name="menu_no_tick">No tick by default</string>
-    <string name="menu_no_scan">Never scan here again</string>
     <string name="menu_add_to_hide_list">Add to hide list</string>
     <string name="delete">Delete</string>
     <string name="delete_all_mount_rules">Delete all mount rules</string>
@@ -81,7 +72,6 @@
     <string name="small_key" translatable="false">small</string>
     <string name="empty_key" translatable="false">empty</string>
     <string name="empty_title" translatable="false">@string/empty</string>
-    <string name="scan_header">SCAN</string>
     <string name="no_tick_key" translatable="false">no_tick</string>
     <string name="no_tick_title">No tick</string>
     <string name="no_tick_summary">Please enter a regular expression.
@@ -95,8 +85,6 @@
         You need to weigh the pros and cons yourself.</string>
     <string name="sort_key" translatable="false">sort</string>
     <string name="sort_title">Sort by</string>
-    <string name="sort_summary_off">Scan sequence</string>
-    <string name="sort_summary_on">Size</string>
     <string name="monitor_key" translatable="false">monitor</string>
     <string name="monitor_title">Automatic rescan</string>
     <string name="monitor_summary">Use inotify to monitor the shared storage, and perform incremental
@@ -107,7 +95,6 @@
     <string name="confirm_delete_key" translatable="false">confirm_delete</string>
     <string name="confirm_delete_title">Show a dialog to confirm deletion</string>
     <string name="scan_system_app_key" translatable="false">scan_system_app</string>
-    <string name="scan_system_app_title">Scan system apps</string>
     <string name="language_header">LANGUAGE</string>
     <string name="language_key" translatable="false">language</string>
     <string name="language_title">Language</string>
@@ -370,10 +357,6 @@
     <string name="rationale_scanning_files">Scanning files</string>
     <string name="not_found">%s not found</string>
     <string name="maximum_reached">The scan ended prematurely because the number of results reached the maximum number you set.</string>
-    <string name="trash_toolbar_title">%d %s</string>
-    <string name="trash_toolbar_title_cleaning">Cleaning…</string>
-    <string name="trash_toolbar_subtitle_prefix">%d selected</string>
-    <string name="trash_toolbar_subtitle_suffix">, totaling %s</string>
     <string name="in_use">In use</string>
     <string name="copied">Copied: %s</string>
     <string name="standard_dir">Standard directories created</string>
@@ -383,27 +366,8 @@
     <string name="confirm_delete">Delete these files?</string>
 
     <!-- Purchase -->
-    <string name="purchase_unavailable_button">Unavailable</string>
-    <string name="purchase_subscribe_card_title">Subscribe to all features</string>
-    <string name="purchase_subscribe_card_summary">Material Cleaner is a freemium app. Paying for it allows us to maintain it better. Thank you for your sponsor.</string>
-    <string name="purchase_subscribe_card_button">Subscribe</string>
     <string name="subscribing">Subscribing</string>
     <string name="purchased">Purchased</string>
-    <string name="purchase_cleanup_card_title">Cleanup</string>
-    <string name="purchase_cleanup_card_summary">Unfinished, please do not purchase for reasons other than supporting development</string>
-    <string name="purchase_service_card_title">Cleaner service</string>
-    <string name="purchase_service_card_summary">View features of premium version</string>
-    <string name="purchase_service_details_header_freewheeling">FREEWHEELING</string>
-    <string name="purchase_service_details_summary_read_only">Support read only feature.</string>
-    <string name="purchase_service_details_header_handy">HANDY</string>
-    <string name="purchase_service_details_summary_retrodict_answers">Support retrodict wizard answers based on mount rules.</string>
-    <string name="purchase_service_details_summary_open_wizard_by_default">Support open wizard by default.</string>
-    <string name="purchase_service_details_summary_remount">Support remounting.</string>
-    <string name="purchase_service_details_summary_dir_operation_recommendation">Provide file migration suggestions figured out by difference algorithm when mount rules change.</string>
-    <string name="purchase_service_details_summary_prompt_mount_rules">Provide recommended mount rules when prompting apps to read and save media files.</string>
-    <string name="purchase_service_details_header_pithy">PITHY</string>
-    <string name="purchase_service_details_summary_upsert">Support record file operations using upsert.</string>
-    <string name="purchase_service_details_summary_prune_records">Support multiple schemes for pruning records.</string>
 
     <!-- Billing -->
     <string name="install_from_play">Please note that you can only make transactions if you install this app from the Play Store.</string>
@@ -411,8 +375,6 @@
     <string name="billing_connect_failed">Fail to connect to the server\n%s</string>
     <string name="retry">Retry</string>
     <string name="acknowledging">Acknowledging, please do not leave this page</string>
-    <string name="purchase_success">Billing successful. Some features will take effect after restarting the app.</string>
-    <string name="purchase_failure_billing">Billing failed. Please click Purchase to try again (no need to pay again). If it always fails, you will get the refund automatically after 48 hours.</string>
 
     <!-- About -->
     <string name="slogan">Material Design cleanup application</string>

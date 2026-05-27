@@ -23,16 +23,9 @@
     <string name="rationale_external_storage_manager">%s需要所有文件访问权限，请在下个页面中授予</string>
 
     <!-- 菜单 -->
-    <string name="action_start_or_stop">启动/停止 Cleaner 服务</string>
     <string name="settings">设置</string>
-    <string name="help">帮助</string>
-    <string name="contact">联系</string>
-    <string name="contact_message_googleplay">您可以通过以下方式联系我们，订单问题请优先使用电子邮件，应用问题请优先使用 GitHub 或者 Telegram。</string>
-    <string name="contact_message_github">您可以通过以下方式联系我们，订单问题请优先使用电子邮件，应用问题请优先使用 GitHub 或者 QQ 频道。</string>
     <string name="email">电子邮件</string>
     <string name="qq_channel">QQ 频道</string>
-    <string name="purchase">购买</string>
-    <string name="about">关于</string>
     <string name="view">查看</string>
     <string name="menu_sort_by_name_title">应用名</string>
     <string name="menu_sort_by_update_time_title">更新时间</string>
@@ -50,10 +43,6 @@
     <string name="menu_hide_app_specific_storage">应用专属存储空间</string>
     <string name="refresh">刷新</string>
     <string name="logcat">抓取日志</string>
-    <string name="menu_open">打开</string>
-    <string name="menu_copy">复制</string>
-    <string name="menu_no_tick">不再默认勾选</string>
-    <string name="menu_no_scan">不再扫描此处</string>
     <string name="menu_add_to_hide_list">加入隐藏列表</string>
     <string name="delete">删除</string>
     <string name="delete_all_mount_rules">删除所有挂载规则</string>
@@ -68,21 +57,17 @@
     <string name="start_on_boot_summary">启用前请确保服务能在您的设备上正常工作</string>
     <string name="post_notification_title">接收更新通知</string>
     <string name="nonpublic_summary">主要用于清理存储重定向侧漏的文件，非存储重定向类软件用户不建议开启</string>
-    <string name="scan_header">扫描</string>
     <string name="no_tick_title">不勾选</string>
     <string name="no_tick_summary">根据输入的正则表达式匹配路径，匹配的条目不会默认勾选</string>
     <string name="no_scan_title">不扫描</string>
     <string name="length_title">显示文件（夹）大小</string>
     <string name="length_summary">关闭可提高扫描速度，不过文件大小是判断能否安全删除的一个很好的参考，您需要自行权衡利弊</string>
     <string name="sort_title">排序方式</string>
-    <string name="sort_summary_off">扫描顺序</string>
-    <string name="sort_summary_on">大小</string>
     <string name="monitor_title">自动重新扫描</string>
     <string name="monitor_summary">使用 inotify 监听共享存储空间，当文件变化时执行增量扫描。监听的文件数目大于 8192 时会失效</string>
     <string name="maximize_title">扫描结果最大数目</string>
     <string name="maximize_summary">防止内存不足错误</string>
     <string name="confirm_delete_title">删除前显示确认对话框</string>
-    <string name="scan_system_app_title">扫描系统应用</string>
     <string name="language_header">语言</string>
     <string name="language_title">语言</string>
     <string name="theme_header">主题</string>
@@ -326,10 +311,6 @@
     <string name="rationale_scanning_files">扫描文件</string>
     <string name="not_found">没有%s</string>
     <string name="maximum_reached">由于结果数目达到您设定的最大值，扫描已提前结束</string>
-    <string name="trash_toolbar_title">%d 个%s</string>
-    <string name="trash_toolbar_title_cleaning">清理中…</string>
-    <string name="trash_toolbar_subtitle_prefix">已选择 %d</string>
-    <string name="trash_toolbar_subtitle_suffix">，共 %s</string>
     <string name="in_use">使用中</string>
     <string name="copied">已复制：%s</string>
     <string name="standard_dir">已创建标准文件夹</string>
@@ -338,27 +319,8 @@
     <string name="confirm_delete">删除这些文件？</string>
 
     <!-- 购买 -->
-    <string name="purchase_unavailable_button">不可用</string>
-    <string name="purchase_subscribe_card_title">订阅所有功能</string>
-    <string name="purchase_subscribe_card_summary">质感清理是一个免费增值应用，付费能使我们将它维护得更好，感谢您的赞助。</string>
-    <string name="purchase_subscribe_card_button">订阅</string>
     <string name="subscribing">订阅中</string>
     <string name="purchased">已购买</string>
-    <string name="purchase_cleanup_card_title">清理</string>
-    <string name="purchase_cleanup_card_summary">未完成，请勿以支持开发以外的理由购买</string>
-    <string name="purchase_service_card_title">Cleaner 服务</string>
-    <string name="purchase_service_card_summary">查看高级版本功能介绍</string>
-    <string name="purchase_service_details_header_freewheeling">从心所欲</string>
-    <string name="purchase_service_details_summary_read_only">支持只读功能</string>
-    <string name="purchase_service_details_header_handy">得心应手</string>
-    <string name="purchase_service_details_summary_retrodict_answers">支持根据挂载规则反推规则制作向导的填写内容</string>
-    <string name="purchase_service_details_summary_open_wizard_by_default">支持设置默认打开向导</string>
-    <string name="purchase_service_details_summary_remount">支持重新挂载</string>
-    <string name="purchase_service_details_summary_dir_operation_recommendation">挂载规则变更时提供通过差分算法求出的数据迁移建议</string>
-    <string name="purchase_service_details_summary_prompt_mount_rules">提示应用读取、保存媒体文件时提供挂载规则建议</string>
-    <string name="purchase_service_details_header_pithy">去芜存菁</string>
-    <string name="purchase_service_details_summary_upsert">文件系统记录支持使用 upsert 保存数据</string>
-    <string name="purchase_service_details_summary_prune_records">精简文件系统记录增加多种精简方案</string>
 
     <!-- 结算 -->
     <string name="install_from_play">请注意，只有从 Play 商店获取本应用才能进行交易</string>
@@ -366,8 +328,6 @@
     <string name="billing_connect_failed">连接服务器失败\n%s</string>
     <string name="retry">重试</string>
     <string name="acknowledging">确认中，请勿离开此页面</string>
-    <string name="purchase_success">结算成功，部分功能在重启应用后生效</string>
-    <string name="purchase_failure_billing">结算失败，请点击购买重试（无需再次付款），若始终无法成功，会在 48 小时后自动退款</string>
 
     <!-- 关于 -->
     <string name="slogan">质感设计的清理应用</string>
