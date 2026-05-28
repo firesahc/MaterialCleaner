@@ -21,7 +21,11 @@ object Starter {
         val so = LibUtils.getLibEntryName("starter")
         ZipFile(LibUtils.getLibSourceDir(context.applicationInfo)).use { apk ->
             val entry = apk.getEntry(so) ?: throw NoSuchFileException(File(so))
-            apk.getInputStream(entry).copyTo(out.outputStream())
+            apk.getInputStream(entry).use { input ->
+                out.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
             return out.absolutePath
         }
     }

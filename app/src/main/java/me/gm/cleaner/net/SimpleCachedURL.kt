@@ -6,13 +6,14 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.net.URL
+import java.security.MessageDigest
 
 class SimpleCachedURL(val context: Context, val url: URL) {
     constructor(context: Context, spec: String) : this(context, URL(spec))
 
     private val externalCacheDir: File? = context.externalCacheDir
     private val cacheFile: File? = if (externalCacheDir == null) null
-    else File(externalCacheDir, url.hashCode().toString())
+    else File(externalCacheDir, MessageDigest.getInstance("MD5").digest(url.toString().toByteArray()).joinToString("") { "%02x".format(it) })
 
     fun hasCache(): Boolean = cacheFile?.exists() == true
 
@@ -41,13 +42,13 @@ class SimpleCachedURL(val context: Context, val url: URL) {
                 openStreamInternal()
             }.onSuccess { inputStream ->
                 cacheFile!!.createNewFile()
-                inputStream.use {
-                    it.copyTo(cacheFile.outputStream())
+                inputStream.use { input ->
+                    cacheFile!!.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }.onFailure { e ->
-                if (e is FileNotFoundException) {
-                    cacheFile!!.createNewFile()
-                } else {
+                if (e !is FileNotFoundException) {
                     throw e
                 }
             }

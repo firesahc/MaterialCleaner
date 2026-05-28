@@ -71,7 +71,6 @@
     <string name="black_dark_theme_title">黑色主題</string>
 
     <!-- 服務更多選項 -->
-    <string name="require_zygisk_module">此功能需要安裝 Zygisk 模組，並在 LSPosed 中啟用質感清理</string>
     <string name="cleanup_title">清理</string>
     <string name="automatic_cleanup_title">自動清理</string>
     <string name="enable_relatime_title">（實驗性）啟用相對訪問時間</string>
@@ -89,7 +88,6 @@
     <string name="aggressively_prompt_for_reading_media_files_title">激進地提示讀取媒體檔案</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">會出現很多不必要的提示，不過如果您對儲存重定向功能還不熟悉，開啟有助於減少意外問題</string>
     <string name="auto_logging_title">自動抓取開關機日誌並自動救磚</string>
-    <string name="auto_logging_summary">儲存卷掛載異常時自動禁用 Zygisk 模組</string>
     <string name="apps_type_marks_title">在線應用類型標記</string>
     <string name="apps_type_marks_summary">為“根據文件系統記錄自動填寫”和“自動應用掛載規則模板到新應用”提供依據</string>
     <string name="apps_type_marks_repo_header">在線庫</string>
@@ -126,15 +124,12 @@
     <string name="time_out">啟動服務超時，將此日誌發送給開發者也許能得到幫助</string>
     <string name="service_running">服務運行中</string>
     <string name="service_need_upgrade">服務需升級</string>
-    <string name="service_zygisk_need_upgrade">Zygisk 模組需升級</string>
     <string name="service_exception">服務環境異常</string>
     <string name="service_exception_logcat_shutdown">日誌貓已退出，請重啟 Cleaner 服務</string>
     <string name="service_exception_no_am_log">沒有活動管理器日誌，儲存重定向無法正常工作（如果剛啟動服務請忽略）</string>
-    <string name="service_exception_binder_dead">系統服務崩潰（如果未安裝 Zygisk 模組請忽略）</string>
-    <string name="unaddressed_logs">/data/adb/modules/zygisk_cleanerhooks/logs.zip 存在未處理的日誌</string>
+
     <string name="storage_volumes_mount_exception">儲存卷掛載異常（如果剛開機請忽略）</string>
     <string name="server_version">服務版本：%d%s</string>
-    <string name="zygisk_module_version">\nZygisk 模組版本：%d</string>
     <string name="service_settings">服務設置</string>
     <string name="file_picker_title">選擇文件</string>
     <string name="file_picker_unselected">所選文件</string>

@@ -71,7 +71,6 @@
     <string name="black_dark_theme_title">黑色主题</string>
 
     <!-- 服务更多选项 -->
-    <string name="require_zygisk_module">此功能需要安装 Zygisk 模块，并在 LSPosed 中激活质感清理</string>
     <string name="cleanup_title">清理</string>
     <string name="automatic_cleanup_title">自动清理</string>
     <string name="enable_relatime_title">（实验性）启用相对访问时间</string>
@@ -89,7 +88,6 @@
     <string name="aggressively_prompt_for_reading_media_files_title">激进地提示读取媒体文件</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">会出现很多不必要的提示，不过如果您对存储重定向功能还不熟悉，开启有助于减少意外问题</string>
     <string name="auto_logging_title">自动抓取开关机日志并自动救砖</string>
-    <string name="auto_logging_summary">存储卷挂载异常时自动禁用 Zygisk 模块</string>
     <string name="apps_type_marks_title">在线应用类型标记</string>
     <string name="apps_type_marks_summary">为“根据文件系统记录自动填写”和“自动应用挂载规则模板到新应用”提供依据</string>
     <string name="apps_type_marks_repo_header">在线库</string>
@@ -126,15 +124,12 @@
     <string name="time_out">启动服务超时，将此日志发送给开发者也许能得到帮助</string>
     <string name="service_running">服务运行中</string>
     <string name="service_need_upgrade">服务需升级</string>
-    <string name="service_zygisk_need_upgrade">Zygisk 模块需升级</string>
     <string name="service_exception">服务环境异常</string>
     <string name="service_exception_logcat_shutdown">日志猫已退出，请重启 Cleaner 服务</string>
     <string name="service_exception_no_am_log">没有活动管理器日志，存储重定向无法正常工作（如果刚启动服务请忽略）</string>
-    <string name="service_exception_binder_dead">系统服务崩溃（如果未安装 Zygisk 模块请忽略）</string>
-    <string name="unaddressed_logs">/data/adb/modules/zygisk_cleanerhooks/logs.zip 存在未处理的日志</string>
+
     <string name="storage_volumes_mount_exception">存储卷挂载异常（如果刚开机请忽略）</string>
     <string name="server_version">服务版本：%d%s</string>
-    <string name="zygisk_module_version">\nZygisk 模块版本：%d</string>
     <string name="service_settings">服务设置</string>
     <string name="file_picker_title">选择文件</string>
     <string name="file_picker_unselected">选定的文件</string>

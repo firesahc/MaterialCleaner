@@ -58,7 +58,6 @@
         <SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="@string/auto_logging_key"
-            android:summary="@string/auto_logging_summary"
             android:title="@string/auto_logging_title"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>

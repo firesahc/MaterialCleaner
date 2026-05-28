@@ -101,7 +101,6 @@
     <string name="black_dark_theme_title">Black dark theme</string>
 
     <!-- Service More Options -->
-    <string name="require_zygisk_module">This feature requires the installation of the Zygisk module and the activation of Material Cleaner in LSPosed.</string>
     <string name="cleanup_title">CLEANUP</string>
     <string name="automatic_cleanup_key" translatable="false">automatic_cleanup</string>
     <string name="automatic_cleanup_title">Automatic cleanup</string>
@@ -131,7 +130,6 @@
     <string name="aggressively_prompt_for_reading_media_files_title">Aggressively prompt for reading media files</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">Many unnecessary prompts will appear, but if you are unfamiliar with the storage redirect feature, enabling it can help reduce unintended problems.</string>
     <string name="auto_logging_title">Automatically grab the boot/shutdown log and automatically rescue the soft bricks</string>
-    <string name="auto_logging_summary">Automatically disable the Zygisk module when storage volumes mount fails.</string>
     <string name="apps_type_marks_key" translatable="false">apps_type_marks</string>
     <string name="apps_type_marks_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
     <string name="apps_type_marks_title">Online Apps Type Marks</string>
@@ -178,15 +176,12 @@
     <string name="time_out">Service may have encountered an exception when initializing. Sending this log to the developer may be helpful.</string>
     <string name="service_running">SERVICE RUNNING</string>
     <string name="service_need_upgrade">SERVICE NEED UPGRADE</string>
-    <string name="service_zygisk_need_upgrade">ZYGISK MODULE NEED UPGRADE</string>
     <string name="service_exception">SERVICE ENVIRONMENT ABNORMAL</string>
     <string name="service_exception_logcat_shutdown">The logcat is shutdown, please restart the Cleaner service.</string>
     <string name="service_exception_no_am_log">No Activity Manager log, storage redirect can not work properly. (Ignore if you just started the service)</string>
-    <string name="service_exception_binder_dead">System services are dead. (Ignore if Zygisk module is not installed)</string>
-    <string name="unaddressed_logs">Unaddressed logs exist at /data/adb/modules/zygisk_cleanerhooks/logs.zip</string>
+
     <string name="storage_volumes_mount_exception">Storage volumes mount exception. (Ignore if the system is just booting)</string>
     <string name="server_version">Server version: %d%s</string>
-    <string name="zygisk_module_version">\nZygisk module version: %d</string>
     <string name="service_settings">Service Settings</string>
     <string name="file_picker_title">Pick file</string>
     <string name="file_picker_unselected">Selected file</string>

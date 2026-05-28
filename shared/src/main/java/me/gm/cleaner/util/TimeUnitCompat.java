@@ -35,6 +35,8 @@
 
 package me.gm.cleaner.util;
 
+import android.util.Log;
+
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Objects;
@@ -107,6 +109,8 @@ public enum TimeUnitCompat {
      * @since 1.6
      */
     DAYS(TimeUnitCompat.DAY_SCALE);
+
+    private static final String TAG = "TimeUnitCompat";
 
     // Scales as constants
     private static final long NANO_SCALE = 1L;
@@ -484,7 +488,8 @@ public enum TimeUnitCompat {
             case DAYS:
                 return ChronoUnit.DAYS;
             default:
-                throw new AssertionError();
+                Log.w(TAG, "Unknown TimeUnitCompat: " + this);
+                return null;
         }
     }
 

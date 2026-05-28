@@ -35,6 +35,11 @@ class ExpandableLinearLayout @JvmOverloads constructor(
         super.setChecked(checked)
     }
 
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        animator.cancel()
+    }
+
     fun setCheckedNoAnim(checked: Boolean) {
         if (isChecked != checked) {
             refreshExpandState(checked, false)
@@ -45,7 +50,7 @@ class ExpandableLinearLayout @JvmOverloads constructor(
     private var animatedValue: Float = 1F
     private var animator: ValueAnimator = ValueAnimator.ofFloat(0F, 1F).apply {
         duration = context.shortAnimTime
-        interpolator == AnimationUtils.LINEAR_INTERPOLATOR
+        interpolator = AnimationUtils.LINEAR_INTERPOLATOR
         addUpdateListener { valueAnimator ->
             this@ExpandableLinearLayout.animatedValue = valueAnimator.animatedValue as Float
             requestLayout()
