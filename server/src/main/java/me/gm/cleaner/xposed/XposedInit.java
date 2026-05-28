@@ -7,22 +7,15 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.ProviderInfo;
 import android.provider.MediaStore;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
 import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.IXposedHookZygoteInit;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import me.gm.cleaner.client.CleanerHooksBinderRetriever;
-import me.gm.cleaner.util.LibUtils;
 import me.gm.cleaner.xposed.InlineHookConfig;
-import me.gm.cleaner.util.PathKt;
 
-public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit {
+public class XposedInit implements IXposedHookLoadPackage {
     private final MediaProviderHooksService mediaProviderHooksService = new MediaProviderHooksService();
-    private String modulePath;
 
     private void onMediaProviderLoaded(LoadPackageParam lpparam, Context context) {
         try {
@@ -46,14 +39,7 @@ public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit
             System.loadLibrary("inline");
             InlineHookConfig.INSTANCE.initializeXHook();
         } catch (UnsatisfiedLinkError e) {
-            LibUtils.loadLibrary(
-                    LibUtils.findLibSourceDir(
-                            PathKt.listDirectoryEntriesSafe(Paths.get(modulePath).getParent())
-                                    .stream()
-                                    .map(Path::toString)
-                                    .toArray(String[]::new)),
-                    "inline");
-            InlineHookConfig.INSTANCE.initializeXHook();
+            throw new UnsatisfiedLinkError("Failed to load inline library");
         }
         XposedHelpers.findAndHookMethod(ContentProvider.class, "attachInfo",
                 Context.class, ProviderInfo.class, new XC_MethodHook() {
@@ -67,10 +53,5 @@ public class XposedInit implements IXposedHookLoadPackage, IXposedHookZygoteInit
                         }
                     }
                 });
-    }
-
-    @Override
-    public void initZygote(final IXposedHookZygoteInit.StartupParam startupParam) throws Throwable {
-        modulePath = startupParam.modulePath;
     }
 }
