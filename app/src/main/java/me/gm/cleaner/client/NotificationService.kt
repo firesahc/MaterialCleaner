@@ -52,9 +52,8 @@ class NotificationService : Service() {
                         computeHashCode(packageInfo.packageName, name)
                     )
                     MainScope().launch(Dispatchers.IO) {
-                        val service = CleanerClient.service ?: return@launch
-                        val denyList = service.denyList + packageInfo.packageName
-                        service.setDenyList(denyList.toTypedArray())
+                        val denyList = ServicePreferences.denylist + packageInfo.packageName
+                        ServicePreferences.denylist = denyList
                     }
                 }
 
@@ -95,9 +94,8 @@ class NotificationService : Service() {
                         computeHashCode(packageInfo.packageName, NOTIFICATION_CHANNEL_ADDED)
                     )
                     MainScope().launch(Dispatchers.IO) {
-                        val service = CleanerClient.service ?: return@launch
-                        val denyList = service.denyList + packageInfo.packageName
-                        service.setDenyList(denyList.toTypedArray())
+                        val denyList = ServicePreferences.denylist + packageInfo.packageName
+                        ServicePreferences.denylist = denyList
                     }
                 }
             }

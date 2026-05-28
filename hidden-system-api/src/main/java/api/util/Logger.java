@@ -15,7 +15,7 @@ public class Logger {
     }
 
     public boolean isLoggable(String tag, int level) {
-        return true;
+        return Log.isLoggable(tag, level);
     }
 
     public void v(String msg) {

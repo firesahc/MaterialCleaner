@@ -18,12 +18,12 @@ import me.gm.cleaner.dao.ServicePreferences;
 import me.gm.cleaner.util.FileUtils;
 
 public class PackageInfoMapper {
-    private static SparseArray<String> sUidToSrPackageNames;
-    private static SparseArray<String> sUidToPackageNames;
-    private static SparseArray<Map<String, String>> sSharedUserIdEnabledUidToProcessNamesToPackageName;
-    private static Map<String, String> sProcessNameToSystemSrPackageNames;
-    private static Map<String, String> sProcessNameToSystemPackageNames;
-    private static Map<String, Integer> sLogFormatAppPrincipalNamesToUid;
+    private static volatile SparseArray<String> sUidToSrPackageNames;
+    private static volatile SparseArray<String> sUidToPackageNames;
+    private static volatile SparseArray<Map<String, String>> sSharedUserIdEnabledUidToProcessNamesToPackageName;
+    private static volatile Map<String, String> sProcessNameToSystemSrPackageNames;
+    private static volatile Map<String, String> sProcessNameToSystemPackageNames;
+    private static volatile Map<String, Integer> sLogFormatAppPrincipalNamesToUid;
 
     public synchronized static void invalidate() {
         sUidToSrPackageNames = null;

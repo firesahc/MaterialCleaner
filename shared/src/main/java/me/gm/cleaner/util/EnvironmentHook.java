@@ -6,6 +6,8 @@ import android.os.IBinder;
 import android.os.storage.StorageVolume;
 import android.util.ArrayMap;
 
+import android.util.Log;
+
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
@@ -16,6 +18,7 @@ import java.lang.reflect.Proxy;
 @SuppressWarnings("JavaReflectionMemberAccess")
 @SuppressLint({"PrivateApi", "DiscouragedPrivateApi"})
 public class EnvironmentHook {
+    private static final String TAG = "EnvironmentHook";
     private File mTarget;
 
     private EnvironmentHook() {
@@ -47,7 +50,7 @@ public class EnvironmentHook {
             }
         } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException |
                 NoSuchFieldException | ClassNotFoundException e) {
-            e.printStackTrace();
+            Log.w(TAG, "Failed to hook ServiceManager mount service", e);
         }
     }
 
@@ -60,13 +63,16 @@ public class EnvironmentHook {
             try {
                 mIin = Class.forName("android.os.storage.IStorageManager");
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.w(TAG, "IStorageManager class not found", e);
             }
         }
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("queryLocalInterface".equals(method.getName())) {
+                if (mIin == null) {
+                    return method.invoke(mBase, args);
+                }
                 return Proxy.newProxyInstance(
                         mBase.getClass().getClassLoader(),
                         new Class<?>[]{mIin},
@@ -86,13 +92,16 @@ public class EnvironmentHook {
                         .getDeclaredMethod("asInterface", IBinder.class)
                         .invoke(null, base);
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.w(TAG, "IStorageManager.Stub.asInterface failed", e);
             }
         }
 
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if ("getVolumeList".equals(method.getName())) {
+                if (mBase == null) {
+                    return method.invoke(mBase, args);
+                }
                 StorageVolume[] volumes = (StorageVolume[]) method.invoke(mBase, args);
                 Field field = volumes[0].getClass().getDeclaredField("mPath");
                 field.setAccessible(true);

@@ -23,9 +23,7 @@ import java.util.zip.ZipOutputStream;
 import kotlin.io.ByteStreamsKt;
 import kotlin.io.ConstantsKt;
 import kotlin.io.FilesKt;
-import me.gm.cleaner.client.CleanerHooksClient;
-import me.gm.cleaner.server.observer.BaseIntentObserver;
-import me.gm.cleaner.server.observer.ObserverManager;
+
 
 public class AutoLogging {
     public static final int MODE_BOOT_SHUTDOWN = 0;
@@ -64,11 +62,19 @@ public class AutoLogging {
                             "ro.build.id"
                     );
                     for (final var prop : props) {
-                        final var process = new ProcessBuilder("sh", "-c", "getprop " + prop).start();
-                        final var reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                        writer.println(prop + "=" + reader.readLine());
-                        process.destroy();
-                        reader.close();
+                        final var process = new ProcessBuilder("sh", "-c", "getprop " + prop)
+                                .redirectErrorStream(true)
+                                .start();
+                        try {
+                            final var reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                            try {
+                                writer.println(prop + "=" + reader.readLine());
+                            } finally {
+                                reader.close();
+                            }
+                        } finally {
+                            process.destroy();
+                        }
                     }
                     writer.flush();
                     writer.close();
@@ -114,49 +120,46 @@ public class AutoLogging {
                         "/system/bin/logcat -b main,system,crash");
             }
             case MODE_BOOT_SHUTDOWN -> {
-                final var observer = ObserverManager.INSTANCE.getObserver(BaseIntentObserver.class);
-                if (observer == null) {
-                    return;
-                }
                 final var intentFilter = new IntentFilter(Intent.ACTION_BOOT_COMPLETED);
                 intentFilter.addAction(Intent.ACTION_REBOOT);
                 intentFilter.addAction(Intent.ACTION_SHUTDOWN);
-                observer.registerReceiver(
-                        new IIntentReceiver.Stub() {
-                            @Override
-                            public void performReceive(final Intent intent, final int resultCode,
-                                                       final String data, final Bundle extras,
-                                                       final boolean ordered, final boolean sticky,
-                                                       final int sendingUser) throws RemoteException {
-                                final var action = intent.getAction();
-                                Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, action);
-                                switch (action) {
-                                    case Intent.ACTION_BOOT_COMPLETED -> {
-                                        grabLogs("boot",
-                                                "/system/bin/logcat -d main,system,crash");
-                                    }
-                                    case Intent.ACTION_REBOOT, Intent.ACTION_SHUTDOWN -> {
-                                        grabLogs("shutdown",
-                                                "/system/bin/logcat -d main,system,crash");
-                                    }
-                                }
-                                // For Android 14:
-                                // 1. Receivers registered with `scheduleRegisteredReceiver` need to call `finishReceiver` when `assumeDelivered` is false to avoid blocking.
-                                // 2. `LOCKED_BOOT_COMPLETED` is no longer `ordered` but `assumeDelivered` = false
-                                if (ordered || Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-                                    CleanerHooksClient.whileAlive(service -> {
-                                        try {
-                                            service.finishReceiver(this, resultCode, data, extras,
-                                                    false, intent.getFlags());
-                                        } catch (RemoteException e) {
-                                            e.printStackTrace();
+                try {
+                    api.SystemService.registerReceiver(null, null,
+                            new IIntentReceiver.Stub() {
+                                @Override
+                                public void performReceive(final Intent intent, final int resultCode,
+                                                           final String data, final Bundle extras,
+                                                           final boolean ordered, final boolean sticky,
+                                                           final int sendingUser) throws RemoteException {
+                                    final var action = intent.getAction();
+                                    Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, action);
+                                    switch (action) {
+                                        case Intent.ACTION_BOOT_COMPLETED -> {
+                                            grabLogs("boot",
+                                                    "/system/bin/logcat -d main,system,crash");
                                         }
-                                    });
+                                        case Intent.ACTION_REBOOT, Intent.ACTION_SHUTDOWN -> {
+                                            grabLogs("shutdown",
+                                                    "/system/bin/logcat -d main,system,crash");
+                                        }
+                                    }
+                                    // For Android 14:
+                                    // 1. Receivers registered with `scheduleRegisteredReceiver` need to call `finishReceiver` when `assumeDelivered` is false to avoid blocking.
+                                    // 2. `LOCKED_BOOT_COMPLETED` is no longer `ordered` but `assumeDelivered` = false
+                                    if (ordered || Intent.ACTION_BOOT_COMPLETED.equals(action)) {
+                                        try {
+                                            api.SystemService.finishReceiver(this, resultCode, data,
+                                                    extras, false, intent.getFlags());
+                                        } catch (RemoteException e) {
+                                            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "Failed to finish receiver", e);
+                                        }
+                                    }
                                 }
-                            }
-                        },
-                        intentFilter, 0, 0
-                );
+                            },
+                            intentFilter, null, 0, 0);
+                } catch (RemoteException e) {
+                    Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "Failed to register boot/shutdown receiver", e);
+                }
             }
         }
     }

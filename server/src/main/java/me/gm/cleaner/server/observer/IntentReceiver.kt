@@ -2,17 +2,28 @@ package me.gm.cleaner.server.observer
 
 import android.content.IIntentReceiver
 import android.content.IntentFilter
-import me.gm.cleaner.client.CleanerHooksClient
+import android.os.RemoteException
+import android.util.Log
+import api.SystemService
 
-class IntentReceiver : BaseIntentObserver(), ZygiskObserver {
+class IntentReceiver : BaseIntentObserver() {
+    private val TAG = "IntentReceiver"
 
     override fun registerReceiverInternal(
         receiver: IIntentReceiver, filter: IntentFilter, userId: Int, flags: Int
     ) {
-        CleanerHooksClient.whileAlive { it.registerReceiver(receiver, filter, userId, flags) }
+        try {
+            SystemService.registerReceiver(null, null, receiver, filter, null, userId, flags)
+        } catch (e: RemoteException) {
+            Log.w(TAG, "Failed to register receiver via AMS", e)
+        }
     }
 
     override fun unregisterReceiverInternal(receiver: IIntentReceiver) {
-        CleanerHooksClient.whileAlive { it.unregisterReceiver(receiver) }
+        try {
+            SystemService.unregisterReceiver(receiver)
+        } catch (e: RemoteException) {
+            Log.w(TAG, "Failed to unregister receiver via AMS", e)
+        }
     }
 }

@@ -292,7 +292,7 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver implements 
                     Thread.sleep(5000);
                 }
             } catch (final IOException | InterruptedException e) {
-                e.printStackTrace();
+                Log.e("ActivityManagerLogsObserver", "Logcat reading loop exited unexpectedly", e);
             } finally {
                 mServer.broadcastIntent(broadcastIntent ->
                         broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)

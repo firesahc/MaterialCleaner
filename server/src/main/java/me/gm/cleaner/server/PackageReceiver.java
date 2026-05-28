@@ -5,17 +5,18 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.util.Log;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import api.SystemService;
-import me.gm.cleaner.client.CleanerHooksClient;
 import me.gm.cleaner.server.observer.BaseIntentObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
 
 public class PackageReceiver {
+    private static final String TAG = "PackageReceiver";
     private final Set<String> mInstalledPackages = new HashSet<>();
     private final CleanerServer mServer;
 
@@ -68,14 +69,12 @@ public class PackageReceiver {
                                 break;
                         }
                         if (ordered) {
-                            CleanerHooksClient.whileAlive(service -> {
-                                try {
-                                    service.finishReceiver(this, resultCode, data, extras, false,
-                                            intent.getFlags());
-                                } catch (RemoteException e) {
-                                    e.printStackTrace();
-                                }
-                            });
+                            try {
+                                api.SystemService.finishReceiver(this, resultCode, data,
+                                        extras, false, intent.getFlags());
+                            } catch (RemoteException e) {
+                                Log.w(TAG, "Failed to finish receiver", e);
+                            }
                         }
                     }
                 },

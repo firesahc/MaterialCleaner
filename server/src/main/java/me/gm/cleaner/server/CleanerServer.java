@@ -36,7 +36,7 @@ import me.gm.cleaner.util.LibUtils;
 
 public class CleanerServer extends ContextWrapper {
     public final Handler handler = new Handler(Looper.getMainLooper());
-    public CleanerService cleanerService;
+    public volatile CleanerService cleanerService;
     public final PackageInfo packageInfo;
     // System service lifecycle
     final PackageReceiver mPackageReceiver;
@@ -166,9 +166,23 @@ public class CleanerServer extends ContextWrapper {
                 }
             });
             if (observer != null && observer.isFuseBpfEnabled()) {
-                new Thread(() -> cleanerService.switchSpecificAppsOwner(
-                        ServicePreferences.INSTANCE.getSrPackages().stream().toArray(String[]::new)
-                )).start();
+                new Thread(() -> {
+                    for (final var userId : SystemService.getUserIdsNoThrow()) {
+                        for (final var packageName : ServicePreferences.INSTANCE.getSrPackages()) {
+                            final var ai = SystemService.getApplicationInfoNoThrow(packageName, 0, userId);
+                            if (ai != null) {
+                                FileUtils.INSTANCE.switch_owner(
+                                        FileUtils.INSTANCE.getPathAsUser(
+                                                FileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
+                                                userId
+                                        ),
+                                        ai.uid,
+                                        true
+                                );
+                            }
+                        }
+                    }
+                }).start();
             }
         }
     }

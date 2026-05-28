@@ -8,6 +8,7 @@ import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.util.Log;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -19,6 +20,7 @@ import hidden.UidObserverAdapter;
 import me.gm.cleaner.server.ktx.IContentProviderKt;
 
 public class BinderSender {
+    private static final String TAG = "BinderSender";
     public static int foregroundUid;
     private static final Set<Integer> PID_SET = new HashSet<>();
     private static CleanerService sCleanerService;
@@ -86,7 +88,7 @@ public class BinderSender {
         try {
             SystemService.registerProcessObserver(new ProcessObserver());
         } catch (final Throwable tr) {
-            tr.printStackTrace();
+            Log.w(TAG, "Failed to register process observer", tr);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -96,7 +98,7 @@ public class BinderSender {
                         HiddenApiBridge.getActivityManager_PROCESS_STATE_UNKNOWN(),
                         null);
             } catch (final Throwable tr) {
-                tr.printStackTrace();
+                Log.w(TAG, "Failed to register uid observer", tr);
             }
         }
     }
@@ -130,13 +132,13 @@ public class BinderSender {
 
             final var reply = IContentProviderKt.callCompat(provider, null, name, "sendBinder", null, extra);
         } catch (final Throwable tr) {
-            tr.printStackTrace();
+            Log.w(TAG, "Failed to send binder to user app", tr);
         } finally {
             if (provider != null) {
                 try {
                     SystemService.removeContentProviderExternal(name, token);
                 } catch (final Throwable tr) {
-                    tr.printStackTrace();
+                    Log.w(TAG, "Failed to remove content provider external", tr);
                 }
             }
         }
