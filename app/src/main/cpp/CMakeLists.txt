@@ -43,4 +43,5 @@ if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif ()
 
 add_subdirectory(inline)
+add_subdirectory(starter)
 
