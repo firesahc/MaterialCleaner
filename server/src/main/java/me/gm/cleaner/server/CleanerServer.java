@@ -102,9 +102,6 @@ public class CleanerServer extends ContextWrapper {
         mPackageReceiver = new PackageReceiver(this);
         mAutoLogging = new AutoLogging(packageInfo);
         mCleanerServerCallback = new CleanerServerCallback(this);
-        if (ServicePreferences.INSTANCE.getAutoLogging()) {
-            mAutoLogging.maybePackageLegacyLogs();
-        }
         cleanerService = new CleanerService(this, packageInfo.applicationInfo.uid);
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "Cleaner server v" + BuildConfig.VERSION_CODE + " started");
     }
@@ -119,13 +116,8 @@ public class CleanerServer extends ContextWrapper {
         ObserverManager.INSTANCE.startAllObservers(this);
         mPackageReceiver.registerPackageReceiver();
         CleanerHooksClient.whileAlive(service -> {
-            if (ServicePreferences.INSTANCE.getAutoLogging()) {
-                mAutoLogging.markMountException();
-                mAutoLogging.registerBootShutdownReceiver(AutoLogging.MODE_BOOT_SHUTDOWN);
-            }
             try {
                 service.setCleanerServerBinder(mCleanerServerCallback);
-                CleanerHooksClient.syncSrPackages(service);
                 CleanerHooksClient.syncReadOnlyPaths(service);
                 CleanerHooksClient.syncMountPoint(service);
                 CleanerHooksClient.syncRecordExternalAppSpecificStorage(service);
@@ -160,11 +152,6 @@ public class CleanerServer extends ContextWrapper {
         }
         // leisurely do remaining things
         if (isPrimary) {
-            CleanerHooksClient.whileAlive(service -> {
-                if (ServicePreferences.INSTANCE.getAutoLogging()) {
-                    mAutoLogging.markMounted();
-                }
-            });
             if (observer != null && observer.isFuseBpfEnabled()) {
                 new Thread(() -> {
                     for (final var userId : SystemService.getUserIdsNoThrow()) {

@@ -112,9 +112,6 @@ public class CleanerService extends ICleanerService.Stub {
                 }
             }
         }
-        if (AutoLogging.logsZip.exists()) {
-            return 5;
-        }
         return 0;
     }
 
