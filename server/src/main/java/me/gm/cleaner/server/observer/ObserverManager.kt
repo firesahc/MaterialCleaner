@@ -16,10 +16,9 @@ object ObserverManager {
         observers += ActivityManagerLogsObserver(server)
         if (CleanerHooksClient.pingBinder()) {
             observers += FileSystemObserver(server)
-            observers += IntentReceiver()
-        } else {
-            observers += DataAppDirObserver()
         }
+        observers += IntentReceiver()
+        observers += DataAppDirObserver()
         observers.forEach { it.start() }
     }
 

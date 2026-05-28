@@ -29,7 +29,7 @@ class ServerReceiver : Activity() {
                 val mountedPath = intent.getStringExtra(Intent.EXTRA_TEXT)
                 val prompt = when (intent.action) {
                     NotificationService.ACTION_REDIRECTED_TO_INTERNAL ->
-                        when (intent.type!!.toInt()) {
+                        when (intent.type?.toInt() ?: TYPE_BROADCAST) {
                             TYPE_INSERT -> getString(
                                 R.string.prompt_redirect_to_internal_not_allowed, label, mountedPath
                             )
