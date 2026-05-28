@@ -54,8 +54,7 @@ public class RecursiveFileListener {
     }
 
     public RecursiveFileListener startListen() {
-        System.setProperty("java.util.concurrent.ForkJoinPool.common.parallelism", "20");
-        forkJoinPool = ForkJoinPool.commonPool();
+        forkJoinPool = new ForkJoinPool(20);
         singleThread = Executors.newSingleThreadExecutor();
         singleThread.execute(() -> {
             forkJoinPool.execute(new WalkFileTree(mFile));
@@ -71,7 +70,10 @@ public class RecursiveFileListener {
         final WeakReference<RecursiveFileListener> weakReference = new WeakReference<>(this);
         singleThread.execute(() -> {
             if (dirMap.size() > 8192) {
-                weakReference.get().stopListen();
+                final var ref = weakReference.get();
+                if (ref != null) {
+                    ref.stopListen();
+                }
             }
         });
         return this;
