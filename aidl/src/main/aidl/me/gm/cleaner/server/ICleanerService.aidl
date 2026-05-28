@@ -18,73 +18,62 @@ interface ICleanerService {
 
     int getServerPid() = 2;
 
-    int getZygiskModuleVersion() = 3;
-
     // system info
-    ParceledListSlice<PackageInfo> getInstalledPackages(int flags) = 10;
+    ParceledListSlice<PackageInfo> getInstalledPackages(int flags) = 3;
 
-    PackageInfo getPackageInfo(String packageName, int flags) = 11;
+    PackageInfo getPackageInfo(String packageName, int flags) = 4;
 
-    int getPackagePermission(in ApplicationInfo appInfo, String permissionName, boolean isRuntime) = 12;
+    int getPackagePermission(in ApplicationInfo appInfo, String permissionName, boolean isRuntime) = 5;
 
-    void setPackagePermission(in ApplicationInfo appInfo, String permissionName, boolean isRuntime, int userId, boolean grant) = 13;
+    void setPackagePermission(in ApplicationInfo appInfo, String permissionName, boolean isRuntime, int userId, boolean grant) = 6;
 
-    boolean isFuseBpfEnabled() = 14;
+    boolean isFuseBpfEnabled() = 7;
 
     // mount
-    PackageStatus getPackageStatus(String packageName, int flags) = 20;
+    PackageStatus getPackageStatus(String packageName, int flags) = 8;
 
-    Map<String, PackageStatus> getSrPackagesStatus(int flags) = 21;
+    Map<String, PackageStatus> getSrPackagesStatus(int flags) = 9;
 
-    List<String> getMountedDirs() = 23;
+    List<String> getMountedDirs() = 10;
 
-    boolean isInMagiskDenyList(String packageName) = 24;
+    boolean isInMagiskDenyList(String packageName) = 11;
 
-    void notifyPreferencesChanged() = 30;
+    void notifyPreferencesChanged() = 12;
 
-    void notifySrChanged() = 31;
+    void notifySrChanged() = 13;
 
-    void notifyReadOnlyChanged() = 32;
+    void notifyReadOnlyChanged() = 14;
 
-    void remount(in String[] packageNames) = 33;
+    void remount(in String[] packageNames) = 15;
 
     // filesystem record
-    void registerFileChangeObserver(in IFileChangeObserver observer) = 40;
+    void registerFileChangeObserver(in IFileChangeObserver observer) = 16;
 
-    void unregisterFileChangeObserver(in IFileChangeObserver observer) = 41;
+    void unregisterFileChangeObserver(in IFileChangeObserver observer) = 17;
 
-    void pruneRecords(long method, in String[] packageNames, boolean isHideAppSpecificStorage, String queryText) = 42;
+    void pruneRecords(long method, in String[] packageNames, boolean isHideAppSpecificStorage, String queryText) = 18;
 
-    BulkCursor<FileSystemEvent> queryAllRecords(boolean isHideAppSpecificStorage, String queryText) = 43;
+    BulkCursor<FileSystemEvent> queryAllRecords(boolean isHideAppSpecificStorage, String queryText) = 19;
 
-    ParceledListSlice<FileSystemEvent> queryDistinctRecordsInclude(in String[] packageNames) = 44;
+    ParceledListSlice<FileSystemEvent> queryDistinctRecordsInclude(in String[] packageNames) = 20;
 
-    int countRecordsInclude(in String[] packageNames) = 45;
+    int countRecordsInclude(in String[] packageNames) = 21;
 
-    int databaseCount() = 46;
+    int databaseCount() = 22;
 
     // file service
-    IRootFileService newRootFileService() = 50;
+    IRootFileService newRootFileService() = 23;
 
-    IRootWorkerService newRootWorkerService() = 51;
+    IRootWorkerService newRootWorkerService() = 24;
 
     // TODO: refactor with the function above
-    FileModel createFileModel(String path) = 54;
+    FileModel createFileModel(String path) = 25;
 
-    ParceledListSlice<FileModel> listFiles(String path) = 55;
+    ParceledListSlice<FileModel> listFiles(String path) = 26;
 
-    boolean move(String from, String to) = 52;
+    boolean move(String from, String to) = 27;
 
-    boolean copy(String from, String to) = 53;
+    boolean copy(String from, String to) = 28;
 
-    // zygisk
-    void setDenyList(in String[] packageNames) = 60;
-
-    List<String> getDenyList() = 61;
-
-    void switchSpecificAppsOwner(in String[] packageNames) = 62;
-
-    void switchAllAppsOwner() = 63;
-
-    void exit() = 100;
+    void exit() = 29;
 }

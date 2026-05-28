@@ -1,11 +1,15 @@
 package me.gm.cleaner.client;
 
+import android.content.BroadcastReceiver;
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Context;
+import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.IIntentReceiver;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -14,6 +18,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +48,12 @@ public class HooksBridgeProvider extends ContentProvider {
 
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
+
+    /** Provider context, stored for use by receiver registration. */
+    private static Context sContext;
+
+    /** Map of IIntentReceiver Binder tokens to wrapper BroadcastReceivers. */
+    private static final Map<IBinder, BroadcastReceiver> sRegisteredReceivers = new HashMap<>();
 
     /**
      * Singleton {@link ICleanerHooksService} implementation that runs in the app process
@@ -155,6 +166,7 @@ public class HooksBridgeProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        sContext = getContext();
         return true;
     }
 
@@ -166,8 +178,12 @@ public class HooksBridgeProvider extends ContentProvider {
                 if (extras == null) break;
                 IBinder binder = extras.getBinder("binder");
                 if (binder != null) {
-                    sHooksService.setMediaProviderBinder(
-                            IMediaProviderHooksService.Stub.asInterface(binder));
+                    try {
+                        sHooksService.setMediaProviderBinder(
+                                IMediaProviderHooksService.Stub.asInterface(binder));
+                    } catch (RemoteException e) {
+                        Log.w("HooksBridgeProvider", "Failed to set media provider binder", e);
+                    }
                 }
                 break;
             }
@@ -175,6 +191,45 @@ public class HooksBridgeProvider extends ContentProvider {
                 Bundle result = new Bundle();
                 result.putBinder("binder", sHooksService.asBinder());
                 return result;
+            }
+            case "register_receiver": {
+                if (extras == null) break;
+                IBinder binder = extras.getBinder("receiver");
+                IntentFilter filter = extras.getParcelable("filter");
+                if (binder != null && filter != null && sContext != null) {
+                    IIntentReceiver receiver = IIntentReceiver.Stub.asInterface(binder);
+                    BroadcastReceiver wrapper = new BroadcastReceiver() {
+                        @Override
+                        public void onReceive(Context context, Intent intent) {
+                            try {
+                                receiver.performReceive(intent, getResultCode(),
+                                        getResultData(), getResultExtras(false),
+                                        isOrderedBroadcast(), false, 0);
+                            } catch (RemoteException e) {
+                                Log.w(TAG, "Failed to forward broadcast", e);
+                            }
+                        }
+                    };
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        sContext.registerReceiver(wrapper, filter,
+                                Context.RECEIVER_NOT_EXPORTED);
+                    } else {
+                        sContext.registerReceiver(wrapper, filter);
+                    }
+                    sRegisteredReceivers.put(binder, wrapper);
+                }
+                break;
+            }
+            case "unregister_receiver": {
+                if (extras == null) break;
+                IBinder binder = extras.getBinder("receiver");
+                if (binder != null) {
+                    BroadcastReceiver wrapper = sRegisteredReceivers.remove(binder);
+                    if (wrapper != null) {
+                        sContext.unregisterReceiver(wrapper);
+                    }
+                }
+                break;
             }
         }
         return Bundle.EMPTY;

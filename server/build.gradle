@@ -28,7 +28,7 @@ dependencies {
     implementation project(':hidden-api-bridge')
     implementation project(':hidden-system-api')
     implementation project(':shared')
-    compileOnly 'de.robv.android.xposed:api:82'
+    compileOnly files('libs/api-82.jar')
 
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
