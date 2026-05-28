@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.util.Log
 import me.gm.cleaner.dao.SecurityHelper.read
 import me.gm.cleaner.dao.SecurityHelper.write
 import org.json.JSONArray
@@ -95,7 +96,7 @@ object AppLabelCache {
             val encryptedFile = SecurityHelper.encryptedFile(labelFile)
             encryptedFile.write(json.toString().toByteArray())
         } catch (e: IOException) {
-            e.printStackTrace()
+            Log.e("AppLabelCache", "Failed to write label cache", e)
         }
     }
 

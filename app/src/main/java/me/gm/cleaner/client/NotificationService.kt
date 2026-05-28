@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.os.IBinder
 import android.os.Process
+import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -65,7 +66,7 @@ class NotificationService : Service() {
                                 Starter.writeDataFiles(this@NotificationService)
                                 Shell.cmd(Starter.command).exec()
                             } catch (e: Throwable) {
-                                e.printStackTrace()
+                                Log.e("NotificationService", "Failed to start server", e)
                             }
                         }
                     }
@@ -122,7 +123,7 @@ class NotificationService : Service() {
                         try {
                             Starter.writeSourceDir(context)
                         } catch (e: Throwable) {
-                            e.printStackTrace()
+                            Log.e("NotificationService", "Failed to write source dir", e)
                         }
                     }
                 }
