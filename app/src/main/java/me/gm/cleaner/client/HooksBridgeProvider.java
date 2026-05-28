@@ -1,15 +1,9 @@
 package me.gm.cleaner.client;
 
-import android.content.BroadcastReceiver;
 import android.content.ContentProvider;
 import android.content.ContentValues;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.IIntentReceiver;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -18,7 +12,6 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -49,22 +42,11 @@ public class HooksBridgeProvider extends ContentProvider {
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
 
-    /** Provider context, stored for use by receiver registration. */
-    private static Context sContext;
-
-    /** Map of IIntentReceiver Binder tokens to wrapper BroadcastReceivers. */
-    private static final Map<IBinder, BroadcastReceiver> sRegisteredReceivers = new HashMap<>();
-
     /**
      * Singleton {@link ICleanerHooksService} implementation that runs in the app process
      * and forwards calls to the Xposed-side service where appropriate.
      */
     private static final ICleanerHooksService sHooksService = new ICleanerHooksService.Stub() {
-        @Override
-        public int getModuleVersion() {
-            return 0; // No Zygisk module — always returns 0
-        }
-
         @Override
         public void setCleanerServerBinder(ICleanerServerCallback callback) {
             sServerCallback = callback;
@@ -82,49 +64,15 @@ public class HooksBridgeProvider extends ContentProvider {
         @Override
         public void setMediaProviderBinder(IMediaProviderHooksService service) {
             sMediaProviderService = service;
-        }
-
-        @Override
-        public boolean hasMediaProviderBinder() {
-            return sMediaProviderService != null;
-        }
-
-        @Override
-        public boolean waitMount(String packageName, int pid, int uid) {
-            return false; // Zygisk-specific, no-op
-        }
-
-        @Override
-        public String getMountedPath(String packageName, String path, int type) {
-            return null; // Zygisk-specific, no-op
-        }
-
-        @Override
-        public void setSrPackages(List<String> packages) {
-            // Zygisk-specific, no-op without Zygisk
-        }
-
-        @Override
-        public boolean isSrPackage(String[] packageNames) {
-            return false; // Zygisk-specific, no-op
-        }
-
-        @Override
-        public void registerReceiver(IIntentReceiver receiver, IntentFilter filter,
-                                     int userId, int flags) {
-            // Zygisk-specific, no-op
-        }
-
-        @Override
-        public void unregisterReceiver(IIntentReceiver receiver) {
-            // Zygisk-specific, no-op
-        }
-
-        @Override
-        public void finishReceiver(IIntentReceiver receiver, int resultCode,
-                                   String resultData, Bundle map, boolean abortBroadcast,
-                                   int flags) {
-            // Zygisk-specific, no-op
+            // 如果 Server 回调已注册，补发给 Xposed
+            ICleanerServerCallback callback = sServerCallback;
+            if (callback != null) {
+                try {
+                    service.setCleanerServerBinder(callback);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
+                }
+            }
         }
 
         @Override
@@ -166,7 +114,6 @@ public class HooksBridgeProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
-        sContext = getContext();
         return true;
     }
 
@@ -182,7 +129,7 @@ public class HooksBridgeProvider extends ContentProvider {
                         sHooksService.setMediaProviderBinder(
                                 IMediaProviderHooksService.Stub.asInterface(binder));
                     } catch (RemoteException e) {
-                        Log.w("HooksBridgeProvider", "Failed to set media provider binder", e);
+                        Log.w(TAG, "Failed to set media provider binder", e);
                     }
                 }
                 break;
@@ -191,45 +138,6 @@ public class HooksBridgeProvider extends ContentProvider {
                 Bundle result = new Bundle();
                 result.putBinder("binder", sHooksService.asBinder());
                 return result;
-            }
-            case "register_receiver": {
-                if (extras == null) break;
-                IBinder binder = extras.getBinder("receiver");
-                IntentFilter filter = extras.getParcelable("filter");
-                if (binder != null && filter != null && sContext != null) {
-                    IIntentReceiver receiver = IIntentReceiver.Stub.asInterface(binder);
-                    BroadcastReceiver wrapper = new BroadcastReceiver() {
-                        @Override
-                        public void onReceive(Context context, Intent intent) {
-                            try {
-                                receiver.performReceive(intent, getResultCode(),
-                                        getResultData(), getResultExtras(false),
-                                        isOrderedBroadcast(), false, 0);
-                            } catch (RemoteException e) {
-                                Log.w(TAG, "Failed to forward broadcast", e);
-                            }
-                        }
-                    };
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        sContext.registerReceiver(wrapper, filter,
-                                Context.RECEIVER_NOT_EXPORTED);
-                    } else {
-                        sContext.registerReceiver(wrapper, filter);
-                    }
-                    sRegisteredReceivers.put(binder, wrapper);
-                }
-                break;
-            }
-            case "unregister_receiver": {
-                if (extras == null) break;
-                IBinder binder = extras.getBinder("receiver");
-                if (binder != null) {
-                    BroadcastReceiver wrapper = sRegisteredReceivers.remove(binder);
-                    if (wrapper != null) {
-                        sContext.unregisterReceiver(wrapper);
-                    }
-                }
-                break;
             }
         }
         return Bundle.EMPTY;

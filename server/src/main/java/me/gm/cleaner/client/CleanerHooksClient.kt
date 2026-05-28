@@ -9,7 +9,6 @@ import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
 import me.gm.cleaner.server.observer.ObserverManager
-import me.gm.cleaner.util.SystemPropertiesUtils
 import java.util.function.Consumer
 
 object CleanerHooksClient {
@@ -49,16 +48,6 @@ object CleanerHooksClient {
         val s = service ?: return
         if (pingBinder()) {
             c.accept(s)
-        }
-    }
-
-    @JvmStatic
-    fun ICleanerHooksService.syncSrPackages() {
-        if (SystemPropertiesUtils.getBoolean(
-                "persist.sys.vold_app_data_isolation_enabled", false
-            )!!
-        ) {
-            setSrPackages(ServicePreferences.srPackages.toList())
         }
     }
 
