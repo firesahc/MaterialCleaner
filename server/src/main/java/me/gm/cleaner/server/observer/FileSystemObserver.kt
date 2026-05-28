@@ -2,6 +2,7 @@ package me.gm.cleaner.server.observer
 
 import android.annotation.SuppressLint
 import android.database.Cursor
+import android.util.Log
 import androidx.annotation.IntDef
 import androidx.room.Room
 import api.SystemService
@@ -19,7 +20,8 @@ import me.gm.cleaner.server.observer.PruneMethod.Companion.UNINSTALLED
 import me.gm.cleaner.util.FileUtils
 import java.io.File
 
-class FileSystemObserver(private val server: CleanerServer) : BaseObserver(), ZygiskObserver {
+class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
+    private val TAG = "FileSystemObserver"
     private val database: FileSystemRecordDatabase
     private val dao: FileSystemRecordDao
 
@@ -61,11 +63,11 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver(), Zy
             field.isAccessible = true
             field[null] = true
         } catch (e: ClassNotFoundException) {
-            e.printStackTrace()
+            Log.w(TAG, "fixSecurityException: SQLiteCompatibilityWalFlags not found", e)
         } catch (e: NoSuchFieldException) {
-            e.printStackTrace()
+            Log.w(TAG, "fixSecurityException: sInitialized field not found", e)
         } catch (e: IllegalAccessException) {
-            e.printStackTrace()
+            Log.w(TAG, "fixSecurityException: failed to set sInitialized", e)
         }
     }
 

@@ -10,7 +10,7 @@ object CleanerClient {
     private val _serverVersionLiveData: MutableLiveData<Int> = MutableLiveData(-1)
     val serverVersionLiveData: LiveData<Int> = _serverVersionLiveData
     var serverVersion: Int
-        get() = _serverVersionLiveData.value!!
+        get() = _serverVersionLiveData.value ?: -1
         private set(value) {
             _serverVersionLiveData.postValue(value)
         }
@@ -33,25 +33,22 @@ object CleanerClient {
         binder = newBinder
         binder?.linkToDeath(DEATH_RECIPIENT, 0)
         service = ICleanerService.Stub.asInterface(newBinder)
-        serverVersion = service!!.serverVersion
+        serverVersion = service?.serverVersion ?: -1
     }
 
-    val zygiskEnabled: Boolean
-        get() = pingBinder() && service?.zygiskModuleVersion != -1
-
     fun getInstalledPackages(flags: Int): List<PackageInfo> =
-        service!!.getInstalledPackages(flags).list
+        service?.getInstalledPackages(flags)?.list ?: emptyList()
 
     val mountedDirs: List<String>
         get() = try {
-            if (pingBinder()) service!!.mountedDirs else emptyList()
+            if (pingBinder()) service?.mountedDirs ?: emptyList() else emptyList()
         } catch (e: SecurityException) {
             emptyList()
         }
 
     fun exit() {
         runCatching {
-            service!!.exit()
+            service?.exit()
         }
     }
 }

@@ -5,7 +5,10 @@ import android.content.IContentProvider
 import android.os.Bundle
 import android.os.RemoteException
 import android.system.Os
+import android.util.Log
 import api.util.BuildUtils
+
+private val TAG = "IContentProviderKt"
 
 @Throws(RemoteException::class)
 fun IContentProvider.callCompat(
@@ -19,7 +22,7 @@ fun IContentProvider.callCompat(
                     authority, method, arg, extras
                 )
             } catch (e: Throwable) {
-                e.printStackTrace()
+                Log.w(TAG, "callCompat: new API call failed, falling back", e)
                 call(callingPkg, null, authority, method, arg, extras)
             }
         }

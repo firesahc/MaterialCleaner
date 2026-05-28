@@ -45,6 +45,8 @@ import static java.nio.file.StandardWatchEventKinds.ENTRY_DELETE;
 import static java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY;
 import static java.nio.file.StandardWatchEventKinds.OVERFLOW;
 
+import android.util.Log;
+
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
@@ -61,6 +63,7 @@ import java.nio.file.attribute.BasicFileAttributes;
  */
 
 public abstract class WatchDir {
+    private static final String TAG = "WatchDir";
     private final WatchService watcher;
     private final boolean recursive;
     private boolean trace = false;
@@ -105,7 +108,7 @@ public abstract class WatchDir {
                 }
             });
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.w(TAG, "Failed to register directory tree for watch", e);
         }
     }
 
@@ -180,7 +183,7 @@ public abstract class WatchDir {
         try {
             watcher.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.w(TAG, "Failed to close watch service", e);
         }
     }
 

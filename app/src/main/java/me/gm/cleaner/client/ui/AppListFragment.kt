@@ -64,10 +64,8 @@ class AppListFragment : BaseServiceSettingsFragment() {
                         addOnPositiveButtonClickListener {
                             ServicePreferences.removeStorageRedirect(uninstalledPackages)
                             ServicePreferences.removeReadOnly(uninstalledPackages)
-                            CleanerClient.service?.let { service ->
-                                val denyList = service.denyList - uninstalledPackages.toSet()
-                                service.setDenyList(denyList.toTypedArray())
-                            }
+                            val denyList = ServicePreferences.denylist - uninstalledPackages.toSet()
+                            ServicePreferences.denylist = denyList
                         }
                     }
                     .show(childFragmentManager, null)

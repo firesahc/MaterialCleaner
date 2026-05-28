@@ -7,7 +7,7 @@ import androidx.core.net.toUri
 import api.SystemService
 import java.io.File
 
-class DataAppDirObserver : BaseIntentObserver(), ZygiskObserver {
+class DataAppDirObserver : BaseIntentObserver() {
     private val appDir = "/data/app"
     private val dirToPackageName = SystemService.getInstalledPackagesFromAllUsersNoThrow(0)
         .associate {
@@ -19,7 +19,9 @@ class DataAppDirObserver : BaseIntentObserver(), ZygiskObserver {
     private val fileObserver = object : FileObserver(appDir, CREATE or DELETE or MOVED_FROM) {
         private fun tryParsePackageName(path: String): String {
             val codePath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                File(appDir, path).list()!![0]
+                val files = File(appDir, path).list()
+                if (files.isNullOrEmpty()) return ""
+                files[0]
             } else {
                 path
             }
@@ -44,7 +46,7 @@ class DataAppDirObserver : BaseIntentObserver(), ZygiskObserver {
                 }
 
                 DELETE, MOVED_FROM -> {
-                    val packageName = dirToPackageName.remove(path)!!
+                    val packageName = dirToPackageName.remove(path) ?: return
                     if (dirToPackageName.values.contains(packageName)) {
                         mockBroadcastIntent(
                             Intent(Intent.ACTION_PACKAGE_REPLACED).setData(packageName.toUri())

@@ -18,6 +18,7 @@ import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.system.Os;
+import android.util.Log;
 
 import com.google.common.collect.ArrayListMultimap;
 
@@ -64,6 +65,7 @@ import me.gm.cleaner.server.observer.PackageInfoMapper;
 import me.gm.cleaner.util.FileUtils;
 
 public class CleanerService extends ICleanerService.Stub {
+    private static final String TAG = "CleanerService";
     private final CleanerServer mServer;
     private final int mManagerAid;
     private final RemoteCallbackList<IFileChangeObserver> mFileChangeObservers = new RemoteCallbackList<>();
@@ -122,13 +124,8 @@ public class CleanerService extends ICleanerService.Stub {
     }
 
     @Override
-    public int getZygiskModuleVersion() {
-        return -1; // Zygisk module no longer available
-    }
-
-    @Override
     public ParceledListSlice<PackageInfo> getInstalledPackages(final int flags) {
-        enforceManager(BuildConfig.DEBUG ? "getInstalledPackages" : 10);
+        enforceManager(BuildConfig.DEBUG ? "getInstalledPackages" : 3);
         final var res = new ArrayList<>(SystemService.getInstalledPackagesFromAllUsersNoThrow(flags));
         res.removeIf(pi -> (pi.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0 &&
                 PackageInfo_isOverlayPackage(pi));
@@ -137,7 +134,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public PackageInfo getPackageInfo(@Nonnull final String packageName, final int flags) {
-        enforceManager(BuildConfig.DEBUG ? "getPackageInfo" : 11);
+        enforceManager(BuildConfig.DEBUG ? "getPackageInfo" : 4);
         return SystemService.getPackageInfoNoThrow(packageName, flags, 0);
     }
 
@@ -159,7 +156,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public int getPackagePermission(final ApplicationInfo appInfo, final String permissionName,
                                     final boolean isRuntime) throws RemoteException {
-        enforceManager(BuildConfig.DEBUG ? "getPackagePermission" : 12);
+        enforceManager(BuildConfig.DEBUG ? "getPackagePermission" : 5);
         var runtimeResult = PackageManager.PERMISSION_DENIED;
         if (isRuntime) {
             runtimeResult = SystemService.checkPermission(permissionName, appInfo.uid);
@@ -186,7 +183,7 @@ public class CleanerService extends ICleanerService.Stub {
     public void setPackagePermission(final ApplicationInfo appInfo, final String permissionName,
                                      final boolean isRuntime, final int userId, final boolean grant)
             throws RemoteException {
-        enforceManager(BuildConfig.DEBUG ? "setPackagePermission" : 13);
+        enforceManager(BuildConfig.DEBUG ? "setPackagePermission" : 6);
         if (isRuntime) {
             if (grant) {
                 SystemService.grantRuntimePermission(appInfo.packageName, permissionName, userId);
@@ -201,14 +198,14 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public boolean isFuseBpfEnabled() {
-        enforceManager(BuildConfig.DEBUG ? "isFuseBpfEnabled" : 14);
+        enforceManager(BuildConfig.DEBUG ? "isFuseBpfEnabled" : 7);
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         return observer != null && observer.isFuseBpfEnabled();
     }
 
     @Override
     public PackageStatus getPackageStatus(@Nonnull final String packageName, final int flags) {
-        enforceManager(BuildConfig.DEBUG ? "getPackageStatus" : 20);
+        enforceManager(BuildConfig.DEBUG ? "getPackageStatus" : 8);
         final var pids = new ArrayList<Integer>();
         final var pidFlags = new ArrayList<Integer>();
         final var userIds = new ArrayList<Integer>();
@@ -280,7 +277,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public Map<String, PackageStatus> getSrPackagesStatus(final int flags) {
-        enforceManager(BuildConfig.DEBUG ? "getSrPackagesStatus" : 21);
+        enforceManager(BuildConfig.DEBUG ? "getSrPackagesStatus" : 9);
         final ArrayListMultimap<String, Integer> pids = ArrayListMultimap.create();
         final ArrayListMultimap<String, Integer> pidFlags = ArrayListMultimap.create();
         final ArrayListMultimap<String, Integer> userIds = ArrayListMultimap.create();
@@ -357,7 +354,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public List<String> getMountedDirs() {
-        enforceManager(BuildConfig.DEBUG ? "getMountedDirs" : 23);
+        enforceManager(BuildConfig.DEBUG ? "getMountedDirs" : 10);
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer == null) {
             return Collections.emptyList();
@@ -367,7 +364,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public boolean isInMagiskDenyList(String packageName) {
-        enforceManager(BuildConfig.DEBUG ? "isInMagiskDenyList" : 24);
+        enforceManager(BuildConfig.DEBUG ? "isInMagiskDenyList" : 11);
         return MagiskDenyListObserver.isInDenyList(packageName);
     }
 
@@ -379,7 +376,7 @@ public class CleanerService extends ICleanerService.Stub {
     @SuppressLint({"PrivateApi", "SoonBlockedPrivateApi"})
     @Override
     public void notifyPreferencesChanged() {
-        enforceManager(BuildConfig.DEBUG ? "notifyPreferencesChanged" : 30);
+        enforceManager(BuildConfig.DEBUG ? "notifyPreferencesChanged" : 12);
         try {
             final var sps = new SharedPreferences[]{
                     ServicePreferences.INSTANCE.getPreferences()
@@ -392,14 +389,14 @@ public class CleanerService extends ICleanerService.Stub {
             }
         } catch (final ClassNotFoundException | NoSuchMethodException | IllegalAccessException |
                        InvocationTargetException e) {
-            e.printStackTrace();
+            Log.w(TAG, "Failed to reload SharedPreferences", e);
         }
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncRecordExternalAppSpecificStorage);
     }
 
     @Override
     public void notifySrChanged() {
-        enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 31);
+        enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 13);
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncMountPoint);
@@ -407,14 +404,14 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public void notifyReadOnlyChanged() {
-        enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 32);
+        enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 14);
         ServicePreferences.INSTANCE.invalidateReadOnlyCache();
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncReadOnlyPaths);
     }
 
     @Override
     public void remount(@Nonnull final String[] packageNames) {
-        enforceManager(BuildConfig.DEBUG ? "remount" : 33);
+        enforceManager(BuildConfig.DEBUG ? "remount" : 15);
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer != null) {
             observer.remountForPackages(packageNames);
@@ -423,7 +420,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public void registerFileChangeObserver(final IFileChangeObserver observer) {
-        enforceManager(BuildConfig.DEBUG ? "registerFileChangeObserver" : 40);
+        enforceManager(BuildConfig.DEBUG ? "registerFileChangeObserver" : 16);
         mFileChangeObservers.register(observer);
     }
 
@@ -452,7 +449,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public void pruneRecords(final long method, @Nullable final String[] packageNames,
                              final boolean isHideAppSpecificStorage, @Nullable final String queryText) {
-        enforceManager(BuildConfig.DEBUG ? "pruneRecords" : 42);
+        enforceManager(BuildConfig.DEBUG ? "pruneRecords" : 18);
         final var observer = ObserverManager.INSTANCE.getObserver(FileSystemObserver.class);
         if (observer != null) {
             observer.prune(method, packageNames, isHideAppSpecificStorage, queryText);
@@ -462,7 +459,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public BulkCursor<FileSystemEvent> queryAllRecords(final boolean isHideAppSpecificStorage,
                                                        @Nullable final String queryText) {
-        enforceManager(BuildConfig.DEBUG ? "queryAllRecords" : 43);
+        enforceManager(BuildConfig.DEBUG ? "queryAllRecords" : 19);
         final var observer = ObserverManager.INSTANCE.getObserver(FileSystemObserver.class);
         if (observer == null) {
             return new BulkCursor<>(
@@ -489,7 +486,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public ParceledListSlice<FileSystemEvent> queryDistinctRecordsInclude(
             @Nonnull final String[] packageNames) {
-        enforceManager(BuildConfig.DEBUG ? "queryDistinctRecordsInclude" : 44);
+        enforceManager(BuildConfig.DEBUG ? "queryDistinctRecordsInclude" : 20);
         final var observer = ObserverManager.INSTANCE.getObserver(FileSystemObserver.class);
         if (observer == null) {
             return new ParceledListSlice<>(Collections.emptyList());
@@ -510,7 +507,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int countRecordsInclude(@Nonnull final String[] packageNames) {
-        enforceManager(BuildConfig.DEBUG ? "countRecordsInclude" : 45);
+        enforceManager(BuildConfig.DEBUG ? "countRecordsInclude" : 21);
         final var observer = ObserverManager.INSTANCE.getObserver(FileSystemObserver.class);
         if (observer == null) {
             return 0;
@@ -520,7 +517,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int databaseCount() {
-        enforceManager(BuildConfig.DEBUG ? "databaseSize" : 46);
+        enforceManager(BuildConfig.DEBUG ? "databaseSize" : 22);
         final var observer = ObserverManager.INSTANCE.getObserver(FileSystemObserver.class);
         if (observer == null) {
             return 0;
@@ -530,25 +527,25 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public IRootFileService newRootFileService() {
-        enforceManager(BuildConfig.DEBUG ? "newRootFileService" : 50);
+        enforceManager(BuildConfig.DEBUG ? "newRootFileService" : 23);
         return new RootFileService();
     }
 
     @Override
     public IRootWorkerService newRootWorkerService() {
-        enforceManager(BuildConfig.DEBUG ? "newRootWorkerService" : 51);
+        enforceManager(BuildConfig.DEBUG ? "newRootWorkerService" : 24);
         return new RootWorkerService();
     }
 
     @Override
     public FileModel createFileModel(@Nonnull final String path) {
-        enforceManager(BuildConfig.DEBUG ? "createFileModel" : 50);
+        enforceManager(BuildConfig.DEBUG ? "createFileModel" : 25);
         return new FileModel(Paths.get(path));
     }
 
     @Override
     public ParceledListSlice<FileModel> listFiles(@Nonnull final String path) {
-        enforceManager(BuildConfig.DEBUG ? "listFiles" : 51);
+        enforceManager(BuildConfig.DEBUG ? "listFiles" : 26);
         try {
             return new ParceledListSlice<>(
                     PathsKt.listDirectoryEntries(Paths.get(path), "*").stream()
@@ -562,7 +559,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public boolean move(String from, String to) {
-        enforceManager(BuildConfig.DEBUG ? "move" : 52);
+        enforceManager(BuildConfig.DEBUG ? "move" : 27);
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
         return FileUtils.INSTANCE.move(srcPath, dstPath);
@@ -570,69 +567,15 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public boolean copy(final String from, final String to) {
-        enforceManager(BuildConfig.DEBUG ? "copy" : 53);
+        enforceManager(BuildConfig.DEBUG ? "copy" : 28);
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
         return FileUtils.INSTANCE.copy(srcPath, dstPath);
     }
 
     @Override
-    public void setDenyList(@Nonnull final String[] packageNames) {
-        enforceManager(BuildConfig.DEBUG ? "setDenyList" : 60);
-        if (ServicePreferences.INSTANCE.getRecordExternalAppSpecificStorage()) {
-            final var appsNewlyAddedToDenylist = new ArrayList<>(Arrays.asList(packageNames));
-            appsNewlyAddedToDenylist.removeAll(ServicePreferences.INSTANCE.getDenylist());
-            switchSpecificAppsOwner(appsNewlyAddedToDenylist.stream().toArray(String[]::new));
-        }
-        ServicePreferences.INSTANCE.setDenylist(Arrays.asList(packageNames));
-    }
-
-    @Override
-    public List<String> getDenyList() {
-        enforceManager(BuildConfig.DEBUG ? "getDenyList" : 61);
-        return ServicePreferences.INSTANCE.getDenylist();
-    }
-
-    @Override
-    public void switchSpecificAppsOwner(final String[] packageNames) {
-        enforceManager(BuildConfig.DEBUG ? "switchSpecificAppsOwner" : 62);
-        for (final var userId : SystemService.getUserIdsNoThrow()) {
-            for (final var packageName : packageNames) {
-                final var ai = SystemService.getApplicationInfoNoThrow(packageName, 0, userId);
-                if (ai != null) {
-                    FileUtils.INSTANCE.switch_owner(
-                            FileUtils.INSTANCE.getPathAsUser(
-                                    FileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
-                                    userId
-                            ),
-                            ai.uid,
-                            true
-                    );
-                }
-            }
-        }
-    }
-
-    @Override
-    public void switchAllAppsOwner() {
-        enforceManager(BuildConfig.DEBUG ? "switchAllAppsOwner" : 63);
-        for (final var userId : SystemService.getUserIdsNoThrow()) {
-            for (final var ai : SystemService.getInstalledApplicationsNoThrow(0, userId)) {
-                FileUtils.INSTANCE.switch_owner(
-                        FileUtils.INSTANCE.getPathAsUser(
-                                FileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
-                                userId
-                        ),
-                        ai.uid,
-                        true
-                );
-            }
-        }
-    }
-
-    @Override
     public void exit() {
-        enforceManager(BuildConfig.DEBUG ? "exit" : 100);
+        enforceManager(BuildConfig.DEBUG ? "exit" : 29);
         MagiskDenyListObserver.close();
         mServer.onDestroy();
         System.exit(0);

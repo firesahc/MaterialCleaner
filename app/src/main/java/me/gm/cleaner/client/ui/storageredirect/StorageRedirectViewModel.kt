@@ -213,7 +213,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
 
     fun loadIsInMagiskDenyListAsync(packageName: String) =
         viewModelScope.async(Dispatchers.Default) {
-            isInMagiskDenyList = CleanerClient.zygiskEnabled &&
+            isInMagiskDenyList = CleanerClient.pingBinder() &&
                     CleanerClient.service?.isInMagiskDenyList(packageName) ?: false
         }
 
@@ -247,8 +247,8 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     val mountRulesLiveData: LiveData<DiffArrayList<Pair<String?, String?>>>
         get() = _mountRulesLiveData
     var mountRules: List<Pair<String, String>>
-        get() = _mountRulesLiveData.value!!.run { subList(0, size - 1) }
-                as List<Pair<String, String>>
+        get() = _mountRulesLiveData.value?.run { subList(0, size - 1) }
+                as? List<Pair<String, String>> ?: emptyList()
         private set(value) {
             _mountRulesLiveData.value = DiffArrayList<Pair<String?, String?>>(
                 value.plus(null to null)
@@ -268,9 +268,6 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         ServicePreferences.putStorageRedirect(mountRules, packageNames)
         CleanerClient.service?.let { service ->
             service.notifySrChanged()
-            if (service.isFuseBpfEnabled) {
-                service.switchSpecificAppsOwner(packageNames.toTypedArray())
-            }
         }
     }
 
@@ -286,7 +283,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     val readOnlyPathsLiveData: LiveData<DiffArrayList<String?>>
         get() = _readOnlyPathsLiveData
     var readOnlyPaths: List<String>
-        get() = _readOnlyPathsLiveData.value!!.run { subList(0, size - 1) } as List<String>
+        get() = _readOnlyPathsLiveData.value?.run { subList(0, size - 1) } as? List<String> ?: emptyList()
         private set(value) {
             _readOnlyPathsLiveData.value = DiffArrayList(value.plus(null))
         }

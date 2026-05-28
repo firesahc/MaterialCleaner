@@ -24,7 +24,7 @@ import kotlin.io.path.readText
 import kotlin.math.min
 
 class Mounter {
-    private val thread: HandlerThread = HandlerThread("").apply { start() }
+    private val thread: HandlerThread = HandlerThread("Mounter").apply { start() }
     private val handler: Handler = Handler(thread.looper)
     private val lock: Any = Object()
 

@@ -193,18 +193,17 @@ abstract class AbsPromptActivity : AppCompatActivity() {
     }
 
     private fun updateDenyList(isChecked: Boolean, packageName: String) {
-        val service = CleanerClient.service ?: return
         val denyList = if (isChecked) {
-            service.denyList + packageName
+            ServicePreferences.denylist + packageName
         } else {
-            service.denyList - packageName
+            ServicePreferences.denylist - packageName
         }
-        service.setDenyList(denyList.toTypedArray())
+        ServicePreferences.denylist = denyList
     }
 
     override fun onResume() {
         super.onResume()
-        if (CleanerClient.service?.denyList?.contains(packageInfo.packageName) == true ||
+        if (ServicePreferences.denylist.contains(packageInfo.packageName) ||
             !recommendMountRuleToFilesToMigrate.containsKey(recommendMountRuleToken)
         ) {
             finish()

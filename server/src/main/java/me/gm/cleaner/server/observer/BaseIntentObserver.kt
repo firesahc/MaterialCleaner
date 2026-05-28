@@ -5,10 +5,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.RemoteException
 import android.util.ArraySet
+import android.util.Log
 import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 
 abstract class BaseIntentObserver : BaseObserver() {
+    private val TAG = "BaseIntentObserver"
     private val receivers: SetMultimap<IIntentReceiver, String> =
         Multimaps.newSetMultimap(HashMap()) { ArraySet() }
 
@@ -37,7 +39,7 @@ abstract class BaseIntentObserver : BaseObserver() {
                 try {
                     receiver.performReceive(intent, 0, null, null, false, false, 0)
                 } catch (e: RemoteException) {
-                    e.printStackTrace()
+                    Log.w(TAG, "Failed to mock broadcast intent", e)
                 }
             }
         }
