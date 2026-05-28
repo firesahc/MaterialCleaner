@@ -16,7 +16,7 @@ static void xhook_init() {
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]]
-static void xhook_init_jni(JNIEnv *env, jclass clazz) {
+void xhook_init_jni(JNIEnv *env, jclass clazz) {
     xhook_init();
 }
 

@@ -75,7 +75,7 @@ namespace bpf_hook {
         return isFuseBpfEnabled;
     }
 
-    fuse_req_t fuse_req;
+    thread_local fuse_req_t fuse_req;
 
     void *(*old_fuse_req_userdata)(fuse_req_t req);
 
@@ -170,20 +170,26 @@ namespace bpf_hook {
         mountPoint.clear();
         for (int i = 0, length = env->GetArrayLength(value); i < length; i++) {
             auto jpath = (jstring) env->GetObjectArrayElement(value, i);
+            if (jpath == nullptr) continue;
             const char *path = env->GetStringUTFChars(jpath, nullptr);
+            if (path == nullptr) { env->DeleteLocalRef(jpath); continue; }
 
             std::string parent = path;
             while (true) {
                 if (!mountPoint.insert(parent).second) {
                     break;
                 }
-                parent = dirname(parent.c_str());
+                char *mutable_path = strdup(parent.c_str());
+                char *dir = dirname(mutable_path);
+                parent = dir;
+                free(mutable_path);
                 if (parent == PRIMARY_VOLUME_PREFIX || parent == "/") {
                     break;
                 }
             }
 
             env->ReleaseStringUTFChars(jpath, path);
+            env->DeleteLocalRef(jpath);
         }
     }
 

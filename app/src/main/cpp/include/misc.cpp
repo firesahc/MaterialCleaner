@@ -49,8 +49,10 @@ int copyfileat(int src_path_fd, const char *src_path, int dst_path_fd, const cha
     if ((src_fd = openat(src_path_fd, src_path, O_RDONLY)) == -1)
         return -1;
 
-    if (fstat(src_fd, &stat_buf) == -1)
+    if (fstat(src_fd, &stat_buf) == -1) {
+        close(src_fd);
         return -1;
+    }
 
     dst_fd = openat(dst_path_fd, dst_path, O_WRONLY | O_CREAT | O_TRUNC, stat_buf.st_mode);
     if (dst_fd == -1) {

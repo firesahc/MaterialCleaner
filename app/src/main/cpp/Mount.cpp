@@ -154,6 +154,8 @@ namespace Mount {
         if (child_pid) {
             // In the parent process.
             if (child_pid == -1) {
+                close(sv[0]);
+                close(sv[1]);
                 return false;
             } else {
                 int sock = sv[0];
@@ -299,9 +301,13 @@ namespace Mount {
         // Mount as user wish.
         for (int i = 0, length = env->GetArrayLength(jsources); i < length; i++) {
             auto jsource = (jstring) env->GetObjectArrayElement(jsources, i);
+            if (jsource == nullptr) continue;
             const char *source = env->GetStringUTFChars(jsource, nullptr);
+            if (source == nullptr) { env->DeleteLocalRef(jsource); continue; }
             auto jtarget = (jstring) env->GetObjectArrayElement(jtargets, i);
+            if (jtarget == nullptr) { env->ReleaseStringUTFChars(jsource, source); env->DeleteLocalRef(jsource); continue; }
             const char *target = env->GetStringUTFChars(jtarget, nullptr);
+            if (target == nullptr) { env->ReleaseStringUTFChars(jsource, source); env->DeleteLocalRef(jsource); env->DeleteLocalRef(jtarget); continue; }
             const std::string mnt_source = (useSdcardFs ? storageSource : userSource) +
                                            std::string(source).substr(storage.length(),
                                                                       strlen(source));
@@ -314,6 +320,8 @@ namespace Mount {
             }
             env->ReleaseStringUTFChars(jsource, source);
             env->ReleaseStringUTFChars(jtarget, target);
+            env->DeleteLocalRef(jsource);
+            env->DeleteLocalRef(jtarget);
         }
         write_int(sock, 0);
         close(sv[0]);

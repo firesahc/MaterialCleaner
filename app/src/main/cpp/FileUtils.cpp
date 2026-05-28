@@ -107,7 +107,9 @@ namespace FileUtils {
         jboolean result = JNI_TRUE;
         for (int i = 0, length = env->GetArrayLength(jdirs); i < length; i++) {
             auto jdir = (jstring) env->GetObjectArrayElement(jdirs, i);
+            if (jdir == nullptr) continue;
             const char *dir = env->GetStringUTFChars(jdir, nullptr);
+            if (dir == nullptr) { env->DeleteLocalRef(jdir); continue; }
             uid_t uid = AID_MEDIA_RW;
             gid_t gid = AID_MEDIA_RW;
             if (FileUtils::child_of(androidDataDir, dir)) {
@@ -123,6 +125,7 @@ namespace FileUtils {
                     mode, uid, gid
             );
             env->ReleaseStringUTFChars(jdir, dir);
+            env->DeleteLocalRef(jdir);
         }
         return result;
     }
@@ -137,7 +140,7 @@ namespace FileUtils {
                     continue;
                 }
                 char child[PATH_MAX];
-                sprintf(child, "%s/%s"_iobfs.c_str(), path, file->d_name);
+                snprintf(child, sizeof(child), "%s/%s"_iobfs.c_str(), path, file->d_name);
 
                 chownRecursively(child, uid, gid);
             }

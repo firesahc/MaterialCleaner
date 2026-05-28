@@ -16,7 +16,7 @@ static size_t socket_len(sockaddr_un *sun) {
 socklen_t setup_sockaddr(sockaddr_un *sun, const char *name) {
     memset(sun, 0, sizeof(*sun));
     sun->sun_family = AF_UNIX;
-    strcpy(sun->sun_path + 1, name);
+    snprintf(sun->sun_path + 1, sizeof(sun->sun_path) - 1, "%s", name);
     return socket_len(sun);
 }
 
@@ -79,7 +79,9 @@ void *recv_fds(int sockfd, char *cmsgbuf, size_t bufsz, int cnt) {
             .msg_controllen = bufsz
     };
 
-    recvmsg(sockfd, &msg, MSG_WAITALL);
+    if (recvmsg(sockfd, &msg, MSG_WAITALL) < 0) {
+        return nullptr;
+    }
     cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 
     if (msg.msg_controllen != bufsz ||

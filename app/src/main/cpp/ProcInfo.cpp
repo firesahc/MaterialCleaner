@@ -21,6 +21,9 @@ namespace ProcInfo {
 
     jstring read_cmdline(JNIEnv *env, jclass clazz, jint pid) {
         int fd = sys_open(StringPrintf("/proc/%d/cmdline"_iobfs.c_str(), pid).c_str(), O_RDONLY, 0);
+        if (fd < 0) {
+            return env->NewStringUTF("");
+        }
 
         char nice_name[PATH_MAX];
         nice_name[sys_read(fd, nice_name, sizeof(nice_name) - 1)] = 0;
@@ -47,7 +50,6 @@ namespace ProcInfo {
             }
         }
         fclose(fp);
-        sys_close(fd);
         return cuid;
     }
 
@@ -81,7 +83,9 @@ namespace ProcInfo {
             }
         };
         auto jfirstTarget = (jstring) env->GetObjectArrayElement(jtargets, 0);
+        if (jfirstTarget == nullptr) { fclose(fp); return nullptr; }
         const char *firstTarget = env->GetStringUTFChars(jfirstTarget, nullptr);
+        if (firstTarget == nullptr) { env->DeleteLocalRef(jfirstTarget); fclose(fp); return nullptr; }
         auto isFirstTarget = IsTarget(firstTarget);
         bool isFirstTargetFound = false;
         char line[PATH_MAX];
@@ -94,8 +98,8 @@ namespace ProcInfo {
             }
         }
         env->ReleaseStringUTFChars(jfirstTarget, firstTarget);
+        env->DeleteLocalRef(jfirstTarget);
         fclose(fp);
-        sys_close(fd);
 
         std::vector<int> mounted = {};
         if (!mountinfo.empty()) {
@@ -128,30 +132,47 @@ namespace ProcInfo {
                     if (mounted.size() < length) {
                         auto jtarget = (jstring) env->GetObjectArrayElement(jtargets,
                                                                             (jsize) mounted.size());
+                        if (jtarget == nullptr) continue;
                         const char *target = env->GetStringUTFChars(jtarget, nullptr);
+                        if (target == nullptr) { env->DeleteLocalRef(jtarget); continue; }
                         if (IsTarget(target)(checkLine)) {
                             mounted.emplace_back(i);
                             env->ReleaseStringUTFChars(jtarget, target);
+                            env->DeleteLocalRef(jtarget);
                             continue;
                         }
                         env->ReleaseStringUTFChars(jtarget, target);
+                        env->DeleteLocalRef(jtarget);
                     }
                     // latter mount override former mount
                     for (int j = 0; j < mounted.size(); j++) {
                         auto jtarget = (jstring) env->GetObjectArrayElement(jtargets, j);
+                        if (jtarget == nullptr) continue;
                         const char *target = env->GetStringUTFChars(jtarget, nullptr);
+                        if (target == nullptr) { env->DeleteLocalRef(jtarget); continue; }
                         if (IsOverride(target)(checkLine)) {
                             mounted.back() = -2;
                             env->ReleaseStringUTFChars(jtarget, target);
+                            env->DeleteLocalRef(jtarget);
                             break;
                         }
                         env->ReleaseStringUTFChars(jtarget, target);
+                        env->DeleteLocalRef(jtarget);
                     }
                 }
             }
         }
         jintArray jmounted = env->NewIntArray((jsize) mounted.size());
+        if (jmounted == nullptr || env->ExceptionCheck()) {
+            env->ExceptionClear();
+            return nullptr;
+        }
         env->SetIntArrayRegion(jmounted, 0, (jsize) mounted.size(), &mounted.front());
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(jmounted);
+            return nullptr;
+        }
         return jmounted;
     }
 }  // namespace ProcInfo
