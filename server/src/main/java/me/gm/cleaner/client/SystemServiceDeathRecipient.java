@@ -34,7 +34,7 @@ public class SystemServiceDeathRecipient implements IBinder.DeathRecipient {
                 ((Map<?, ?>) sCache).clear();
             }
         } catch (Throwable e) {
-            e.printStackTrace();
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "Failed to clear ServiceManager cache", e);
         }
         binder.unlinkToDeath(this, 0);
     }

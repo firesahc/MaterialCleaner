@@ -14,8 +14,11 @@ import java.util.function.Consumer
 
 object CleanerHooksClient {
 
+    @Volatile
     private var binder: IBinder? = null
+    @Volatile
     private var service: ICleanerHooksService? = null
+    @Volatile
     private var deathRecipient: IBinder.DeathRecipient? = null
 
     fun onStart(server: CleanerServer) {
@@ -32,7 +35,7 @@ object CleanerHooksClient {
             }
         }
         try {
-            binder?.linkToDeath(deathRecipient!!, 0)
+            deathRecipient?.let { binder?.linkToDeath(it, 0) }
         } catch (e: RemoteException) {
             Log.e("CleanerHooksClient", "error", e)
         }
@@ -43,8 +46,9 @@ object CleanerHooksClient {
 
     @JvmStatic
     fun whileAlive(c: Consumer<ICleanerHooksService>) {
+        val s = service ?: return
         if (pingBinder()) {
-            c.accept(service!!)
+            c.accept(s)
         }
     }
 
@@ -86,7 +90,7 @@ object CleanerHooksClient {
     fun onDestroy() {
         if (pingBinder()) {
             try {
-                binder?.unlinkToDeath(deathRecipient!!, 0)
+                deathRecipient?.let { binder?.unlinkToDeath(it, 0) }
             } catch (e: RemoteException) {
                 Log.e("CleanerHooksClient", "error", e)
             }

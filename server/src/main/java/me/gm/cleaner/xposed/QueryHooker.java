@@ -133,15 +133,16 @@ public class QueryHooker extends XC_MethodHook {
         final var threadLocal = (ThreadLocal<?>) XposedHelpers.getObjectField(
                 param.thisObject, "mCallingIdentity");
         final var uid = (int) XposedHelpers.getObjectField(threadLocal.get(), "uid");
+        final var now = System.currentTimeMillis();
         synchronized (mHook.mQueryRecord) {
-            mHook.mQueryRecord.put(uid, System.currentTimeMillis());
-            mService.whileAlive(service -> {
-                try {
-                    service.setQueriedPaths(callingPackage, data);
-                } catch (RemoteException e) {
-                    Log.e("QueryHooker", "error", e);
-                }
-            });
+            mHook.mQueryRecord.put(uid, now);
         }
+        mService.whileAlive(service -> {
+            try {
+                service.setQueriedPaths(callingPackage, data);
+            } catch (RemoteException e) {
+                Log.e("QueryHooker", "error", e);
+            }
+        });
     }
 }

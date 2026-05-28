@@ -11,6 +11,7 @@ open class SystemServiceBinder<T : IInterface>(
     private var binderCache: IBinder? = null
     private var serviceCache: T? = null
 
+    @get:Synchronized
     private val binder: IBinder?
         get() = binderCache ?: ServiceManager.getService(name)?.run {
             LOGGER.v("get service $name")
@@ -29,6 +30,7 @@ open class SystemServiceBinder<T : IInterface>(
             this
         }
 
+    @get:Synchronized
     val service: T?
         get() = serviceCache ?: binder?.let {
             serviceCache = converter(this)

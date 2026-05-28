@@ -16,6 +16,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import android.util.Log
 import java.nio.ByteBuffer
 
 // Preference key constants (values match existing R.string values to preserve user data)
@@ -34,8 +35,10 @@ private const val RECORD_EXTERNAL_APP_SPECIFIC_STORAGE_KEY = "record_external_ap
 private const val UPSERT_KEY = "upsert"
 
 object ServicePreferences {
+    private val TAG = "ServicePreferences"
     const val SORT_BY_NAME: Int = 0
     const val SORT_BY_UPDATE_TIME: Int = 1
+    @Volatile
     private var broadcasting: Boolean = false
     private val _preferencesChangeLiveData: MutableLiveData<SharedPreferences> = MutableLiveData()
     val preferencesChangeLiveData: LiveData<SharedPreferences>
@@ -122,6 +125,7 @@ object ServicePreferences {
 
     // STORAGE REDIRECT
     @App
+    @Synchronized
     fun putStorageRedirect(rawRules: List<Pair<String, String>>, packageNames: List<String>) {
         if (rawRules.isEmpty()) {
             removeStorageRedirect(packageNames)
@@ -135,6 +139,7 @@ object ServicePreferences {
     }
 
     @App
+    @Synchronized
     fun removeStorageRedirect(packageNames: List<String>) {
         val all = readStorageRedirect()
         packageNames.forEach { all.remove(it) }
@@ -242,7 +247,7 @@ object ServicePreferences {
             storageRedirectFile.outputStream().use { it.channel.write(bb) }
             notifyListeners()
         } catch (e: IOException) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to write storage redirect", e)
         }
     }
 
@@ -257,7 +262,7 @@ object ServicePreferences {
                 JSONObject(readRawStorageRedirect())
             } catch (e: Exception) {
                 if (e !is FileNotFoundException) {
-                    e.printStackTrace()
+                    Log.w(TAG, "Failed to read storage redirect", e)
                 }
                 JSONObject()
             }
@@ -273,6 +278,7 @@ object ServicePreferences {
 
     // READ ONLY
     @App
+    @Synchronized
     fun putReadOnly(rawRules: List<String>, packageNames: List<String>) {
         if (rawRules.isEmpty()) {
             removeReadOnly(packageNames)
@@ -285,6 +291,7 @@ object ServicePreferences {
     }
 
     @App
+    @Synchronized
     fun removeReadOnly(packageNames: List<String>) {
         val all = readReadOnly()
         packageNames.forEach { all.remove(it) }
@@ -331,7 +338,7 @@ object ServicePreferences {
             readOnlyFile.outputStream().use { it.channel.write(bb) }
             notifyListeners()
         } catch (e: IOException) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to write read-only config", e)
         }
     }
 
@@ -339,8 +346,11 @@ object ServicePreferences {
     @Server
     fun readRawReadOnly(): String {
         readOnlyFile.inputStream().use {
-            val bb = ByteBuffer.allocate(it.available())
-            it.channel.read(bb)
+            val bb = ByteBuffer.allocate(readOnlyFile.length().toInt())
+            val bytesRead = it.channel.read(bb)
+            if (bytesRead <= 0) {
+                Log.w("ServicePreferences", "readRawReadOnly: channel.read returned $bytesRead")
+            }
             return String(bb.array())
         }
     }
@@ -352,7 +362,7 @@ object ServicePreferences {
                 JSONObject(readRawReadOnly())
             } catch (e: Exception) {
                 if (e !is FileNotFoundException) {
-                    e.printStackTrace()
+                    Log.w(TAG, "Failed to read read-only config", e)
                 }
                 JSONObject()
             }
@@ -367,8 +377,11 @@ object ServicePreferences {
         get() = try {
             if (denylistCache == null) {
                 denylistFile.inputStream().use { input ->
-                    val bb = ByteBuffer.allocate(input.available())
-                    input.channel.read(bb)
+                    val bb = ByteBuffer.allocate(denylistFile.length().toInt())
+                    val bytesRead = input.channel.read(bb)
+                    if (bytesRead <= 0) {
+                        Log.w("ServicePreferences", "denylist: channel.read returned $bytesRead")
+                    }
                     denylistCache = String(bb.array())
                         .split('\n')
                         .filterNot { it.isBlank() }
@@ -377,7 +390,7 @@ object ServicePreferences {
             denylistCache!!
         } catch (e: IOException) {
             if (e !is FileNotFoundException) {
-                e.printStackTrace()
+                Log.w(TAG, "Failed to read denylist", e)
             }
             emptyList()
         }
@@ -389,7 +402,7 @@ object ServicePreferences {
                 val bb = ByteBuffer.wrap(value.joinToString("\n").toByteArray())
                 denylistFile.outputStream().use { it.channel.write(bb) }
             } catch (e: IOException) {
-                e.printStackTrace()
+                Log.e(TAG, "Failed to write denylist", e)
             }
         }
 
