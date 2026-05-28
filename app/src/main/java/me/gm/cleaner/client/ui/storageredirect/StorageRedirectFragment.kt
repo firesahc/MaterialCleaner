@@ -188,8 +188,8 @@ class StorageRedirectFragment : BaseFragment() {
         }
         viewModel.initMountWizard(args.pi)
 
-        if (SystemPropertiesUtils.getBoolean("persist.sys.fuse", false)!! &&
-            CleanerClient.zygiskEnabled
+        if (SystemPropertiesUtils.getBoolean("persist.sys.fuse", false) ?: false &&
+            CleanerClient.pingBinder()
         ) {
             val readOnlyHeaderAdapter = ReadOnlyHeaderAdapter()
             val readOnlyAdapter = ReadOnlyAdapter(this, viewModel)

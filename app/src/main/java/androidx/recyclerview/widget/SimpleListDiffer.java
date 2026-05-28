@@ -18,6 +18,7 @@ package androidx.recyclerview.widget;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -112,6 +113,8 @@ import java.util.concurrent.Executor;
  * @see AdapterListUpdateCallback
  */
 public class SimpleListDiffer<T> {
+    private static final String TAG = "SimpleListDiffer";
+
     private final ListUpdateCallback mUpdateCallback;
     @SuppressWarnings("WeakerAccess") /* synthetic access */
     final AsyncDifferConfig<T> mConfig;
@@ -352,7 +355,8 @@ public class SimpleListDiffer<T> {
                         // method should only be invoked when areItemsTheSame returns true. That
                         // only occurs when both items are non-null or both are null and both of
                         // those cases are handled above.
-                        throw new AssertionError();
+                        Log.w(TAG, "areContentsTheSame called with mismatched null items");
+                        return false;
                     }
 
                     @Nullable
@@ -367,7 +371,8 @@ public class SimpleListDiffer<T> {
                         // method should only be invoked when areItemsTheSame returns true AND
                         // areContentsTheSame returns false. That only occurs when both items are
                         // non-null which is the only case handled above.
-                        throw new AssertionError();
+                        Log.w(TAG, "getChangePayload called with mismatched null items");
+                        return null;
                     }
                 });
 

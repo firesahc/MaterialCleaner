@@ -85,7 +85,7 @@ class PermissionsCategoryAdapter(
                 }
                 notifyItemChanged(position)
             } catch (tr: Throwable) {
-                Toast.makeText(context, tr.message!!, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, tr.message ?: tr.javaClass.simpleName, Toast.LENGTH_SHORT).show()
             }
         }
         binding.root.setOnClickListener {

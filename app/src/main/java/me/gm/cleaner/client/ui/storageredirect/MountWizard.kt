@@ -174,7 +174,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
             answers = if (mountRules.isNotEmpty()) {
                 retrodictAnswers(mountRules)
             } else {
-                initialAnswers.copy()
+                initialAnswers
             }
         }
         bindView(answers, binding, fragment)
@@ -185,7 +185,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
         fragment: StorageRedirectFragment,
         appTypeMarks: () -> AppTypeMarks?,
     ) {
-        binding.autoCompleteByRecord.isVisible = CleanerClient.zygiskEnabled
+        binding.autoCompleteByRecord.isVisible = CleanerClient.pingBinder()
         binding.autoCompleteByRecord.setOnClickListener {
             fragment.lifecycleScope.launch {
                 val record = withContext(Dispatchers.IO) {
@@ -664,7 +664,8 @@ class MountWizard(private val packageInfo: PackageInfo) {
             .asReversed()
             .forEach { index ->
                 val target = mountRules.removeAt(index).second
-                targetsNeedMergeToReasons[target]!! += mountRulesReasons.removeAt(index)
+                targetsNeedMergeToReasons[target]?.let { it += mountRulesReasons.removeAt(index) }
+                            ?: Log.w("MountWizard", "target $target not found in targetsNeedMergeToReasons")
             }
         val downloadDir = sdDir + File.separator +
                 Environment.DIRECTORY_DOWNLOADS + File.separator + label
@@ -715,7 +716,9 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 }
 
                 AppType.ALL_FILES_ACCESS -> {
-                    answers.q1 = false
+                    if (!ServiceMoreOptionsPreferences.autoCompleteByRecordMerge) {
+                        answers.q1 = false
+                    }
                     inaccessiblePlaces += marks
                 }
             }
@@ -833,7 +836,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
             override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
                 val oldItem = oldList[oldItemPosition]
                 val newItem = newList[newItemPosition]
-                return oldItem.first == newItem.first || oldItem.second == newItem.second
+                return oldItem.first == newItem.first && oldItem.second == newItem.second
             }
 
             override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
@@ -1065,7 +1068,7 @@ class RedirectAdapter(
         private val CALLBACK = object : DiffUtil.ItemCallback<Pair<String?, String?>>() {
             override fun areItemsTheSame(
                 oldItem: Pair<String?, String?>, newItem: Pair<String?, String?>
-            ): Boolean = oldItem.first == newItem.first || oldItem.second == newItem.second
+            ): Boolean = oldItem.first == newItem.first && oldItem.second == newItem.second
 
             override fun areContentsTheSame(
                 oldItem: Pair<String?, String?>, newItem: Pair<String?, String?>

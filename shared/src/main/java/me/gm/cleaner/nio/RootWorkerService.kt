@@ -5,15 +5,19 @@ import me.gm.cleaner.browser.IProgressListener
 import me.gm.cleaner.browser.IRootWorkerService
 import me.gm.cleaner.model.ParceledException
 import me.gm.cleaner.nio.fs.StructStatPath
+import android.util.Log
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import java.net.URI
 import java.nio.channels.FileChannel
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArraySet
+import kotlin.io.path.deleteExisting
 import kotlin.io.path.toPath
 
 class RootWorkerService : IRootWorkerService.Stub() {
+    private val TAG = "RootWorkerService"
     private val activeWorks: MutableSet<String> = CopyOnWriteArraySet()
 
     override fun cancelWork(uuid: String) {
@@ -27,14 +31,13 @@ class RootWorkerService : IRootWorkerService.Stub() {
         try {
             val limiter = CallbackRateLimiter()
             decode(file).deleteRecursivelyInterruptable {
-                val progress = 0F
-                if (limiter.tryTriggerCallback { listener.onProgress(progress) } &&
-                    !activeWorks.contains(uuid)) {
+                    limiter.tryTriggerCallback { listener.onProgress(0F) }
+                if (!activeWorks.contains(uuid)) {
                     throw InterruptedIOException()
                 }
             }
         } catch (e: Throwable) {
-            e.printStackTrace()
+            Log.w(TAG, "Failed to delete file", e)
             listener.onException(ParceledException.create(e))
         } finally {
             activeWorks.remove(uuid)
@@ -44,13 +47,89 @@ class RootWorkerService : IRootWorkerService.Stub() {
     override fun copy(
         uuid: String, listener: IProgressListener, source: String, target: String
     ) {
-        TODO("Not yet implemented")
+        activeWorks.add(uuid)
+        try {
+            val limiter = CallbackRateLimiter()
+            val sourcePath = decode(source)
+            val targetPath = decode(target)
+
+            val fileSize = Files.size(sourcePath)
+            var totalBytesTransferred = 0L
+
+            Files.newInputStream(sourcePath).use { input ->
+                Files.newOutputStream(targetPath).use { output ->
+                    val buffer = ByteArray(64 * 1024) // 64KB
+                    while (true) {
+                        if (!activeWorks.contains(uuid)) {
+                            throw InterruptedIOException()
+                        }
+                        val bytesRead = input.read(buffer)
+                        if (bytesRead == -1) break
+                        output.write(buffer, 0, bytesRead)
+                        totalBytesTransferred += bytesRead
+
+                        val progress = if (fileSize > 0) {
+                            (totalBytesTransferred.toFloat() / fileSize.toFloat()).coerceAtMost(1f)
+                        } else {
+                            1f
+                        }
+                        limiter.tryTriggerCallback { listener.onProgress(progress) }
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to copy file", e)
+            listener.onException(ParceledException.create(e))
+        } finally {
+            activeWorks.remove(uuid)
+        }
     }
 
     override fun move(
         uuid: String, listener: IProgressListener, source: String, target: String
     ) {
-        TODO("Not yet implemented")
+        activeWorks.add(uuid)
+        try {
+            val limiter = CallbackRateLimiter()
+            val sourcePath = decode(source)
+            val targetPath = decode(target)
+
+            val fileSize = Files.size(sourcePath)
+            var totalBytesTransferred = 0L
+
+            Files.newInputStream(sourcePath).use { input ->
+                Files.newOutputStream(targetPath).use { output ->
+                    val buffer = ByteArray(64 * 1024) // 64KB
+                    while (true) {
+                        if (!activeWorks.contains(uuid)) {
+                            // Clean up partial target on cancellation
+                            try { targetPath.deleteExisting() } catch (_: Throwable) {}
+                            throw InterruptedIOException()
+                        }
+                        val bytesRead = input.read(buffer)
+                        if (bytesRead == -1) break
+                        output.write(buffer, 0, bytesRead)
+                        totalBytesTransferred += bytesRead
+
+                        val progress = if (fileSize > 0) {
+                            (totalBytesTransferred.toFloat() / fileSize.toFloat()).coerceAtMost(1f)
+                        } else {
+                            1f
+                        }
+                        limiter.tryTriggerCallback { listener.onProgress(progress) }
+                    }
+                }
+            }
+
+            // Delete source after successful copy
+            sourcePath.deleteExisting()
+            listener.onProgress(1f)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to move file", e)
+            listener.onException(ParceledException.create(e))
+        } finally {
+            activeWorks.remove(uuid)
+        }
     }
 
     override fun snapshot(
@@ -72,7 +151,7 @@ class RootWorkerService : IRootWorkerService.Stub() {
             }
             true
         } catch (e: Throwable) {
-            e.printStackTrace()
+            Log.w(TAG, "Failed to snapshot file", e)
             listener.onException(ParceledException.create(e))
             false
         } finally {

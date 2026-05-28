@@ -20,7 +20,8 @@ class RecommendDirOpsDialog : AppCompatDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val packageName = requireArguments().getString(KEY_PACKAGE_NAME)
-        val dirOps = requireArguments().getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_ENTRIES)!!
+        val dirOps = requireArguments().getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_ENTRIES)
+            ?: return MaterialAlertDialogBuilder(requireContext()).setCancelable(true).create().apply { dismiss() }
         val moveItems = requireArguments().getBooleanArray(KEY_MOVE_ITEMS)!!
         val entries = dirOps
             .mapIndexed { index, (from, to) ->
@@ -50,9 +51,7 @@ class RecommendDirOpsDialog : AppCompatDialogFragment() {
                                 }
                             }
                         }
-                        if (CleanerClient.service?.isFuseBpfEnabled == false) {
-                            CleanerClient.service?.switchSpecificAppsOwner(arrayOf(packageName))
-                        }
+
                     }
                     navigateUp()
                 }

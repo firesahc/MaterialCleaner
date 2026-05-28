@@ -1,7 +1,6 @@
 package me.gm.cleaner.client.ui
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -11,7 +10,6 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
-import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.*
 import androidx.recyclerview.widget.RecyclerView
@@ -27,7 +25,6 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.net.Website
 import me.gm.cleaner.settings.PathListPreference
 import me.gm.cleaner.settings.PathListPreferenceFragmentCompat
 import me.gm.cleaner.util.*
@@ -140,18 +137,9 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
             NotifyServerPreferenceChangeListener() {
 
             override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean =
-                if (!CleanerClient.zygiskEnabled) {
+                if (!CleanerClient.pingBinder()) {
                     ConfirmationDialog
-                        .newInstance(getString(R.string.require_zygisk_module))
-                        .apply {
-                            addOnPositiveButtonClickListener {
-                                it.startActivitySafe(
-                                    Intent(Intent.ACTION_VIEW).apply {
-                                        data = Website.wikiInstallZygiskModule.toUri()
-                                    }
-                                )
-                            }
-                        }
+                        .newInstance(getString(R.string.no_root_access))
                         .show(childFragmentManager, null)
                     false
                 } else {
@@ -260,18 +248,9 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
             NotifyServerPreferenceChangeListener() {
 
             override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean =
-                if (!CleanerClient.zygiskEnabled) {
+                if (!CleanerClient.pingBinder()) {
                     ConfirmationDialog
-                        .newInstance(getString(R.string.require_zygisk_module))
-                        .apply {
-                            addOnPositiveButtonClickListener {
-                                it.startActivitySafe(
-                                    Intent(Intent.ACTION_VIEW).apply {
-                                        data = Website.wikiInstallZygiskModule.toUri()
-                                    }
-                                )
-                            }
-                        }
+                        .newInstance(getString(R.string.no_root_access))
                         .show(childFragmentManager, null)
                     false
                 } else {
@@ -286,15 +265,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
             NotifyServerPreferenceChangeListener() {
 
             override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean =
-                try {
-                    super.onPreferenceChange(preference, newValue)
-                } finally {
-                    if (!(newValue as Boolean)) {
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            CleanerClient.service?.switchAllAppsOwner()
-                        }
-                    }
-                }
+                super.onPreferenceChange(preference, newValue)
         }
 
         val upsert = findPreference<SwitchPreferenceCompat>(
