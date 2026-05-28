@@ -7,8 +7,9 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -55,6 +56,8 @@ class FileSystemRecordViewModel(application: Application) :
     internal val dispatcher: ExecutorCoroutineDispatcher =
         Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 
+    internal var loadJob: Job = SupervisorJob()
+
     private fun CoroutineScope.loadMoreForRequestedSize(size: Int): List<FileSystemRecordModel> {
         val fileSystemRecord = ArrayList<FileSystemEvent>(size)
         while (fileSystemRecord.size < size) {
@@ -89,7 +92,7 @@ class FileSystemRecordViewModel(application: Application) :
     }
 
     fun loadMore() {
-        viewModelScope.launch(dispatcher) {
+        viewModelScope.launch(loadJob + dispatcher) {
             _fileSystemRecordLiveData.postValue(FileSystemRecordState.LoadingMore(-1))
             fileSystemRecord += loadMoreInternal(LOAD_SIZE)
             _fileSystemRecordLiveData.postValue(FileSystemRecordState.Done(fileSystemRecord.toList()))
@@ -100,8 +103,9 @@ class FileSystemRecordViewModel(application: Application) :
         if (!::bulkCursor.isInitialized) {
             return
         }
-        dispatcher.cancel()
-        viewModelScope.launch(dispatcher) {
+        loadJob.cancel()
+        loadJob = SupervisorJob()
+        viewModelScope.launch(loadJob + dispatcher) {
             ensureActive()
             val unloadedSize = bulkCursor.count - (fileSystemRecord.size - addedByObserver)
             var loaded = 0
@@ -119,8 +123,9 @@ class FileSystemRecordViewModel(application: Application) :
     }
 
     fun reload() {
-        dispatcher.cancel()
-        viewModelScope.launch(dispatcher) {
+        loadJob.cancel()
+        loadJob = SupervisorJob()
+        viewModelScope.launch(loadJob + dispatcher) {
             fileSystemRecord.clear()
             addedByObserver = 0
             ensureActive()
@@ -136,11 +141,11 @@ class FileSystemRecordViewModel(application: Application) :
     }
 
     private val _checkedFilterAppsFlow: MutableStateFlow<Set<String>> =
-        MutableStateFlow(CleanerClient.service?.denyList?.toSet() ?: emptySet())
+        MutableStateFlow(ServicePreferences.denylist.toSet())
     var checkedFilterApps: Set<String>
         get() = _checkedFilterAppsFlow.value
         set(value) {
-            CleanerClient.service?.setDenyList(value.toTypedArray())
+            ServicePreferences.denylist = value.toList()
             _checkedFilterAppsFlow.value = value
         }
     private val _isHideAppSpecificStorageFlow: MutableStateFlow<Boolean> =
@@ -184,6 +189,7 @@ class FileSystemRecordViewModel(application: Application) :
     }
 
     override fun onCleared() {
+        loadJob.cancel()
         if (::bulkCursor.isInitialized) {
             bulkCursor.close()
         }
@@ -213,7 +219,7 @@ class FileChangeListener(viewModel: FileSystemRecordViewModel) : IFileChangeObse
         isAppSpecificStorage: Boolean
     ) {
         val viewModel = viewModelRef.get() ?: return
-        viewModel.viewModelScope.launch(viewModel.dispatcher) {
+        viewModel.viewModelScope.launch(viewModel.loadJob + viewModel.dispatcher) {
             if (viewModel.isHideAppSpecificStorage && isAppSpecificStorage ||
                 packageName in viewModel.checkedFilterApps
             ) {

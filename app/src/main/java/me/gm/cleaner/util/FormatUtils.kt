@@ -9,12 +9,9 @@ import java.util.Calendar
 
 object FormatUtils {
 
-    private val then: Calendar = Calendar.getInstance()
-    private val now: Calendar = Calendar.getInstance()
-
     fun formatDateTime(context: Context, timeMillis: Long): String {
-        then.timeInMillis = timeMillis
-        now.timeInMillis = System.currentTimeMillis()
+        val then = Calendar.getInstance().apply { timeInMillis = timeMillis }
+        val now = Calendar.getInstance().apply { timeInMillis = System.currentTimeMillis() }
         val flags = DateUtils.FORMAT_NO_NOON or DateUtils.FORMAT_NO_MIDNIGHT or
                 DateUtils.FORMAT_ABBREV_ALL or DateUtils.FORMAT_SHOW_TIME or when {
             then[Calendar.YEAR] != now[Calendar.YEAR] -> DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE

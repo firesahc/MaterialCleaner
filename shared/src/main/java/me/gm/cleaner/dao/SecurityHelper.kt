@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.CharConversionException
 import java.io.File
@@ -14,6 +15,7 @@ import java.security.Security
 
 @SuppressLint("StaticFieldLeak")
 object SecurityHelper {
+    private const val TAG = "SecurityHelper"
     private lateinit var context: Context
     private lateinit var masterKey: MasterKey
 
@@ -21,7 +23,8 @@ object SecurityHelper {
         this.context = context.applicationContext
         try {
             masterKey = MasterKey(context)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "MasterKey creation failed", e)
         }
     }
 
@@ -64,10 +67,9 @@ object SecurityHelper {
     fun encryptedFile(file: File, keysetPrefName: String? = null): EncryptedFile =
         EncryptedFile(context, file, masterKey, keysetPrefName = keysetPrefName)
 
-    fun EncryptedFile.write(b: ByteArray) = openFileOutput().apply {
-        write(b)
-        flush()
-        close()
+    fun EncryptedFile.write(b: ByteArray) = openFileOutput().use { outputStream ->
+        outputStream.write(b)
+        outputStream.flush()
     }
 
     fun EncryptedFile.read(): ByteArrayOutputStream = openFileInput().use { inputStream ->
@@ -80,13 +82,13 @@ object SecurityHelper {
         byteArrayOutputStream
     }
 
-    fun encryptedSharedPreferences(fileName: String): SharedPreferences = if (isInitSuccess()) {
+    fun encryptedSharedPreferences(fileName: String, retryCount: Int = 0): SharedPreferences = if (isInitSuccess()) {
         try {
             EncryptedSharedPreferences(context, fileName, masterKey)
         } catch (e: CharConversionException) {
             // EncryptedSharedPreferences corrupted, delete and create a new one.
-            if (context.deleteSharedPreferences(fileName)) {
-                encryptedSharedPreferences(fileName)
+            if (retryCount < 1 && context.deleteSharedPreferences(fileName)) {
+                encryptedSharedPreferences(fileName, retryCount + 1)
             } else {
                 throw e
             }
