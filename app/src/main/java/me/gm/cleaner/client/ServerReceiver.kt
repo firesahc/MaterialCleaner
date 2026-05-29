@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.os.Bundle
+import android.util.Log
 import me.gm.cleaner.R
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.util.getParcelableExtraCompat
@@ -12,11 +13,15 @@ class ServerReceiver : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i("MC/Test", "ServerReceiver.onCreate: action=${intent?.action}")
         // binder
         val extra = intent.getBundleExtra(Intent.EXTRA_RESTRICTIONS_BUNDLE)
         if (extra != null) {
-            val binder = extra.getBinder(BinderProvider.EXTRA_BINDER)!!
-            CleanerClient.onBinderReceived(binder)
+            val binder = extra.getBinder(BinderProvider.EXTRA_BINDER)
+            if (binder != null) {
+                Log.i("MC/Test", "ServerReceiver: received binder from intent extras")
+                CleanerClient.onBinderReceived(binder)
+            }
             intent.removeExtra(Intent.EXTRA_RESTRICTIONS_BUNDLE)
         }
         // dispatch by action

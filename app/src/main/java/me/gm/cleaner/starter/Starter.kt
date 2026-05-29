@@ -2,6 +2,7 @@ package me.gm.cleaner.starter
 
 import android.content.Context
 import android.system.Os
+import android.util.Log
 import me.gm.cleaner.util.LibUtils
 import java.io.*
 import java.util.zip.ZipFile
@@ -11,14 +12,17 @@ object Starter {
 
     fun writeDataFiles(context: Context) {
         val dir = context.createDeviceProtectedStorageContext().filesDir
+        Log.i("CleanerTest", "Starter.writeDataFiles: dir=${dir.absolutePath}")
         val starter = copyStarter(context, dir.resolve("starter"))
         val sh = writeScript(context, dir.resolve("start.sh"), starter)
-        command = "sh $sh --apk=${context.applicationInfo.sourceDir}"
+        command = "sh $sh"
+        Log.i("CleanerTest", "Starter.writeDataFiles: command=$command")
     }
 
     @Throws(IOException::class)
     private fun copyStarter(context: Context, out: File): String {
         val so = LibUtils.getLibEntryName("starter")
+        Log.i("CleanerTest", "Starter.copyStarter: so=$so, out=${out.absolutePath}")
         ZipFile(LibUtils.getLibSourceDir(context.applicationInfo)).use { apk ->
             val entry = apk.getEntry(so) ?: throw NoSuchFileException(File(so))
             apk.getInputStream(entry).use { input ->
@@ -26,6 +30,8 @@ object Starter {
                     input.copyTo(output)
                 }
             }
+            out.setExecutable(true)
+            out.setReadable(true)
             return out.absolutePath
         }
     }
@@ -35,8 +41,11 @@ object Starter {
         if (!out.exists()) {
             out.createNewFile()
         }
-        val script = "#!/system/bin/sh\nexport LD_LIBRARY_PATH=\"\$(dirname \"\$0\")\"\nexec \"$starter\" --apk=\"@SOURCE@\"\n"
-        out.writeText(script.replace("@SOURCE@", "\"$starter\""))
+        val apkPath = context.applicationInfo.sourceDir
+        val script = "#!/system/bin/sh\nexec \"$starter\" --apk=\"$apkPath\"\n"
+        Log.i("CleanerTest", "Starter.writeScript: apkPath=$apkPath, script=$script")
+        out.writeText(script)
+        out.setExecutable(true)
         return out.absolutePath
     }
 

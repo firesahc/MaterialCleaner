@@ -1,6 +1,7 @@
 package me.gm.cleaner.client.ui
 
 import android.content.pm.PackageManager
+import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -13,12 +14,25 @@ import me.gm.cleaner.model.PackageStatus
 class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default) {
 
     suspend fun load(): List<AppListModel> = withContext(defaultDispatcher) {
-        val installedPackages = CleanerClient.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        Log.i("CleanerTest", "AppListLoader.load: start loading packages")
+        val installedPackages = try {
+            CleanerClient.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        } catch (e: Exception) {
+            Log.e("CleanerTest", "AppListLoader.load: failed to load packages", e)
+            emptyList()
+        }
+        Log.i("CleanerTest", "AppListLoader.load: installedPackages=${installedPackages.size}")
         AppLabelCache.updatePackageLabelCacheInBulk(installedPackages, true)
-        val srPackageStatus = CleanerClient.service?.getSrPackagesStatus(
-            PackageStatus.GET_FROM_ALL_PROCESS
-        ) ?: emptyMap()
-        installedPackages.map { pi ->
+        val srPackageStatus = try {
+            CleanerClient.service?.getSrPackagesStatus(
+                PackageStatus.GET_FROM_ALL_PROCESS
+            ) ?: emptyMap()
+        } catch (e: Exception) {
+            Log.e("CleanerTest", "AppListLoader.load: failed to load srPackageStatus", e)
+            emptyMap()
+        }
+        Log.i("CleanerTest", "AppListLoader.load: srPackageStatus size=${srPackageStatus.size}")
+        val result = installedPackages.map { pi ->
             ensureActive()
             AppListModel(
                 pi,
@@ -28,6 +42,8 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
                 parseMountState(srPackageStatus[pi.packageName])
             )
         }
+        Log.i("CleanerTest", "AppListLoader.load: result=${result.size} apps")
+        result
     }
 
     private fun parseMountState(packageStatus: PackageStatus?): Int {

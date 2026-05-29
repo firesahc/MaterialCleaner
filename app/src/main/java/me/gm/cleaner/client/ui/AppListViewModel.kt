@@ -2,15 +2,21 @@ package me.gm.cleaner.client.ui
 
 import android.app.Application
 import android.content.pm.ApplicationInfo
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.collatorComparator
 
@@ -18,6 +24,9 @@ class AppListViewModel(application: Application) : BaseServiceSettingsViewModel(
     private val _appsFlow: MutableStateFlow<AppListState> = MutableStateFlow(AppListState.Loading)
     val isDone: Boolean
         get() = _appsFlow.value is AppListState.Done
+
+    /** Expose queryText changes for logging (debug only). */
+    val queryTextFlow: Flow<String> get() = _queryTextFlow
 
     private val _uninstalledPackagesLiveData: MutableLiveData<List<String>> =
         MutableLiveData<List<String>>(emptyList())
@@ -79,10 +88,55 @@ class AppListViewModel(application: Application) : BaseServiceSettingsViewModel(
         AppListState.Done(sequence.toList())
     }
 
+    private suspend fun tryStartServer() {
+        if (CleanerClient.pingBinder()) {
+            Log.d("CleanerTest", "tryStartServer: server already running, pingBinder=true")
+            return
+        }
+        Log.d("CleanerTest", "tryStartServer: server not running, attempting to start")
+        withContext(Dispatchers.IO) {
+            try {
+                val shell = Shell.getShell()
+                Log.d("CleanerTest", "tryStartServer: shell.isRoot=${shell.isRoot}")
+                if (!shell.isRoot) {
+                    Log.w("CleanerTest", "tryStartServer: no root access, cannot start server")
+                    return@withContext
+                }
+                Starter.writeDataFiles(getApplication())
+                val result = Shell.cmd(Starter.command).exec()
+                Log.d("CleanerTest", "tryStartServer: result.isSuccess=${result.isSuccess}")
+                if (!result.isSuccess) {
+                    Log.e("CleanerTest", "tryStartServer: starter command failed: ${result.err.joinToString()}")
+                    return@withContext
+                }
+                // Wait for the server to start and send the binder
+                var retries = 0
+                while (!CleanerClient.pingBinder() && retries < 20) {
+                    delay(500)
+                    retries++
+                }
+                Log.i("CleanerTest", "tryStartServer: server connected after ${retries} retries")
+            } catch (e: Exception) {
+                Log.e("CleanerTest", "tryStartServer: exception", e)
+            }
+        }
+    }
+
     fun loadApps() {
         viewModelScope.launch {
+            Log.i("CleanerTest", "AppListViewModel.loadApps: start")
             _appsFlow.value = AppListState.Loading
-            val list = AppListLoader().load()
+
+            // Try to start the server if not running
+            tryStartServer()
+
+            val list = try {
+                AppListLoader().load()
+            } catch (e: Exception) {
+                Log.e("CleanerTest", "AppListViewModel.loadApps: failed to load apps", e)
+                emptyList()
+            }
+            Log.i("CleanerTest", "AppListViewModel.loadApps: list.size=${list.size}")
 
             val installedPackages = list
                 .asSequence()
@@ -92,6 +146,7 @@ class AppListViewModel(application: Application) : BaseServiceSettingsViewModel(
                 (ServicePreferences.getUninstalledSrPackages(installedPackages) +
                         ServicePreferences.getUninstalledReadOnlyPackages(installedPackages) +
                         ServicePreferences.denylist.toSet() - installedPackages).distinct()
+            Log.i("CleanerTest", "AppListViewModel.loadApps: uninstalledPackages=${uninstalledPackages.size}")
             if (uninstalledPackages.isNotEmpty()) {
                 _uninstalledPackagesLiveData.postValue(uninstalledPackages.toMutableList())
             }

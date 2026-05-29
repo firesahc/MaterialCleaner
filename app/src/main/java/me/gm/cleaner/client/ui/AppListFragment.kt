@@ -1,6 +1,7 @@
 package me.gm.cleaner.client.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -9,9 +10,13 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.MenuCompat
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.asLiveData
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy
+import kotlinx.coroutines.launch
 import me.gm.cleaner.R
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
@@ -92,6 +97,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
         ServicePreferences.preferencesChangeLiveData.observe(viewLifecycleOwner) {
             viewModel.updateAppsRuleCount()
         }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.queryTextFlow.collect { queryText ->
+                    Log.i("CleanerTest", "AppListFragment: search query='$queryText'")
+                }
+            }
+        }
         super.onCreateView(inflater, container, savedInstanceState)
         return binding.root
     }
@@ -130,11 +142,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
             R.id.menu_sort_by_name -> {
                 item.isChecked = true
                 ServicePreferences.sortBy = ServicePreferences.SORT_BY_NAME
+                Log.i("CleanerTest", "AppListFragment: sortBy=SORT_BY_NAME")
             }
 
             R.id.menu_sort_by_update_time -> {
                 item.isChecked = true
                 ServicePreferences.sortBy = ServicePreferences.SORT_BY_UPDATE_TIME
+                Log.i("CleanerTest", "AppListFragment: sortBy=SORT_BY_UPDATE_TIME")
             }
 
             R.id.menu_rule_count -> {
@@ -153,18 +167,21 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 val isHideSystemApp = !item.isChecked
                 item.isChecked = isHideSystemApp
                 ServicePreferences.isHideSystemApp = isHideSystemApp
+                Log.i("CleanerTest", "AppListFragment: hideSystemApp=$isHideSystemApp")
             }
 
             R.id.menu_hide_disabled_app -> {
                 val isHideDisabledApp = !item.isChecked
                 item.isChecked = isHideDisabledApp
                 ServicePreferences.isHideDisabledApp = isHideDisabledApp
+                Log.i("CleanerTest", "AppListFragment: hideDisabledApp=$isHideDisabledApp")
             }
 
             R.id.menu_hide_no_storage_permissions -> {
                 val isHideNoStoragePermissionApp = !item.isChecked
                 item.isChecked = isHideNoStoragePermissionApp
                 ServicePreferences.isHideNoStoragePermissionApp = isHideNoStoragePermissionApp
+                Log.i("CleanerTest", "AppListFragment: hideNoStoragePermission=$isHideNoStoragePermissionApp")
             }
 
             R.id.menu_refresh -> {

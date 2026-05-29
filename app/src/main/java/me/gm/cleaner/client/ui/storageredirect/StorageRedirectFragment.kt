@@ -120,6 +120,7 @@ class StorageRedirectFragment : BaseFragment() {
         val wizardAdapter = WizardAdapter(this, viewModel)
 
         viewModel.modeLiveData.observe(viewLifecycleOwner) { mode ->
+            Log.i("CleanerTest", "StorageRedirect: mode=$mode")
             val dynamicAdapters = listOf(mountRuleTitleAdapter, mountRulesAdapter, wizardAdapter)
             val currentAdapters = when (mode) {
                 is Mode.Welcome -> emptyList()
@@ -455,6 +456,7 @@ class StorageRedirectFragment : BaseFragment() {
         }
 
         R.id.menu_delete_all_mount_rules -> {
+            Log.i("CleanerTest", "StorageRedirect: delete all mount rules")
             viewModel.updateMountRules {
                 clear()
                 add(null to null)
@@ -491,6 +493,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
 
             SAVE_AND_EXIT -> {
+                Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
                         viewModel.writeMountRules()
@@ -510,6 +513,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
 
             SAVE_AND_REMOUNT_AND_EXIT -> {
+                Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
                         viewModel.writeMountRules()

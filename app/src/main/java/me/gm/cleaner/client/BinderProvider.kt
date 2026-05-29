@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import me.gm.cleaner.dao.SecurityHelper
 
 class BinderProvider : ContentProvider() {
@@ -15,6 +16,8 @@ class BinderProvider : ContentProvider() {
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        Log.d("MC/Test", "BinderProvider.call: method=$method")
+        Log.d("CleanerTest", "BinderProvider.call: method=$method, arg=$arg")
         if (extras == null) return null
         val reply = Bundle()
         if (METHOD_SEND_BINDER == method) {
@@ -24,9 +27,14 @@ class BinderProvider : ContentProvider() {
     }
 
     private fun handleSendBinder(extras: Bundle) {
+        val binder = extras.getBinder(EXTRA_BINDER)
+        Log.i("MC/Test", "handleSendBinder: currentPingBinder=${CleanerClient.pingBinder()}, hasBinder=${binder != null}")
+        Log.i("CleanerTest", "handleSendBinder: pingBinder=${CleanerClient.pingBinder()}, binder=$binder")
         if (CleanerClient.pingBinder()) return
-        val binder = extras.getBinder(EXTRA_BINDER) ?: return
+        if (binder == null) return
+        Log.i("MC/Test", "handleSendBinder: passing binder to CleanerClient")
         CleanerClient.onBinderReceived(binder)
+        Log.i("CleanerTest", "handleSendBinder: binder received successfully")
     }
 
     // no other provider methods
