@@ -28,6 +28,8 @@
     <string name="menu_hide_pick_apps">选择应用</string>
     <string name="menu_batch_operation">批量操作</string>
     <string name="menu_select_all">全选</string>
+    <string name="menu_open">打开</string>
+    <string name="menu_copy">复制</string>
     <string name="menu_invert_selection">反选</string>
     <string name="menu_unselect_all">全不选</string>
     <string name="menu_hide_app_specific_storage">应用专属存储空间</string>
