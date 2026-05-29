@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.ArrayMap
 import android.util.ArraySet
+import android.util.Log
 import androidx.core.os.postDelayed
 import api.SystemService
 import com.google.common.collect.Multimaps
@@ -71,6 +72,7 @@ class Mounter {
     private fun getMkdirList(rules: MountRules): List<String> = rules.mountPoint + rules.sources
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
+        Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid")
         val enableRelatime = ServicePreferences.enableRelatime &&
                 !ServicePreferences.denylist.contains(packageName)
         val recordExternalAppSpecificStorage =
@@ -103,6 +105,8 @@ class Mounter {
             !isFuseBpfEnabled && recordExternalAppSpecificStorage, isFuseBpfEnabled,
             rules.sources.toTypedArray(), rules.targets.toTypedArray()
         )
+        Log.i("MC_REDIRECT", "[Mounter] bindMount result=$ret pkg=$packageName pid=$pid " +
+                "sources=${rules.sources} targets=${rules.targets}")
         if (ret) {
             mountFailedPids.remove(pid)
         } else {

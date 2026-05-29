@@ -27,6 +27,8 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     public void whileAlive(Consumer<ICleanerServerCallback> c) {
         if (mCleanerServerBinder != null) {
             c.accept(mCleanerServerBinder);
+        } else {
+            Log.w("MC_REDIRECT", "[MediaProviderHooksService] whileAlive: mCleanerServerBinder is NULL! Callback dropped.");
         }
     }
 
@@ -37,11 +39,12 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
 
     @Override
     public void setCleanerServerBinder(ICleanerServerCallback iinterface) {
+        Log.i("MC_REDIRECT", "[MediaProviderHooksService] setCleanerServerBinder called, binder=" + (iinterface != null));
         mCleanerServerBinder = iinterface;
         try {
             iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
         } catch (final RemoteException e) {
-            Log.e("MediaProviderHooksSvc", "error", e);
+            Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
         }
     }
 

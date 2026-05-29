@@ -22,10 +22,12 @@ public class XposedInit implements IXposedHookLoadPackage {
             final var mediaProviderClass = XposedHelpers.findClass(
                     "com.android.providers.media.MediaProvider", lpparam.classLoader
             );
+            Log.i("MC_REDIRECT", "[XposedInit] MediaProvider class found, registering hooks...");
             CleanerHooksBinderRetriever.registerHooksCallback(context, mediaProviderHooksService);
             new MediaProviderHook(mediaProviderHooksService, lpparam.classLoader, mediaProviderClass);
+            Log.i("MC_REDIRECT", "[XposedInit] MediaProviderHook created successfully");
         } catch (XposedHelpers.ClassNotFoundError e) {
-            Log.e("XposedInit", "MediaProvider hook setup failed", e);
+            Log.e("MC_REDIRECT", "[XposedInit] MediaProvider hook setup FAILED", e);
         }
     }
 
@@ -35,10 +37,13 @@ public class XposedInit implements IXposedHookLoadPackage {
             // MediaProvider must be a system app.
             return;
         }
+        Log.i("MC_REDIRECT", "[XposedInit] Loading inline lib for package: " + lpparam.packageName);
         try {
             System.loadLibrary("inline");
             InlineHookConfig.INSTANCE.initializeXHook();
+            Log.i("MC_REDIRECT", "[XposedInit] libinline loaded and xhook initialized");
         } catch (UnsatisfiedLinkError e) {
+            Log.e("MC_REDIRECT", "[XposedInit] Failed to load inline library!", e);
             throw new UnsatisfiedLinkError("Failed to load inline library");
         }
         XposedHelpers.findAndHookMethod(ContentProvider.class, "attachInfo",
@@ -49,6 +54,7 @@ public class XposedInit implements IXposedHookLoadPackage {
                         final var providerInfo = (ProviderInfo) param.args[1];
 
                         if (MediaStore.AUTHORITY.equals(providerInfo.authority)) {
+                            Log.i("MC_REDIRECT", "[XposedInit] Detected MediaProvider loading, package=" + lpparam.packageName);
                             onMediaProviderLoaded(lpparam, context);
                         }
                     }

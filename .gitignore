@@ -13,3 +13,9 @@ build
 
 # Xposed module generated dex
 app/src/main/assets/main.jar
+
+# Build artifacts
+all_methods.txt
+all_methods2.txt
+server/libs/
+build_tmp_mainjar/

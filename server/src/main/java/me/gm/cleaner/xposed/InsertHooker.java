@@ -85,6 +85,7 @@ public class InsertHooker extends XC_MethodHook {
     @Override
     protected void beforeHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
         if (mHook.isFuseThread()) {
+            Log.d("MC_REDIRECT", "[InsertHooker] Skipping - on FUSE thread");
             return;
         }
         /** ARGUMENTS */
@@ -133,16 +134,21 @@ public class InsertHooker extends XC_MethodHook {
         }
 
         /** REDIRECT */
+        final var callingPkg = mHook.getCallingPackage(param.thisObject);
+        final var originalData = data;
         mService.whileAlive(service -> {
             try {
                 final var mountedPath = service.getMountedPath(
-                        mHook.getCallingPackage(param.thisObject), data, TYPE_INSERT);
+                        callingPkg, data, TYPE_INSERT);
+                Log.i("MC_REDIRECT", "[InsertHooker] getMountedPath pkg=" + callingPkg
+                        + " original=" + originalData + " mounted=" + mountedPath);
                 if (mountedPath != null && !data.equals(mountedPath) &&
                         TextUtils.isEmpty(extractPathOwnerPackageName(mountedPath))) {
                     values.put(MediaStore.MediaColumns.DATA, mountedPath);
+                    Log.i("MC_REDIRECT", "[InsertHooker] PATH REDIRECTED: " + originalData + " -> " + mountedPath);
                 }
             } catch (RemoteException e) {
-                Log.e("InsertHooker", "error", e);
+                Log.e("MC_REDIRECT", "[InsertHooker] getMountedPath error", e);
             }
         });
     }

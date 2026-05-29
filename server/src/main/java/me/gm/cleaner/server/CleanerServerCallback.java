@@ -55,12 +55,15 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         try {
             path = new File(path).getCanonicalPath();
         } catch (final IOException e) {
-            Log.w("SrvCallback", "getCanonicalPath failed", e);
+            Log.w("MC_REDIRECT", "[ServerCallback] getCanonicalPath failed", e);
         }
         final var userId = FileUtils.INSTANCE.extractUserIdFromPath(path, 0);
         final var ruleZipped = ServicePreferences.INSTANCE
                 .getPackageSrZipped(packageName, userId);
         final var mountedPath = new MountRules(ruleZipped).getMountedPath(path);
+        Log.i("MC_REDIRECT", "[ServerCallback] getMountedPath pkg=" + packageName
+                + " original=" + path + " mounted=" + mountedPath
+                + " rules=" + ruleZipped.size() + " type=" + type);
         if (!path.equals(mountedPath) &&
                 FileUtils.INSTANCE.isKnownAppDirPaths(mountedPath, packageName) &&
                 !ServicePreferences.INSTANCE.getDenylist().contains(packageName) &&
