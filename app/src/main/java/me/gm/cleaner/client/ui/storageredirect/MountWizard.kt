@@ -183,7 +183,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
     fun bindButton(
         binding: StorageRedirectCategoryMountButtonsWizardBinding,
         fragment: StorageRedirectFragment,
-        appTypeMarks: () -> AppTypeMarks?,
+        appTypeMarks: () -> AppCategory?,
     ) {
         binding.autoCompleteByRecord.isVisible = CleanerClient.pingBinder()
         binding.autoCompleteByRecord.setOnClickListener {
@@ -192,7 +192,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
                     CleanerClient.service?.queryDistinctRecordsInclude(arrayOf(packageName))?.list ?: emptyList()
                 }
                 val rationale = withContext(Dispatchers.Default) {
-                    answerBasedOnRecord(answers, record, appTypeMarks())
+                    answerBasedOnRecord(answers, record, appCategory())
                 }
                 val title = fragment.getString(
                     R.string.auto_complete_by_record_rationale_title, rationale.recordCount
@@ -513,7 +513,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
     }
 
     fun answerBasedOnRecord(
-        answers: WizardAnswers, record: List<FileSystemEvent>, appTypeMarks: AppTypeMarks?
+        answers: WizardAnswers, record: List<FileSystemEvent>, appTypeMarks: AppCategory?
     ): AutoAnswerRationale {
         // load record
         val hasStoragePermissions = PermissionUtils.containsStoragePermissions(packageInfo)
@@ -541,10 +541,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 }
             }
         }
-        if (appTypeMarks != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
-            when (appTypeMarks.type) {
+        if (appCategory != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
+            when (appCategory.type) {
                 AppType.DOWNLOAD -> {
-                    val marks = appTypeMarks.marks
+                    val marks = appCategory.marks
                     usefulRecords = usefulRecords.filterNot { event ->
                         val path = FileUtils.getPathAsUser(event.path, 0)
                         marks.any { mark -> FileUtils.startsWith(mark, path) }
@@ -703,9 +703,9 @@ class MountWizard(private val packageInfo: PackageInfo) {
             }
         }
         // result
-        if (appTypeMarks != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
-            val marks = appTypeMarks.marks
-            when (appTypeMarks.type) {
+        if (appCategory != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
+            val marks = appCategory.marks
+            when (appCategory.type) {
                 AppType.DOWNLOAD -> {
                     val targets = answers.mountRules().unzip().second
                     mountRules += marks

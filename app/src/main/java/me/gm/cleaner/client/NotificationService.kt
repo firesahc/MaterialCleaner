@@ -24,7 +24,7 @@ import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.net.OnlineAppTypeMarks
+import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.util.PermissionUtils.notifySafe
@@ -40,7 +40,7 @@ class NotificationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent ?: return super.onStartCommand(intent, flags, startId)
         if (intent.hasExtra(Intent.EXTRA_INTENT)) {
-            /** from [ServerReceiver] */
+            /** from [ServerBridgeActivity] */
             onReceive(this, intent.getParcelableExtraCompat(Intent.EXTRA_INTENT)!!)
         } else {
             /** from [android.app.Notification.actions] */
@@ -144,7 +144,7 @@ class NotificationService : Service() {
                 CleanerClient.service?.notifySrChanged()
                 buildPackageAddedNotification(context, packageInfo)
                 MainScope().launch {
-                    OnlineAppTypeMarks.fetch(context, packageInfo).onSuccess { appTypeMarks ->
+                    OnlineAppCategory.fetch(context, packageInfo).onSuccess { appTypeMarks ->
                         appTypeMarks ?: return@onSuccess
                         wizard.answerBasedOnRecord(answers, emptyList(), appTypeMarks)
 

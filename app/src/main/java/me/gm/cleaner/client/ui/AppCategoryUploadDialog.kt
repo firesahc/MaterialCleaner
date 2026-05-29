@@ -8,7 +8,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.R
 import me.gm.cleaner.util.getSerializableCompat
 
-class AppsTypeMarksUploadDialog : AppCompatDialogFragment() {
+class AppCategoryUploadDialog : AppCompatDialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val downloadApps = requireArguments()
@@ -17,7 +17,7 @@ class AppsTypeMarksUploadDialog : AppCompatDialogFragment() {
             .map { (packageName, dirs) ->
                 val paths = dirs.joinToString("\n")
                 getString(
-                    R.string.upload_apps_type_marks_hint,
+                    R.string.upload_app_category_hint,
                     packageName,
                     getString(R.string.storage_redirect_download_type),
                     paths
@@ -27,20 +27,20 @@ class AppsTypeMarksUploadDialog : AppCompatDialogFragment() {
         val checkedItems = entries.map { true }.toBooleanArray()
 
         return MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.upload_apps_type_marks_title)
+            .setTitle(R.string.upload_app_category_title)
             .setMultiChoiceItems(entries, checkedItems) { _, which, isChecked ->
                 checkedItems[which] = isChecked
             }
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                val rawAppsTypeMarks = arrayListOf<Pair<String, String>>()
+                val rawAppCategory = arrayListOf<Pair<String, String>>()
                 downloadApps.forEachIndexed { index, (packageName, dirs) ->
                     if (checkedItems[index]) {
                         val content = YamlDumper.dump("Download", 1L, dirs)
-                        rawAppsTypeMarks += packageName to content
+                        rawAppCategory += packageName to content
                     }
                 }
-                AppsTypeMarksUploadProgressDialog
-                    .newInstance(rawAppsTypeMarks)
+                AppCategoryUploadProgressDialog
+                    .newInstance(rawAppCategory)
                     .show(parentFragmentManager, null)
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -50,8 +50,8 @@ class AppsTypeMarksUploadDialog : AppCompatDialogFragment() {
     companion object {
         private const val KEY_VALUES: String = "me.gm.cleaner.key.values"
 
-        fun newInstance(downloadApps: LinkedHashMap<String, List<String>>): AppsTypeMarksUploadDialog =
-            AppsTypeMarksUploadDialog().apply {
+        fun newInstance(downloadApps: LinkedHashMap<String, List<String>>): AppCategoryUploadDialog =
+            AppCategoryUploadDialog().apply {
                 arguments = bundleOf(KEY_VALUES to downloadApps)
             }
     }

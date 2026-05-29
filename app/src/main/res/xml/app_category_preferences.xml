@@ -2,30 +2,30 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <PreferenceCategory
-        android:title="@string/apps_type_marks_repo_header"
+        android:title="@string/app_category_repo_header"
         app:iconSpaceReserved="false">
 
         <EditTextPreference
-            android:defaultValue="@string/apps_type_marks_default"
-            android:key="@string/apps_type_marks_repo_key"
-            android:summary="@string/apps_type_marks_repo_summary"
-            android:title="@string/apps_type_marks_repo_title"
+            android:defaultValue="@string/app_category_default"
+            android:key="@string/app_category_repo_key"
+            android:summary="@string/app_category_repo_summary"
+            android:title="@string/app_category_repo_title"
             app:iconSpaceReserved="false" />
 
         <Preference
-            android:key="@string/apps_type_marks_refresh_key"
-            android:title="@string/apps_type_marks_refresh_title"
+            android:key="@string/app_category_refresh_key"
+            android:title="@string/app_category_refresh_title"
             app:iconSpaceReserved="false" />
 
         <Preference
-            android:key="@string/upload_apps_type_marks_key"
-            android:title="@string/upload_apps_type_marks_title"
+            android:key="@string/upload_app_category_key"
+            android:title="@string/upload_app_category_title"
             app:iconSpaceReserved="false" />
 
         <Preference
-            android:key="@string/apps_type_marks_repo_correct_errors_key"
-            android:summary="@string/apps_type_marks_repo_correct_errors_summary"
-            android:title="@string/apps_type_marks_repo_correct_errors_title"
+            android:key="@string/app_category_repo_correct_errors_key"
+            android:summary="@string/app_category_repo_correct_errors_summary"
+            android:title="@string/app_category_repo_correct_errors_title"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 

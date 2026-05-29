@@ -288,7 +288,7 @@ class ButtonsAdapter(
                 binding.welcome.root.isVisible = false
                 binding.questions.root.isVisible = true
                 viewModel.wizard.bindButton(binding.questions, fragment) {
-                    viewModel.appTypeMarks.getOrNull()
+                    viewModel.appCategory.getOrNull()
                 }
                 binding.questions.submit.setOnClickListener {
                     viewModel.updateMountRules {

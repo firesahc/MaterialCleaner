@@ -1,6 +1,6 @@
 package me.gm.cleaner.client.ui.storageredirect
 
-class AppTypeMarks(yaml: Map<String, Any>, versionCode: Long) {
+class AppCategory(yaml: Map<String, Any>, versionCode: Long) {
     @AppType
     val type: Int = when (yaml["type"]) {
         "Download" -> AppType.DOWNLOAD

@@ -12,16 +12,16 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.client.CleanerClient
-import me.gm.cleaner.net.OnlineAppTypeMarks
+import me.gm.cleaner.net.OnlineAppCategory
 import java.util.concurrent.atomic.AtomicInteger
 
-class AppsTypeMarksRefreshCacheProgressViewModel(private val application: Application) :
+class AppCategoryCacheSyncViewModel(private val application: Application) :
     AndroidViewModel(application) {
-    private val _progressLiveData: MutableLiveData<AppsTypeMarksRefreshCacheState> =
-        MutableLiveData<AppsTypeMarksRefreshCacheState>(
-            AppsTypeMarksRefreshCacheState.Downloading(0, "")
+    private val _progressLiveData: MutableLiveData<AppCategoryCacheSyncState> =
+        MutableLiveData<AppCategoryCacheSyncState>(
+            AppCategoryCacheSyncState.Downloading(0, "")
         )
-    val progressLiveData: LiveData<AppsTypeMarksRefreshCacheState>
+    val progressLiveData: LiveData<AppCategoryCacheSyncState>
         get() = _progressLiveData
 
     init {
@@ -36,7 +36,7 @@ class AppsTypeMarksRefreshCacheProgressViewModel(private val application: Applic
                     val packageName = packageInfo.packageName
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            OnlineAppTypeMarks.buildURL(application, packageName)
+                            OnlineAppCategory.buildURL(application, packageName)
                                 .invalidate()
                                 .openStream()
                                 .close()
@@ -45,7 +45,7 @@ class AppsTypeMarksRefreshCacheProgressViewModel(private val application: Applic
                         // onFailure means the marks not exist
                     }
                     _progressLiveData.postValue(
-                        AppsTypeMarksRefreshCacheState.Downloading(
+                        AppCategoryCacheSyncState.Downloading(
                             100 * finishedCount.incrementAndGet() / installedNonSystemApps.size,
                             packageName
                         )
@@ -53,14 +53,14 @@ class AppsTypeMarksRefreshCacheProgressViewModel(private val application: Applic
                 }
             }
             jobs.joinAll()
-            _progressLiveData.postValue(AppsTypeMarksRefreshCacheState.Done)
+            _progressLiveData.postValue(AppCategoryCacheSyncState.Done)
         }
     }
 }
 
-sealed class AppsTypeMarksRefreshCacheState {
+sealed class AppCategoryCacheSyncState {
     data class Downloading(val progress: Int, val packageName: String) :
-        AppsTypeMarksRefreshCacheState()
+        AppCategoryCacheSyncState()
 
-    data object Done : AppsTypeMarksRefreshCacheState()
+    data object Done : AppCategoryCacheSyncState()
 }

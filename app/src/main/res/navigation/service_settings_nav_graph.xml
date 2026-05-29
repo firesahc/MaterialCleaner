@@ -15,8 +15,8 @@
             app:popEnterAnim="@anim/slide_down_background"
             app:popExitAnim="@anim/slide_down" />
         <action
-            android:id="@+id/service_settings_to_apps_type_marks_settings_action"
-            app:destination="@id/apps_type_marks_settings_fragment"
+            android:id="@+id/service_settings_to_app_category_settings_action"
+            app:destination="@id/app_category_settings_fragment"
             app:enterAnim="@anim/nav_default_enter_anim"
             app:exitAnim="@anim/nav_default_exit_anim"
             app:popEnterAnim="@anim/nav_default_pop_enter_anim"
@@ -40,9 +40,9 @@
     </fragment>
 
     <fragment
-        android:id="@+id/apps_type_marks_settings_fragment"
-        android:name="me.gm.cleaner.client.ui.AppsTypeMarksSettingsFragmentStub"
-        android:label="@string/apps_type_marks_title" />
+        android:id="@+id/app_category_settings_fragment"
+        android:name="me.gm.cleaner.client.ui.AppCategorySettingsFragmentStub"
+        android:label="@string/app_category_title" />
 
     <fragment
         android:id="@+id/mount_app_picker_fragment"

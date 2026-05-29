@@ -10,10 +10,10 @@ import java.util.concurrent.CopyOnWriteArraySet
 abstract class BaseProcessObserver : BaseObserver() {
     protected val mounter: Mounter = Mounter()
 
-    val mountedEmulatedStorage: CopyOnWriteArraySet<Int> = CopyOnWriteArraySet()
+    val mountedStorage: CopyOnWriteArraySet<Int> = CopyOnWriteArraySet()
 
     protected fun isMounterActiveForUser(userId: Int): Boolean =
-        mountedEmulatedStorage.contains(userId)
+        mountedStorage.contains(userId)
 
     protected fun isMounterActiveForUid(uid: Int): Boolean = isMounterActiveForUser(uid.toUserId())
 

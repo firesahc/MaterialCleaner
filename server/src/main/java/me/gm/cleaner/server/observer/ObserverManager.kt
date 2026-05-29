@@ -12,7 +12,7 @@ object ObserverManager {
     fun startAllObservers(server: CleanerServer) {
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "startAllObservers")
         val observers = mutableListOf<BaseObserver>()
-        observers += EmulatedStorageMountObserver()
+        observers += StorageMountObserver()
         observers += ActivityManagerLogsObserver(server)
         if (CleanerHooksClient.pingBinder()) {
             observers += FileSystemObserver(server)

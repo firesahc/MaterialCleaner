@@ -274,7 +274,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
         }
 
-        viewModel.appTypeMarksLiveData.observe(viewLifecycleOwner) { appTypeMarks ->
+        viewModel.appCategoryLiveData.observe(viewLifecycleOwner) { appCategory ->
             setHasOptionsMenu(false)
             setHasOptionsMenu(true)
         }
@@ -293,19 +293,19 @@ class StorageRedirectFragment : BaseFragment() {
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         super.onCreateOptionsMenu(menu, inflater)
         menu.clear()
-        when (viewModel.appTypeMarks) {
+        when (viewModel.appCategory) {
             is NetworkConnectionState.Loading -> {
-                inflater.inflate(R.menu.toolbar_app_type_marks, menu)
-                menu.findItem(R.id.menu_apps_type_marks).setIcon(R.drawable.outline_refresh_24)
+                inflater.inflate(R.menu.toolbar_app_category, menu)
+                menu.findItem(R.id.menu_app_category).setIcon(R.drawable.outline_refresh_24)
             }
 
-            is NetworkConnectionState.Success -> if (viewModel.appTypeMarks.getOrNull() != null) {
-                inflater.inflate(R.menu.toolbar_app_type_marks, menu)
+            is NetworkConnectionState.Success -> if (viewModel.appCategory.getOrNull() != null) {
+                inflater.inflate(R.menu.toolbar_app_category, menu)
             }
 
             is NetworkConnectionState.Failure -> {
-                inflater.inflate(R.menu.toolbar_app_type_marks, menu)
-                menu.findItem(R.id.menu_apps_type_marks)
+                inflater.inflate(R.menu.toolbar_app_category, menu)
+                menu.findItem(R.id.menu_app_category)
                     .setIcon(R.drawable.outline_error_outline_24)
             }
         }
@@ -379,8 +379,8 @@ class StorageRedirectFragment : BaseFragment() {
             true
         }
 
-        R.id.menu_apps_type_marks -> {
-            when (viewModel.appTypeMarks) {
+        R.id.menu_app_category -> {
+            when (viewModel.appCategory) {
                 is NetworkConnectionState.Loading -> {
                     InfoDialog
                         .newInstance(getString(R.string.loading))
@@ -388,34 +388,34 @@ class StorageRedirectFragment : BaseFragment() {
                 }
 
                 is NetworkConnectionState.Success -> {
-                    val appTypeMarks = viewModel.appTypeMarks.getOrNull()
-                    if (appTypeMarks != null) {
-                        val paths = appTypeMarks.marks.joinToString("\n")
-                        val hint = when (appTypeMarks.type) {
+                    val appCategory = viewModel.appCategory.getOrNull()
+                    if (appCategory != null) {
+                        val paths = appCategory.marks.joinToString("\n")
+                        val hint = when (appCategory.type) {
                             AppType.COMMON -> getString(
-                                R.string.storage_redirect_apps_type_marks_hint,
+                                R.string.storage_redirect_app_category_hint,
                                 getString(R.string.storage_redirect_common_type),
                                 getString(R.string.storage_redirect_common_rationale),
                                 paths
                             )
 
                             AppType.DOWNLOAD -> getString(
-                                R.string.storage_redirect_apps_type_marks_hint,
+                                R.string.storage_redirect_app_category_hint,
                                 getString(R.string.storage_redirect_download_type),
                                 getString(R.string.storage_redirect_download_rationale),
                                 paths
                             )
 
                             AppType.ALL_FILES_ACCESS -> getString(
-                                R.string.storage_redirect_apps_type_marks_hint,
+                                R.string.storage_redirect_app_category_hint,
                                 getString(R.string.storage_redirect_all_files_access_type),
                                 getString(R.string.storage_redirect_all_files_access_rationale),
                                 paths
                             )
 
-                            else -> getString(R.string.storage_redirect_apps_type_marks_err)
+                            else -> getString(R.string.storage_redirect_app_category_err)
                         } + if (ServiceMoreOptionsPreferences.isUsingDefaultRepo) {
-                            getString(R.string.storage_redirect_apps_type_marks_default_repo_hint)
+                            getString(R.string.storage_redirect_app_category_default_repo_hint)
                         } else {
                             ""
                         }

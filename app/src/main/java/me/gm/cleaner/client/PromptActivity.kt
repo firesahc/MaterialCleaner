@@ -6,7 +6,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.settings.theme.ThemeUtil
 
-class PromptActivity : AbsPromptActivity() {
+class PromptActivity : BasePromptActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (RootPreferences.material3) {

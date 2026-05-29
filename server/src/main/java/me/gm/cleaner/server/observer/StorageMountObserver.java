@@ -4,14 +4,14 @@ import androidx.annotation.CallSuper;
 
 import api.SystemService;
 
-public class EmulatedStorageMountObserver extends BaseObserver {
-    private final EmulatedStorageEventListenerAdapter mListener = new EmulatedStorageEventListenerAdapter();
+public class StorageMountObserver extends BaseObserver {
+    private final StorageEventListenerDelegate mListener = new StorageEventListenerDelegate();
 
-    public void registerListener(final IEmulatedStorageEventListener listener) {
+    public void registerListener(final IStorageEventListener listener) {
         mListener.registerListener(listener);
     }
 
-    public void unregisterListener(final IEmulatedStorageEventListener listener) {
+    public void unregisterListener(final IStorageEventListener listener) {
         mListener.unregisterListener(listener);
     }
 

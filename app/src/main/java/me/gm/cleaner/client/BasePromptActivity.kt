@@ -34,7 +34,7 @@ import java.io.File
 import kotlin.io.path.Path
 import kotlin.io.path.pathString
 
-abstract class AbsPromptActivity : AppCompatActivity() {
+abstract class BasePromptActivity : AppCompatActivity() {
     private lateinit var packageInfo: PackageInfo
     private lateinit var recommendMountRuleToken: Pair<String, String>
     private lateinit var dialog: AlertDialog
@@ -49,7 +49,7 @@ abstract class AbsPromptActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent.hasExtra(Intent.EXTRA_INTENT)) {
-            /** from [ServerReceiver] */
+            /** from [ServerBridgeActivity] */
             onReceive(intent.getParcelableExtraCompat(Intent.EXTRA_INTENT)!!)
         }
     }

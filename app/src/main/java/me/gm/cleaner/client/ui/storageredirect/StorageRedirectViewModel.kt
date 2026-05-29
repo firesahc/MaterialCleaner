@@ -29,7 +29,7 @@ import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.net.NetworkConnectionState
-import me.gm.cleaner.net.OnlineAppTypeMarks
+import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.widget.recyclerview.DiffArrayList
 
@@ -321,14 +321,14 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         }
     }
 
-    private val _appTypeMarksFlow: MutableStateFlow<NetworkConnectionState<AppTypeMarks?>> =
+    private val _appCategoryFlow: MutableStateFlow<NetworkConnectionState<AppCategory?>> =
         MutableStateFlow(NetworkConnectionState.Loading())
-    val appTypeMarksLiveData: LiveData<NetworkConnectionState<AppTypeMarks?>> =
-        _appTypeMarksFlow.asLiveData()
-    var appTypeMarks: NetworkConnectionState<AppTypeMarks?>
-        get() = _appTypeMarksFlow.value
+    val appCategoryLiveData: LiveData<NetworkConnectionState<AppCategory?>> =
+        _appCategoryFlow.asLiveData()
+    var appCategory: NetworkConnectionState<AppCategory?>
+        get() = _appCategoryFlow.value
         private set(value) {
-            _appTypeMarksFlow.value = value
+            _appCategoryFlow.value = value
         }
 
     fun initSettings(pi: PackageInfo) {
@@ -339,10 +339,10 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     fun initMountWizard(pi: PackageInfo) {
         wizard = MountWizard(pi)
         viewModelScope.launch {
-            OnlineAppTypeMarks.fetch(application, pi).onSuccess {
-                appTypeMarks = NetworkConnectionState.Success(it)
+            OnlineAppCategory.fetch(application, pi).onSuccess {
+                appCategory = NetworkConnectionState.Success(it)
             }.onFailure { e ->
-                appTypeMarks = NetworkConnectionState.Failure(e)
+                appCategory = NetworkConnectionState.Failure(e)
             }
         }
     }

@@ -12,9 +12,9 @@ import api.SystemService;
 import hidden.StorageEventListenerAdapter;
 import me.gm.cleaner.server.BuildConfig;
 
-public class EmulatedStorageEventListenerAdapter extends StorageEventListenerAdapter {
-    public static volatile boolean isPrimaryEmulatedStorageMounted = false;
-    private final CopyOnWriteArrayList<IEmulatedStorageEventListener> mListeners = new CopyOnWriteArrayList<>();
+public class StorageEventListenerDelegate extends StorageEventListenerAdapter {
+    public static volatile boolean isPrimaryStorageMounted = false;
+    private final CopyOnWriteArrayList<IStorageEventListener> mListeners = new CopyOnWriteArrayList<>();
 
     public static int getMountUserId(final VolumeInfo vol) {
         if (vol.type != VolumeInfo.TYPE_EMULATED) {
@@ -34,40 +34,40 @@ public class EmulatedStorageEventListenerAdapter extends StorageEventListenerAda
             final var isPrimary = getMountUserId(vol) == 0;
             if (newState == VolumeInfo.STATE_MOUNTED) {
                 if (isPrimary) {
-                    isPrimaryEmulatedStorageMounted = true;
+                    isPrimaryStorageMounted = true;
                 }
                 for (final var l : mListeners) {
-                    l.onEmulatedStorageMounted(vol, isPrimary, true);
+                    l.onStorageMounted(vol, isPrimary, true);
                 }
             } else if (isPrimary) {
-                isPrimaryEmulatedStorageMounted = false;
+                isPrimaryStorageMounted = false;
                 for (final var l : mListeners) {
-                    l.onEmulatedStorageUnmounted(vol);
+                    l.onStorageUnmounted(vol);
                 }
             }
         }
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, String.valueOf(vol));
     }
 
-    private void dispatchEventsForMountedVolumes(final IEmulatedStorageEventListener listener) {
+    private void dispatchEventsForMountedVolumes(final IStorageEventListener listener) {
         for (final var vol : SystemService.getVolumes(0)) {
             if (vol.type == VolumeInfo.TYPE_EMULATED) {
                 final var isPrimary = getMountUserId(vol) == 0;
                 if (isPrimary) {
-                    isPrimaryEmulatedStorageMounted = true;
+                    isPrimaryStorageMounted = true;
                 }
-                listener.onEmulatedStorageMounted(vol, isPrimary, false);
+                listener.onStorageMounted(vol, isPrimary, false);
             }
             Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, String.valueOf(vol));
         }
     }
 
-    public void registerListener(final IEmulatedStorageEventListener listener) {
+    public void registerListener(final IStorageEventListener listener) {
         mListeners.add(listener);
         dispatchEventsForMountedVolumes(listener);
     }
 
-    public void unregisterListener(final IEmulatedStorageEventListener listener) {
+    public void unregisterListener(final IStorageEventListener listener) {
         mListeners.remove(listener);
     }
 }

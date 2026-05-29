@@ -2,7 +2,7 @@ package me.gm.cleaner.server
 
 object ServerConstants {
     const val APPLICATION_ID: String = "me.gm.cleaner"
-    const val RECEIVER_ACTIVITY_NAME: String = "$APPLICATION_ID.client.ServerReceiver"
+    const val RECEIVER_ACTIVITY_NAME: String = "$APPLICATION_ID.client.ServerBridgeActivity"
     const val ACTION_REDIRECTED_TO_INTERNAL: String =
         "$APPLICATION_ID.intent.action.ACTION_REDIRECTED_TO_INTERNAL"
     const val ACTION_MEDIA_NOT_FOUND: String =

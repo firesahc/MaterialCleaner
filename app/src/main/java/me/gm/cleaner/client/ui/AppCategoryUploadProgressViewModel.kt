@@ -10,44 +10,44 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import me.gm.cleaner.net.OnlineAppTypeMarks
+import me.gm.cleaner.net.OnlineAppCategory
 import java.util.concurrent.atomic.AtomicInteger
 
-class AppsTypeMarksUploadProgressViewModel(private val application: Application) :
+class AppCategoryUploadProgressViewModel(private val application: Application) :
     AndroidViewModel(application) {
-    private val _progressLiveData: MutableLiveData<AppsTypeMarksUploadState> =
-        MutableLiveData<AppsTypeMarksUploadState>(AppsTypeMarksUploadState.Uploading(0, ""))
-    val progressLiveData: LiveData<AppsTypeMarksUploadState>
+    private val _progressLiveData: MutableLiveData<AppCategoryUploadState> =
+        MutableLiveData<AppCategoryUploadState>(AppCategoryUploadState.Uploading(0, ""))
+    val progressLiveData: LiveData<AppCategoryUploadState>
         get() = _progressLiveData
 
-    fun uploadAppsTypeMarks(appsTypeMarks: List<Pair<String, String>>) {
+    fun uploadAppCategory(appCategories: List<Pair<String, String>>) {
         viewModelScope.launch {
             val finishedCount = AtomicInteger()
-            val jobs = appsTypeMarks.map { (packageName, content) ->
+            val jobs = appCategories.map { (packageName, content) ->
                 launch(Dispatchers.IO) {
                     ensureActive()
                     runCatching {
                         withContext(Dispatchers.IO) {
-                            OnlineAppTypeMarks.buildDefaultURL(application, packageName)
+                            OnlineAppCategory.buildDefaultURL(application, packageName)
                                 .openStream()
                                 .close()
                         }
                     }
                     _progressLiveData.postValue(
-                        AppsTypeMarksUploadState.Uploading(
-                            100 * finishedCount.incrementAndGet() / appsTypeMarks.size,
+                        AppCategoryUploadState.Uploading(
+                            100 * finishedCount.incrementAndGet() / appCategories.size,
                             packageName
                         )
                     )
                 }
             }
             jobs.joinAll()
-            _progressLiveData.postValue(AppsTypeMarksUploadState.Done)
+            _progressLiveData.postValue(AppCategoryUploadState.Done)
         }
     }
 }
 
-sealed class AppsTypeMarksUploadState {
-    data class Uploading(val progress: Int, val packageName: String) : AppsTypeMarksUploadState()
-    data object Done : AppsTypeMarksUploadState()
+sealed class AppCategoryUploadState {
+    data class Uploading(val progress: Int, val packageName: String) : AppCategoryUploadState()
+    data object Done : AppCategoryUploadState()
 }

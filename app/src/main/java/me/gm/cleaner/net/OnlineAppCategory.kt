@@ -6,25 +6,25 @@ import androidx.core.content.pm.PackageInfoCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
-import me.gm.cleaner.client.ui.storageredirect.AppTypeMarks
+import me.gm.cleaner.client.ui.storageredirect.AppCategory
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import org.yaml.snakeyaml.Yaml
 
-object OnlineAppTypeMarks {
+object OnlineAppCategory {
 
     private fun buildPath(packageName: String): String =
-        ServiceMoreOptionsPreferences.appsTypeMarksRepo + packageName + ".yml"
+        ServiceMoreOptionsPreferences.appCategoryRepo + packageName + ".yml"
 
     fun buildURL(context: Context, packageName: String): SimpleCachedURL =
         SimpleCachedURL(context, buildPath(packageName))
 
     private fun buildDefaultPath(context: Context, packageName: String): String =
-        context.getString(R.string.apps_type_marks_default) + packageName + ".yml"
+        context.getString(R.string.app_category_default) + packageName + ".yml"
 
     fun buildDefaultURL(context: Context, packageName: String): SimpleCachedURL =
         SimpleCachedURL(context, buildDefaultPath(context, packageName))
 
-    suspend fun fetch(context: Context, pi: PackageInfo): Result<AppTypeMarks?> = runCatching {
+    suspend fun fetch(context: Context, pi: PackageInfo): Result<AppCategory?> = runCatching {
         withContext(Dispatchers.IO) {
             buildURL(context, pi.packageName).openStream().use {
                 val yaml = Yaml().load<Map<String, Any>>(it)
@@ -32,7 +32,7 @@ object OnlineAppTypeMarks {
                     // does not exist in the online repo
                     null
                 } else {
-                    AppTypeMarks(yaml, PackageInfoCompat.getLongVersionCode(pi))
+                    AppCategory(yaml, PackageInfoCompat.getLongVersionCode(pi))
                 }
             }
         }

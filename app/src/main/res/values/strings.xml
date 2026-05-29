@@ -134,22 +134,22 @@
     <string name="aggressively_prompt_for_reading_media_files_title">Aggressively prompt for reading media files</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">Many unnecessary prompts will appear, but if you are unfamiliar with the storage redirect feature, enabling it can help reduce unintended problems.</string>
     <string name="auto_logging_title">Automatically grab the boot/shutdown log and automatically rescue the soft bricks</string>
-    <string name="apps_type_marks_key" translatable="false">apps_type_marks</string>
-    <string name="apps_type_marks_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
-    <string name="apps_type_marks_title">Online Apps Type Marks</string>
-    <string name="apps_type_marks_summary">Provide the basis for \"Autocomplete wizard according to file system record\" and \"Apply mount rules template to new package automatically\".</string>
-    <string name="apps_type_marks_repo_header">Online repository</string>
-    <string name="apps_type_marks_repo_key" translatable="false">apps_type_marks_repo</string>
-    <string name="apps_type_marks_repo_title">Repository address</string>
-    <string name="apps_type_marks_repo_summary">Request URL is the address you set + application package name + .yml</string>
-    <string name="apps_type_marks_refresh_key" translatable="false">apps_type_marks_refresh</string>
-    <string name="apps_type_marks_refresh_title">Refresh cache</string>
-    <string name="upload_apps_type_marks_key" translatable="false">upload_apps_type_marks</string>
-    <string name="upload_apps_type_marks_title">Upload apps type marks to online repo</string>
-    <string name="upload_apps_type_marks_hint">%s is marked as %s app.\nMarked directories are:\n%s</string>
-    <string name="apps_type_marks_repo_correct_errors_key" translatable="false">correct_errors</string>
-    <string name="apps_type_marks_repo_correct_errors_title">Correct errors</string>
-    <string name="apps_type_marks_repo_correct_errors_summary">This action cannot be performed in the app. You need to fork the repository, then edit the markup files to fix issues, and finally pull requests. Click to open the repository.</string>
+    <string name="app_category_key" translatable="false">app_category</string>
+    <string name="app_category_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
+    <string name="app_category_title">Online Apps Type Marks</string>
+    <string name="app_category_summary">Provide the basis for \"Autocomplete wizard according to file system record\" and \"Apply mount rules template to new package automatically\".</string>
+    <string name="app_category_repo_header">Online repository</string>
+    <string name="app_category_repo_key" translatable="false">app_category_repo</string>
+    <string name="app_category_repo_title">Repository address</string>
+    <string name="app_category_repo_summary">Request URL is the address you set + application package name + .yml</string>
+    <string name="app_category_refresh_key" translatable="false">app_category_refresh</string>
+    <string name="app_category_refresh_title">Refresh cache</string>
+    <string name="upload_app_category_key" translatable="false">upload_app_category</string>
+    <string name="upload_app_category_title">Upload apps type marks to online repo</string>
+    <string name="upload_app_category_hint">%s is marked as %s app.\nMarked directories are:\n%s</string>
+    <string name="app_category_repo_correct_errors_key" translatable="false">correct_errors</string>
+    <string name="app_category_repo_correct_errors_title">Correct errors</string>
+    <string name="app_category_repo_correct_errors_summary">This action cannot be performed in the app. You need to fork the repository, then edit the markup files to fix issues, and finally pull requests. Click to open the repository.</string>
     <string name="auto_complete_by_record_merge_key" translatable="false">auto_complete_by_record_merge</string>
     <string name="auto_complete_by_record_merge_title">Complete by merging</string>
     <string name="auto_complete_by_record_respect_key" translatable="false">auto_complete_by_record_respect</string>
@@ -186,7 +186,7 @@
 
     <string name="storage_volumes_mount_exception">Storage volumes mount exception. (Ignore if the system is just booting)</string>
     <string name="server_version">Server version: %d%s</string>
-    <string name="service_settings">Service Settings</string>
+    <string name="service_settings">Material Cleaner</string>
     <string name="file_picker_title">Pick file</string>
     <string name="file_picker_unselected">Selected file</string>
     <string name="file_picker_hint">Path</string>
@@ -239,9 +239,9 @@
     <string name="storage_redirect_target_title">TARGET</string>
     <string name="storage_redirect_read_only_header">READ ONLY</string>
     <string name="storage_redirect_read_only_summary">For the specified paths, the app cannot create directories or files at this location or its lower level, but can open files.</string>
-    <string name="storage_redirect_apps_type_marks_err">Illegal type, please check your mark file.</string>
-    <string name="storage_redirect_apps_type_marks_hint">This app is marked as %s app.\n%s\n%s\n\By default, \"Autocomplete wizard according to file system record\" feature will take the above into account.</string>
-    <string name="storage_redirect_apps_type_marks_default_repo_hint">\nPlease be informed that the default online repository may not always be correct. If necessary, you can correct errors or build your own repository.</string>
+    <string name="storage_redirect_app_category_err">Illegal type, please check your mark file.</string>
+    <string name="storage_redirect_app_category_hint">This app is marked as %s app.\n%s\n%s\n\By default, \"Autocomplete wizard according to file system record\" feature will take the above into account.</string>
+    <string name="storage_redirect_app_category_default_repo_hint">\nPlease be informed that the default online repository may not always be correct. If necessary, you can correct errors or build your own repository.</string>
     <string name="storage_redirect_common_type">common</string>
     <string name="storage_redirect_common_rationale">You can complete all edits by accepting recommended mount rules given when prompting apps to read and save media files.</string>
     <string name="storage_redirect_download_type">download</string>

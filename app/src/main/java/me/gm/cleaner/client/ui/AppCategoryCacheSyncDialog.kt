@@ -5,14 +5,12 @@ import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.databinding.ProgressDialogBinding
-import me.gm.cleaner.util.getSerializableCompat
 
-class AppsTypeMarksUploadProgressDialog : AppCompatDialogFragment() {
-    private val viewModel: AppsTypeMarksUploadProgressViewModel by viewModels()
+class AppCategoryCacheSyncDialog : AppCompatDialogFragment() {
+    private val viewModel: AppCategoryCacheSyncViewModel by viewModels()
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         isCancelable = false
@@ -25,7 +23,7 @@ class AppsTypeMarksUploadProgressDialog : AppCompatDialogFragment() {
 
         viewModel.progressLiveData.observe(this) { state ->
             when (state) {
-                is AppsTypeMarksUploadState.Uploading -> {
+                is AppCategoryCacheSyncState.Downloading -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         binding.progress.setProgress(state.progress, true)
                     } else {
@@ -34,26 +32,12 @@ class AppsTypeMarksUploadProgressDialog : AppCompatDialogFragment() {
                     binding.text.text = state.packageName
                 }
 
-                is AppsTypeMarksUploadState.Done -> dismiss()
+                is AppCategoryCacheSyncState.Done -> dismiss()
             }
-        }
-        if (savedInstanceState == null) {
-            val appsTypeMarks = requireArguments()
-                .getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_VALUES)!!
-            viewModel.uploadAppsTypeMarks(appsTypeMarks)
         }
 
         return MaterialAlertDialogBuilder(requireContext())
             .setView(binding.root)
             .create()
-    }
-
-    companion object {
-        private const val KEY_VALUES: String = "me.gm.cleaner.key.values"
-
-        fun newInstance(appsTypeMarks: ArrayList<Pair<String, String>>): AppsTypeMarksUploadProgressDialog =
-            AppsTypeMarksUploadProgressDialog().apply {
-                arguments = bundleOf(KEY_VALUES to appsTypeMarks)
-            }
     }
 }

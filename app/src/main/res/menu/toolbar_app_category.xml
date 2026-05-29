@@ -3,9 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/menu_apps_type_marks"
+        android:id="@+id/menu_app_category"
         android:icon="@drawable/outline_check_24"
-        android:title="@string/apps_type_marks_title"
+        android:title="@string/app_category_title"
         app:showAsAction="ifRoom" />
 
 </menu>

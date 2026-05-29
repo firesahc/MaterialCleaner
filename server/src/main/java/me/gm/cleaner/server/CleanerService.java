@@ -56,8 +56,8 @@ import me.gm.cleaner.nio.RootFileService;
 import me.gm.cleaner.nio.RootWorkerService;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
-import me.gm.cleaner.server.observer.EmulatedStorageEventListenerAdapter;
-import me.gm.cleaner.server.observer.EmulatedStorageMountObserver;
+import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
+import me.gm.cleaner.server.observer.StorageMountObserver;
 import me.gm.cleaner.server.observer.FileSystemObserver;
 import me.gm.cleaner.server.observer.MagiskDenyListObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
@@ -106,8 +106,8 @@ public class CleanerService extends ICleanerService.Stub {
                 if (!activityManagerObserver.hasAmStart()) {
                     return 3;
                 }
-            } else if (observer instanceof EmulatedStorageMountObserver) {
-                if (!EmulatedStorageEventListenerAdapter.isPrimaryEmulatedStorageMounted) {
+            } else if (observer instanceof StorageMountObserver) {
+                if (!StorageEventListenerDelegate.isPrimaryStorageMounted) {
                     return 6;
                 }
             }

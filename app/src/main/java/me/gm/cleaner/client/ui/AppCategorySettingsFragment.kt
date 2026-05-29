@@ -19,7 +19,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.net.OnlineAppTypeMarks
+import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.net.Website
 import me.gm.cleaner.settings.MaterialEditTextPreferenceDialogFragmentCompat
 import me.gm.cleaner.util.FileUtils
@@ -28,29 +28,29 @@ import me.gm.cleaner.util.fixEdgeEffect
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import me.gm.cleaner.util.startActivitySafe
 
-class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
+class AppCategorySettingsFragment : PreferenceFragmentCompat() {
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.setStorageDeviceProtected()
-        addPreferencesFromResource(R.xml.apps_type_marks_preferences)
+        addPreferencesFromResource(R.xml.app_category_preferences)
 
-        findPreference<EditTextPreference>(getString(R.string.apps_type_marks_repo_key))?.onPreferenceChangeListener =
+        findPreference<EditTextPreference>(getString(R.string.app_category_repo_key))?.onPreferenceChangeListener =
             Preference.OnPreferenceChangeListener { preference, newValue ->
                 if ((newValue as String).isEmpty()) {
                     (preference as EditTextPreference).text =
-                        getString(R.string.apps_type_marks_default)
+                        getString(R.string.app_category_default)
                     return@OnPreferenceChangeListener false
                 }
                 true
             }
 
-        findPreference<Preference>(getString(R.string.apps_type_marks_refresh_key))?.setOnPreferenceClickListener {
-            AppsTypeMarksRefreshCacheProgressDialog()
+        findPreference<Preference>(getString(R.string.app_category_refresh_key))?.setOnPreferenceClickListener {
+            AppCategoryCacheSyncDialog()
                 .show(childFragmentManager, null)
             true
         }
 
-        findPreference<Preference>(getString(R.string.upload_apps_type_marks_key))?.setOnPreferenceClickListener {
+        findPreference<Preference>(getString(R.string.upload_app_category_key))?.setOnPreferenceClickListener {
             lifecycleScope.launch {
                 val downloadApps = linkedMapOf<String, List<String>>()
                 withContext(Dispatchers.Default) {
@@ -64,7 +64,7 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                                 FileUtils.startsWith(downloadDir, source)
                             }
                             .filterNot {
-                                OnlineAppTypeMarks.buildURL(requireContext(), packageName)
+                                OnlineAppCategory.buildURL(requireContext(), packageName)
                                     .hasNonNullCache()
                             }
                             .unzip()
@@ -74,14 +74,14 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                         }
                     }
                 }
-                AppsTypeMarksUploadDialog
+                AppCategoryUploadDialog
                     .newInstance(downloadApps)
                     .show(childFragmentManager, null)
             }
             true
         }
 
-        findPreference<Preference>(getString(R.string.apps_type_marks_repo_correct_errors_key))?.setOnPreferenceClickListener {
+        findPreference<Preference>(getString(R.string.app_category_repo_correct_errors_key))?.setOnPreferenceClickListener {
             startActivitySafe(
                 Intent(Intent.ACTION_VIEW).apply {
                     data = Website.appsTypeMarksRepo.toUri()
@@ -96,9 +96,9 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                     .apply {
                         val ruledApps =
                             CleanerClient.getInstalledPackages(0).filter { packageInfo ->
-                                OnlineAppTypeMarks
+                                OnlineAppCategory
                                     .buildURL(
-                                        this@AppsTypeMarksSettingsFragment.requireContext(),
+                                        this@AppCategorySettingsFragment.requireContext(),
                                         packageInfo.packageName
                                     )
                                     .hasNonNullCache()
@@ -116,11 +116,11 @@ class AppsTypeMarksSettingsFragment : PreferenceFragmentCompat() {
                                     val answers = wizard.retrodictAnswers(
                                         ServicePreferences.getPackageSrZipped(pi.packageName)
                                     )
-                                    OnlineAppTypeMarks.fetch(context, pi)
-                                        .onSuccess { appTypeMarks ->
-                                            appTypeMarks ?: return@onSuccess
+                                    OnlineAppCategory.fetch(context, pi)
+                                        .onSuccess { appCategory ->
+                                            appCategory ?: return@onSuccess
                                             wizard.answerBasedOnRecord(
-                                                answers, emptyList(), appTypeMarks
+                                                answers, emptyList(), appCategory
                                             )
                                         }
                                     ServicePreferences.putStorageRedirect(

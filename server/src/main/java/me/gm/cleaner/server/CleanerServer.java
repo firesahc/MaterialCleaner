@@ -29,8 +29,8 @@ import me.gm.cleaner.client.CleanerHooksClient;
 import me.gm.cleaner.dao.SecurityHelper;
 import me.gm.cleaner.dao.ServicePreferences;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
-import me.gm.cleaner.server.observer.EmulatedStorageEventListenerAdapter;
 import me.gm.cleaner.server.observer.ObserverManager;
+import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
 import me.gm.cleaner.util.FileUtils;
 import me.gm.cleaner.util.LibUtils;
 
@@ -125,21 +125,21 @@ public class CleanerServer extends ContextWrapper {
                 throw new RuntimeException(e);
             }
         });
-        new EmulatedStorageEventListenerImpl(this).start();
+        new StorageEventListenerImpl(this).start();
         BinderSender.register(cleanerService);
         sendBinderToManger(cleanerService);
     }
 
-    public void onEmulatedStorageMounted(final VolumeInfo vol, final boolean isPrimary,
-                                         final boolean isJustMounted) {
+    public void onStorageMounted(final VolumeInfo vol, final boolean isPrimary,
+                                 final boolean isJustMounted) {
         // these things should be done as soon as possible
         if (isPrimary) {
             FileUtils.INSTANCE.setExternalStorageDir(new File(vol.path, String.valueOf(0)));
         }
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer != null) {
-            final var mountUserId = EmulatedStorageEventListenerAdapter.getMountUserId(vol);
-            observer.getMountedEmulatedStorage().add(mountUserId);
+            final var mountUserId = StorageEventListenerDelegate.getMountUserId(vol);
+            observer.getMountedStorage().add(mountUserId);
             if (isJustMounted) {
                 if (isPrimary) {
                     observer.remountAll();
@@ -174,11 +174,11 @@ public class CleanerServer extends ContextWrapper {
         }
     }
 
-    public void onEmulatedStorageUnmounted(final VolumeInfo vol) {
+    public void onStorageUnmounted(final VolumeInfo vol) {
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer != null) {
-            final var mountUserId = EmulatedStorageEventListenerAdapter.getMountUserId(vol);
-            observer.getMountedEmulatedStorage().remove(mountUserId);
+            final var mountUserId = StorageEventListenerDelegate.getMountUserId(vol);
+            observer.getMountedStorage().remove(mountUserId);
         }
     }
 

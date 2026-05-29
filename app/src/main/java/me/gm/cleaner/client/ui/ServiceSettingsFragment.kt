@@ -10,7 +10,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
 import me.gm.cleaner.R
-import me.gm.cleaner.app.BaseActivity
 import me.gm.cleaner.app.BaseFragment
 import me.gm.cleaner.databinding.ServiceSettingsFragmentBinding
 import java.lang.ref.WeakReference
@@ -32,7 +31,6 @@ class ServiceSettingsFragment : BaseFragment() {
     ): View {
         val binding = ServiceSettingsFragmentBinding.inflate(layoutInflater)
         val toolbar = setAppBar(binding.root)
-        (requireActivity() as BaseActivity).supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         val viewPager = binding.viewPager
         viewPagerRef = WeakReference(viewPager)

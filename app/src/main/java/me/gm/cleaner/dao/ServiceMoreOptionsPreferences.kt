@@ -9,8 +9,8 @@ import me.gm.cleaner.util.toParcelable
 
 // Preference key constants (values match existing R.string values to preserve user data)
 private const val OPEN_WIZARD_BY_DEFAULT_KEY = "open_wizard_by_default"
-private const val APPS_TYPE_MARKS_REPO_KEY = "apps_type_marks_repo"
-private const val APPS_TYPE_MARKS_DEFAULT = "https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/"
+private const val APP_CATEGORY_REPO_KEY = "app_category_repo"
+private const val APP_CATEGORY_DEFAULT = "https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/"
 private const val AUTO_COMPLETE_BY_RECORD_MERGE_KEY = "auto_complete_by_record_merge"
 private const val AUTO_COMPLETE_BY_RECORD_RESPECT_KEY = "auto_complete_by_record_respect"
 private const val EDIT_MOUNT_RULES_TEMPLATE_KEY = "edit_mount_rules_template"
@@ -27,14 +27,14 @@ object ServiceMoreOptionsPreferences {
     val openWizardByDefault: Boolean
         get() = preferences.getBoolean(OPEN_WIZARD_BY_DEFAULT_KEY, false)
 
-    val appsTypeMarksRepo: String
+    val appCategoryRepo: String
         get() = preferences.getString(
-            APPS_TYPE_MARKS_REPO_KEY,
-            APPS_TYPE_MARKS_DEFAULT
+            APP_CATEGORY_REPO_KEY,
+            APP_CATEGORY_DEFAULT
         )!!
 
     val isUsingDefaultRepo: Boolean
-        get() = appsTypeMarksRepo == APPS_TYPE_MARKS_DEFAULT
+        get() = appCategoryRepo == APP_CATEGORY_DEFAULT
 
     val autoCompleteByRecordMerge: Boolean
         get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_MERGE_KEY, true)

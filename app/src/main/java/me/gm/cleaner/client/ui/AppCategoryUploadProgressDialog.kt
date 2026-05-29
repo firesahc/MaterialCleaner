@@ -5,12 +5,14 @@ import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import androidx.appcompat.app.AppCompatDialogFragment
+import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import me.gm.cleaner.databinding.ProgressDialogBinding
+import me.gm.cleaner.util.getSerializableCompat
 
-class AppsTypeMarksRefreshCacheProgressDialog : AppCompatDialogFragment() {
-    private val viewModel: AppsTypeMarksRefreshCacheProgressViewModel by viewModels()
+class AppCategoryUploadProgressDialog : AppCompatDialogFragment() {
+    private val viewModel: AppCategoryUploadProgressViewModel by viewModels()
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         isCancelable = false
@@ -23,7 +25,7 @@ class AppsTypeMarksRefreshCacheProgressDialog : AppCompatDialogFragment() {
 
         viewModel.progressLiveData.observe(this) { state ->
             when (state) {
-                is AppsTypeMarksRefreshCacheState.Downloading -> {
+                is AppCategoryUploadState.Uploading -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         binding.progress.setProgress(state.progress, true)
                     } else {
@@ -32,12 +34,26 @@ class AppsTypeMarksRefreshCacheProgressDialog : AppCompatDialogFragment() {
                     binding.text.text = state.packageName
                 }
 
-                is AppsTypeMarksRefreshCacheState.Done -> dismiss()
+                is AppCategoryUploadState.Done -> dismiss()
             }
+        }
+        if (savedInstanceState == null) {
+            val appCategories = requireArguments()
+                .getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_VALUES)!!
+            viewModel.uploadAppCategories(appCategories)
         }
 
         return MaterialAlertDialogBuilder(requireContext())
             .setView(binding.root)
             .create()
+    }
+
+    companion object {
+        private const val KEY_VALUES: String = "me.gm.cleaner.key.values"
+
+        fun newInstance(appCategories: ArrayList<Pair<String, String>>): AppCategoryUploadProgressDialog =
+            AppCategoryUploadProgressDialog().apply {
+                arguments = bundleOf(KEY_VALUES to appCategories)
+            }
     }
 }

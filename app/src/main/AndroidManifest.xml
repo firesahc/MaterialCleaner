@@ -45,7 +45,7 @@
             android:label="@string/service_settings" />
 
         <activity
-            android:name=".client.ServerReceiver"
+            android:name=".client.ServerBridgeActivity"
             android:directBootAware="true"
             android:excludeFromRecents="true"
             android:exported="true"

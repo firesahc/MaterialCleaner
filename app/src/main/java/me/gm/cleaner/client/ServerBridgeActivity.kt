@@ -9,17 +9,17 @@ import me.gm.cleaner.R
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.util.getParcelableExtraCompat
 
-class ServerReceiver : Activity() {
+class ServerBridgeActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i("MC/Test", "ServerReceiver.onCreate: action=${intent?.action}")
+        Log.i("MC/Test", "ServerBridgeActivity.onCreate: action=${intent?.action}")
         // binder
         val extra = intent.getBundleExtra(Intent.EXTRA_RESTRICTIONS_BUNDLE)
         if (extra != null) {
             val binder = extra.getBinder(BinderProvider.EXTRA_BINDER)
             if (binder != null) {
-                Log.i("MC/Test", "ServerReceiver: received binder from intent extras")
+                Log.i("MC/Test", "ServerBridgeActivity: received binder from intent extras")
                 CleanerClient.onBinderReceived(binder)
             }
             intent.removeExtra(Intent.EXTRA_RESTRICTIONS_BUNDLE)
