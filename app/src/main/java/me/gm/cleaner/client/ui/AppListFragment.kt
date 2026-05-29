@@ -35,6 +35,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.starter.Starter
+import me.gm.cleaner.util.fitsSystemWindowInsets
 
 class AppListFragment : BaseServiceSettingsFragment() {
     override val viewModel: AppListViewModel by viewModels()
@@ -70,6 +71,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // Initial status update
         updateServiceStatus()
+
+        // Apply system window insets to root layout so content starts below toolbar+tabs+status bar
+        view.fitsSystemWindowInsets()
 
         // Toggle server button — start or stop
         btnToggleServer?.setOnClickListener {

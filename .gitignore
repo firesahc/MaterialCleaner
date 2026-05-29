@@ -9,3 +9,4 @@ build
 /out
 .externalNativeBuild
 .omo
+/AGENTS.md

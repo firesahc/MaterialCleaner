@@ -18,6 +18,7 @@ package me.gm.cleaner.widget
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.Build
 import android.util.AttributeSet
 import android.view.WindowInsets
 import androidx.annotation.AttrRes
@@ -32,17 +33,26 @@ class FitsHorizontalInsetsCoordinatorLayout @JvmOverloads constructor(
     private val mPaddingBottom: Int = paddingBottom
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        val localInsets = Rect()
-        val result = computeSystemWindowInsets(insets, localInsets)
-        applyInsets(localInsets)
-        // Return "result" will consume the insets.
-        return insets
-    }
-
-    private fun applyInsets(insets: Rect) {
+        // 使用现代 API 获取系统栏水平边距
+        val leftInset: Int
+        val rightInset: Int
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val systemBars = insets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+            )
+            leftInset = systemBars.left
+            rightInset = systemBars.right
+        } else {
+            @Suppress("DEPRECATION")
+            leftInset = insets.systemWindowInsetLeft
+            @Suppress("DEPRECATION")
+            rightInset = insets.systemWindowInsetRight
+        }
         setPadding(
-            mPaddingLeft + insets.left, mPaddingTop,
-            mPaddingRight + insets.right, mPaddingBottom
+            mPaddingLeft + leftInset, mPaddingTop,
+            mPaddingRight + rightInset, mPaddingBottom
         )
+        // 不消费 insets，让子 View(包括 ViewPager 内的 Fragment) 也能接收到完整边距
+        return insets
     }
 }

@@ -10,15 +10,14 @@
         android:id="@+id/list_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:enabled="true">
+        android:enabled="true"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/list"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:paddingTop="?actionBarSizeAddTabHeight"
-            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+            android:clipToPadding="false" />
     </me.gm.cleaner.widget.ThemedTabBorderSwipeRefreshLayout>
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
@@ -26,7 +25,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:layout_marginTop="?actionBarSizeAddTabHeight"
-        android:fitsSystemWindows="true"
+        android:layout_marginTop="?actionBarSize"
         android:indeterminate="true" />
 </me.gm.cleaner.widget.OrthogonallyNestedCoordinatorLayout>

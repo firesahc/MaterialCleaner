@@ -6,7 +6,8 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/list"
@@ -14,10 +15,8 @@
             android:layout_height="match_parent"
             android:clipToPadding="false"
             android:fadeScrollbars="true"
-            android:paddingTop="?actionBarSize"
             android:scrollbarStyle="insideOverlay"
-            android:scrollbars="vertical"
-            app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+            android:scrollbars="vertical" />
     </FrameLayout>
 
     <include layout="@layout/appbar" />

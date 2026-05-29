@@ -9,8 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipToPadding="false"
-        android:paddingTop="?actionBarSizeAddTabHeight"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+        android:paddingTop="?actionBarSizeAddTabHeight" />
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
         android:id="@+id/progress"

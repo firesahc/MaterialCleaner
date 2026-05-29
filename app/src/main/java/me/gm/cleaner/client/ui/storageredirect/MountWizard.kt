@@ -192,7 +192,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
                     CleanerClient.service?.queryDistinctRecordsInclude(arrayOf(packageName))?.list ?: emptyList()
                 }
                 val rationale = withContext(Dispatchers.Default) {
-                    answerBasedOnRecord(answers, record, appCategory())
+                    answerBasedOnRecord(answers, record, appTypeMarks())
                 }
                 val title = fragment.getString(
                     R.string.auto_complete_by_record_rationale_title, rationale.recordCount
@@ -541,10 +541,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 }
             }
         }
-        if (appCategory != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
-            when (appCategory.type) {
+        if (appTypeMarks != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
+            when (appTypeMarks.type) {
                 AppType.DOWNLOAD -> {
-                    val marks = appCategory.marks
+                    val marks = appTypeMarks.marks
                     usefulRecords = usefulRecords.filterNot { event ->
                         val path = FileUtils.getPathAsUser(event.path, 0)
                         marks.any { mark -> FileUtils.startsWith(mark, path) }
@@ -703,9 +703,9 @@ class MountWizard(private val packageInfo: PackageInfo) {
             }
         }
         // result
-        if (appCategory != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
-            val marks = appCategory.marks
-            when (appCategory.type) {
+        if (appTypeMarks != null && ServiceMoreOptionsPreferences.autoCompleteByRecordRespect) {
+            val marks = appTypeMarks.marks
+            when (appTypeMarks.type) {
                 AppType.DOWNLOAD -> {
                     val targets = answers.mountRules().unzip().second
                     mountRules += marks

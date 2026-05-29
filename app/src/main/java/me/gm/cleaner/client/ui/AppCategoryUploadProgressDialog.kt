@@ -40,7 +40,7 @@ class AppCategoryUploadProgressDialog : AppCompatDialogFragment() {
         if (savedInstanceState == null) {
             val appCategories = requireArguments()
                 .getSerializableCompat<ArrayList<Pair<String, String>>>(KEY_VALUES)!!
-            viewModel.uploadAppCategories(appCategories)
+            viewModel.uploadAppCategory(appCategories)
         }
 
         return MaterialAlertDialogBuilder(requireContext())
