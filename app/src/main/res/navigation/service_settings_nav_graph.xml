@@ -21,6 +21,13 @@
             app:exitAnim="@anim/nav_default_exit_anim"
             app:popEnterAnim="@anim/nav_default_pop_enter_anim"
             app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+        <action
+            android:id="@+id/service_settings_to_mount_app_picker_action"
+            app:destination="@id/mount_app_picker_fragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
     </fragment>
 
     <fragment
@@ -36,4 +43,17 @@
         android:id="@+id/apps_type_marks_settings_fragment"
         android:name="me.gm.cleaner.client.ui.AppsTypeMarksSettingsFragmentStub"
         android:label="@string/apps_type_marks_title" />
+
+    <fragment
+        android:id="@+id/mount_app_picker_fragment"
+        android:name="me.gm.cleaner.client.ui.MountAppPickerFragment"
+        android:label="@string/storage_redirect_title">
+        <action
+            android:id="@+id/mount_app_picker_to_storage_redirect_action"
+            app:destination="@id/storage_redirect_fragment"
+            app:enterAnim="@anim/slide_up"
+            app:exitAnim="@anim/slide_up_background"
+            app:popEnterAnim="@anim/slide_down_background"
+            app:popExitAnim="@anim/slide_down" />
+    </fragment>
 </navigation>
