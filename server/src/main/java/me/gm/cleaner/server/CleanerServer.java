@@ -41,7 +41,7 @@ public class CleanerServer extends ContextWrapper {
     // System service lifecycle
     final PackageReceiver mPackageReceiver;
     final AutoLogging mAutoLogging;
-    final CleanerServerCallback mCleanerServerCallback;
+    public final CleanerServerCallback mCleanerServerCallback;
 
     private Context createPackageContext(final String packageName) {
         try {

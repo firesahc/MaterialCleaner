@@ -101,7 +101,15 @@ namespace bpf_hook {
         return atoi(prop);
     }
 
+    // FUSE is always enabled on Android 11+ (API >= 30).
+    // The persist.sys.fuse property was removed in Android 11,
+    // so only check it on older versions where FUSE is optional.
     static bool IsFuse() {
+        // Android 11+ (API >= 30) 上 FUSE 是默认文件系统，
+        // persist.sys.fuse 属性已被移除，直接返回 true
+        if (GetApiLevel() >= 30) {
+            return true;
+        }
         char prop[PROP_VALUE_MAX] = {0};
         __system_property_get("persist.sys.fuse", prop);
         return strcmp(prop, "true") == 0;
@@ -109,6 +117,7 @@ namespace bpf_hook {
 
     void Hook(void *handle) {
         if (!IsFuse()) {
+            LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str());
             return;
         }
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str());

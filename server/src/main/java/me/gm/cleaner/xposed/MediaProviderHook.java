@@ -65,7 +65,14 @@ public class MediaProviderHook {
                 }
             }
         }
-        if (SystemPropertiesUtils.getBoolean("persist.sys.fuse", false)) {
+        // Android 11+ (API >= 30) 上 FUSE 是默认文件系统，
+        // persist.sys.fuse 属性已被移除，直接视为 FUSE 可用
+        final boolean isFuseAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                || SystemPropertiesUtils.getBoolean("persist.sys.fuse", false);
+        Log.i("MC_REDIRECT", "[MediaProviderHook] isFuseAvailable=" + isFuseAvailable
+                + " SDK=" + Build.VERSION.SDK_INT
+                + " persist.sys.fuse=" + SystemPropertiesUtils.get("persist.sys.fuse", "(null)"));
+        if (isFuseAvailable) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 Method queryMethod;
                 try {
@@ -135,6 +142,7 @@ public class MediaProviderHook {
 
     private void initFuseDaemonHook() {
         // FileSystemEvent
+        Log.i("MC_REDIRECT", "[MediaProviderHook] initFuseDaemonHook() - installing FUSE hooks...");
         final var insertFileIfNecessaryForFuseMethod = XposedHelpers.findMethodExact(
                 mMediaProviderClass, "insertFileIfNecessaryForFuse", String.class, int.class);
         XposedBridge.hookMethod(insertFileIfNecessaryForFuseMethod, new XC_MethodHook() {
@@ -300,11 +308,12 @@ public class MediaProviderHook {
     }
 
     private void dispatchFileSystemEvent(final String packageName, final String path, final int flags) {
+        Log.d("MC_REDIRECT", "[MediaProviderHook] dispatchFileSystemEvent pkg=" + packageName + " path=" + path + " flags=" + flags);
         mService.whileAlive(service -> {
             try {
                 service.onFileSystemEvent(System.currentTimeMillis(), packageName, path, flags);
             } catch (RemoteException e) {
-                Log.e("MediaProviderHook", "error", e);
+                Log.e("MC_REDIRECT", "[MediaProviderHook] onFileSystemEvent RemoteException", e);
             }
         });
     }

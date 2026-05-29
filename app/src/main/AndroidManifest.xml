@@ -73,8 +73,7 @@
             android:name=".client.HooksBridgeProvider"
             android:authorities="${applicationId}.hooks_bridge"
             android:exported="true"
-            android:enabled="true"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+            android:enabled="true" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

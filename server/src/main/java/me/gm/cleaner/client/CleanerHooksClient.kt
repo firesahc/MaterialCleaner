@@ -8,6 +8,7 @@ import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
+import me.gm.cleaner.server.ICleanerServerCallback
 import me.gm.cleaner.server.observer.ObserverManager
 import java.util.function.Consumer
 
@@ -19,9 +20,20 @@ object CleanerHooksClient {
     private var service: ICleanerHooksService? = null
     @Volatile
     private var deathRecipient: IBinder.DeathRecipient? = null
+    @Volatile
+    private var server: CleanerServer? = null
+    @Volatile
+    private var serverCallback: ICleanerServerCallback? = null
 
     fun onStart(server: CleanerServer) {
-        binder = CleanerHooksBinderRetriever.get(server) ?: return
+        this.server = server
+        Log.i("MC_REDIRECT", "[CleanerHooksClient] onStart: attempting to get hooks service binder...")
+        binder = CleanerHooksBinderRetriever.get(server)
+        if (binder == null) {
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] onStart: FAILED to get hooks service binder!")
+            return
+        }
+        Log.i("MC_REDIRECT", "[CleanerHooksClient] onStart: got binder, creating service stub")
         service = ICleanerHooksService.Stub.asInterface(binder)
         deathRecipient = object : SystemServiceDeathRecipient(binder) {
             override fun binderDied() {
@@ -45,6 +57,26 @@ object CleanerHooksClient {
 
     @JvmStatic
     fun whileAlive(c: Consumer<ICleanerHooksService>) {
+        // Try to get/refresh the hooks service if not available
+        if (service == null || !pingBinder()) {
+            Log.w("MC_REDIRECT", "[CleanerHooksClient] whileAlive: reconnecting (service=" 
+                    + (service != null) + " ping=" + (service?.let { pingBinder() } ?: false) + ")")
+            val ctx = server ?: return
+            val newBinder = CleanerHooksBinderRetriever.get(ctx)
+            if (newBinder != null) {
+                binder = newBinder
+                service = ICleanerHooksService.Stub.asInterface(newBinder)
+                Log.i("MC_REDIRECT", "[CleanerHooksClient] Reconnected, re-registering callback")
+                try {
+                    service?.setCleanerServerBinder(ctx.mCleanerServerCallback)
+                } catch (e: RemoteException) {
+                    Log.e("MC_REDIRECT", "[CleanerHooksClient] Failed to re-register callback", e)
+                }
+            } else {
+                Log.e("MC_REDIRECT", "[CleanerHooksClient] Reconnect failed: getBinder returned null")
+                return
+            }
+        }
         val s = service ?: return
         if (pingBinder()) {
             c.accept(s)

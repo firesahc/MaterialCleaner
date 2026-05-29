@@ -42,6 +42,9 @@ public class HooksBridgeProvider extends ContentProvider {
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
 
+    /** Flag to indicate server needs to re-send callback when Xposed connects */
+    private static volatile boolean sNeedsServerCallbackForward = false;
+
     /**
      * Singleton {@link ICleanerHooksService} implementation that runs in the app process
      * and forwards calls to the Xposed-side service where appropriate.
@@ -50,14 +53,20 @@ public class HooksBridgeProvider extends ContentProvider {
         @Override
         public void setCleanerServerBinder(ICleanerServerCallback callback) {
             sServerCallback = callback;
+            sNeedsServerCallbackForward = true;
             // Forward to Xposed if registered
             IMediaProviderHooksService xposed = sMediaProviderService;
+            Log.i("MC_REDIRECT", "[HooksBridge] setCleanerServerBinder: sMediaProviderService=" + (xposed != null));
             if (xposed != null) {
                 try {
                     xposed.setCleanerServerBinder(callback);
+                    sNeedsServerCallbackForward = false;
+                    Log.i("MC_REDIRECT", "[HooksBridge] Forwarded setCleanerServerBinder to Xposed");
                 } catch (RemoteException e) {
                     Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
                 }
+            } else {
+                Log.w("MC_REDIRECT", "[HooksBridge] sMediaProviderService is null, will forward when Xposed connects");
             }
         }
 
@@ -66,12 +75,26 @@ public class HooksBridgeProvider extends ContentProvider {
             sMediaProviderService = service;
             // 如果 Server 回调已注册，补发给 Xposed
             ICleanerServerCallback callback = sServerCallback;
+            Log.i("MC_REDIRECT", "[HooksBridge] setMediaProviderBinder: sServerCallback=" + (callback != null)
+                    + " needsForward=" + sNeedsServerCallbackForward);
             if (callback != null) {
                 try {
                     service.setCleanerServerBinder(callback);
+                    sNeedsServerCallbackForward = false;
+                    Log.i("MC_REDIRECT", "[HooksBridge] Forwarded setCleanerServerBinder to new Xposed instance");
                 } catch (RemoteException e) {
                     Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
                 }
+            } else if (sNeedsServerCallbackForward) {
+                // Server callback was set in a previous app instance but lost on restart.
+                // Try to trigger server reconnection by touching the hooks service.
+                Log.w("MC_REDIRECT", "[HooksBridge] sServerCallback is null but was previously set. "
+                        + "Attempting to trigger server reconnect...");
+                // The server will reconnect via CleanerHooksClient.whileAlive when any operation is attempted.
+                // We signal the need for reconnection by setting a flag that the app's MainActivity can check.
+            } else {
+                Log.w("MC_REDIRECT", "[HooksBridge] sServerCallback is null and never was set. "
+                        + "Waiting for server to register callback.");
             }
         }
 

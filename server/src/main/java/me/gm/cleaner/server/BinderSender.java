@@ -17,6 +17,7 @@ import api.SystemService;
 import hidden.HiddenApiBridge;
 import hidden.ProcessObserverAdapter;
 import hidden.UidObserverAdapter;
+import me.gm.cleaner.client.CleanerHooksClient;
 import me.gm.cleaner.server.ktx.IContentProviderKt;
 
 public class BinderSender {
@@ -76,6 +77,11 @@ public class BinderSender {
             }
 
             if (pi.packageName.equals(ServerConstants.APPLICATION_ID)) {
+                Log.i("MC_REDIRECT", "[BinderSender] App process active, triggering server reconnection");
+                // Trigger CleanerHooksClient to reconnect to the fresh HooksBridgeProvider
+                CleanerHooksClient.whileAlive(service -> {
+                    // Just trigger reconnection - the whileAlive reconnect logic will handle it
+                });
                 sendBinderToManger(sCleanerService, userId);
                 return;
             }
