@@ -10,3 +10,6 @@ build
 .externalNativeBuild
 .omo
 /AGENTS.md
+
+# Xposed module generated dex
+app/src/main/assets/main.jar

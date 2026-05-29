@@ -85,6 +85,10 @@ android {
     namespace 'me.gm.cleaner'
 }
 
+// 生成 Xposed 模块 assets/main.jar（配合 git 外的手动生成脚本）
+// main.jar 应放在 app/src/main/assets/ 目录下，由 mergeDebugAssets 自动打包
+// 生成方式: d8 --min-api 26 --output /tmp/classes server/.../classes.jar && cd /tmp && zip main.jar classes.dex
+
 dependencies {
     implementation project(':aidl')
     implementation project(':server')
