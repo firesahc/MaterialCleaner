@@ -75,14 +75,14 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:icon="@drawable/ic_outline_add_24"
-        android:text="新建挂载" />
+        android:text="@string/new_mount" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:layout_marginBottom="8dp"
-        android:text="已挂载应用"
+        android:text="@string/mounted_apps_title"
         android:textAppearance="?attr/textAppearanceTitleSmall" />
 
     <androidx.recyclerview.widget.RecyclerView

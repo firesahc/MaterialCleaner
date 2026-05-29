@@ -39,6 +39,10 @@
     <string name="menu_hide_app_specific_storage">App-specific storage</string>
     <string name="refresh">Refresh</string>
     <string name="logcat">Grab logs</string>
+    <string name="share_logcat">分享日志</string>
+    <string name="logcat_failed">抓取日志失败:</string>
+    <string name="new_mount">新建挂载</string>
+    <string name="mounted_apps_title">已挂载应用</string>
     <string name="menu_add_to_hide_list">Add to hide list</string>
     <string name="delete">Delete</string>
     <string name="delete_all_mount_rules">Delete all mount rules</string>
