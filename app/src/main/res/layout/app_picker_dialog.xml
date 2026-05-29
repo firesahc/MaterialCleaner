@@ -19,6 +19,42 @@
         android:paddingEnd="?dialogPreferredPadding"
         android:textAppearance="?textAppearanceListItem" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:paddingHorizontal="?dialogPreferredPadding"
+        android:paddingTop="4dp"
+        android:paddingBottom="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/menu_select_all"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/menu_select_all"
+            android:textAppearance="?textAppearanceLabelMedium" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/menu_invert_selection"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/menu_invert_selection"
+            android:textAppearance="?textAppearanceLabelMedium" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/menu_unselect_all"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/menu_unselect_all"
+            android:textAppearance="?textAppearanceLabelMedium" />
+    </LinearLayout>
+
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"

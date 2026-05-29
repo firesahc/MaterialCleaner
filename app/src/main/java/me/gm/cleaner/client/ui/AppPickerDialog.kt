@@ -3,11 +3,7 @@ package me.gm.cleaner.client.ui
 import android.app.Dialog
 import android.content.pm.PackageInfo
 import android.os.Bundle
-import android.view.View
-import androidx.annotation.MenuRes
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.appcompat.widget.PopupMenu
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.asLiveData
@@ -43,19 +39,27 @@ class AppPickerDialog : AppCompatDialogFragment() {
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
-            .setNeutralButton(R.string.menu_batch_operation, null)
             .create()
-        // Override the listener here so that we have control over when to close the dialog.
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                showMenu(it, R.menu.app_picker_netural)
-            }
-        }
         val adapter = AppPickerAdapter(viewModel)
         val list = binding.listContainer.recyclerView
         list.adapter = adapter
         list.layoutManager = GridLayoutManager(requireContext(), 1)
         list.overScrollIfContentScrollsPersistent()
+
+        binding.menuSelectAll.setOnClickListener {
+            viewModel.checkedApps += viewModel.showingApps
+                .map { it.packageInfo }
+        }
+        binding.menuInvertSelection.setOnClickListener {
+            val partition = viewModel.showingApps.partition { it.isChecked }
+            viewModel.checkedApps = viewModel.checkedApps -
+                    partition.first.map { it.packageInfo }.toSet() +
+                    partition.second.map { it.packageInfo }
+        }
+        binding.menuUnselectAll.setOnClickListener {
+            viewModel.checkedApps -= viewModel.showingApps
+                .map { it.packageInfo }
+        }
 
         binding.filterEdit.doAfterTextChanged { viewModel.filterText = it.toString() }
 
@@ -67,34 +71,6 @@ class AppPickerDialog : AppCompatDialogFragment() {
             }
         }
         return dialog
-    }
-
-    private fun showMenu(v: View, @MenuRes menuRes: Int) {
-        val popup = PopupMenu(requireContext(), v)
-        // Inflating the Popup using xml file
-        popup.menuInflater.inflate(menuRes, popup.menu)
-        popup.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.menu_select_all -> {
-                    viewModel.checkedApps += viewModel.showingApps
-                        .map { it.packageInfo }
-                }
-
-                R.id.menu_invert_selection -> {
-                    val partition = viewModel.showingApps.partition { it.isChecked }
-                    viewModel.checkedApps = viewModel.checkedApps -
-                            partition.first.map { it.packageInfo }.toSet() +
-                            partition.second.map { it.packageInfo }
-                }
-
-                R.id.menu_unselect_all -> {
-                    viewModel.checkedApps -= viewModel.showingApps
-                        .map { it.packageInfo }
-                }
-            }
-            true
-        }
-        popup.show()
     }
 
     private fun handlePreAction(action: Runnable) {

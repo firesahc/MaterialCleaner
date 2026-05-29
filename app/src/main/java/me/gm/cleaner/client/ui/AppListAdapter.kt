@@ -1,8 +1,10 @@
 package me.gm.cleaner.client.ui
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.ViewGroup
+import android.widget.PopupMenu
 import androidx.core.view.forEach
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
@@ -31,6 +33,7 @@ class AppListAdapter(private val fragment: AppListFragment) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
         val model = getItem(position)
+        Log.i("MC/Test", "onBindViewHolder: position=$position, package=${model.packageInfo.packageName}")
         binding.icon.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(fragment.requireContext().packageManager))
         binding.title.text = model.label
         binding.summary.text = run {
@@ -79,26 +82,31 @@ class AppListAdapter(private val fragment: AppListFragment) :
                 navController.navigate(direction)
             }
         }
-        binding.root.setOnCreateContextMenuListener { menu, _, _ ->
-            activity.menuInflater.inflate(R.menu.applist_item, menu)
-            menu.setHeaderTitle(model.label)
+        binding.root.setOnLongClickListener { view ->
+            Log.i("MC/Test", "onLongClick: position=$position, package=${model.packageInfo.packageName}, mountRules=${model.mountRulesCount}, readOnly=${model.readOnlyCount}")
+            val popupMenu = PopupMenu(activity, view)
+            popupMenu.menuInflater.inflate(R.menu.applist_item, popupMenu.menu)
             if (model.mountRulesCount == 0) {
-                menu.removeItem(R.id.menu_delete_all_mount_rules)
+                popupMenu.menu.removeItem(R.id.menu_delete_all_mount_rules)
             }
             if (model.readOnlyCount == 0) {
-                menu.removeItem(R.id.menu_delete_all_read_only)
+                popupMenu.menu.removeItem(R.id.menu_delete_all_read_only)
             }
-            menu.forEach {
-                it.setOnMenuItemClickListener { item ->
+            popupMenu.menu.forEach { menuItem ->
+                menuItem.setOnMenuItemClickListener { item ->
                     onContextItemSelected(item, model)
                 }
             }
+            popupMenu.show()
+            true
         }
     }
 
-    private fun onContextItemSelected(item: MenuItem, model: AppListModel): Boolean =
-        when (item.itemId) {
+    private fun onContextItemSelected(item: MenuItem, model: AppListModel): Boolean {
+        Log.i("MC/Test", "onContextItemSelected: itemId=${item.itemId}, package=${model.packageInfo.packageName}")
+        return when (item.itemId) {
             R.id.menu_delete_all_mount_rules -> {
+                Log.i("MC/Test", "Executing: delete all mount rules for ${model.packageInfo.packageName}")
                 fragment.lifecycleScope.launch(Dispatchers.IO) {
                     val sharedProcessPackages = getSharedProcessPackages(model.packageInfo)
                         .map { it.packageName }
@@ -112,6 +120,7 @@ class AppListAdapter(private val fragment: AppListFragment) :
             }
 
             R.id.menu_delete_all_read_only -> {
+                Log.i("MC/Test", "Executing: delete all read only for ${model.packageInfo.packageName}")
                 fragment.lifecycleScope.launch(Dispatchers.IO) {
                     val sharedUserIdPackages = getSharedUserIdPackages(model.packageInfo)
                         .map { it.packageName }
@@ -123,6 +132,7 @@ class AppListAdapter(private val fragment: AppListFragment) :
 
             else -> false
         }
+    }
 
     class ViewHolder(val binding: ApplistItemBinding) : RecyclerView.ViewHolder(binding.root)
 
