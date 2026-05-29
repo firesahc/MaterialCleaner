@@ -91,7 +91,18 @@ class AppListViewModel(application: Application) : BaseServiceSettingsViewModel(
     private suspend fun tryStartServer() {
         if (CleanerClient.pingBinder()) {
             Log.d("CleanerTest", "tryStartServer: server already running, pingBinder=true")
-            return
+            // Force restart server to pick up code changes and fix HooksBridge relay
+            // The old server may have stale binder connections
+            val shell = Shell.getShell()
+            if (shell.isRoot) {
+                Log.i("CleanerTest", "tryStartServer: Killing old server to force restart...")
+                // Use basic shell tools to find and kill the old server
+                Shell.cmd("ps -A | grep cleaner_server | tr -s ' ' | cut -d' ' -f2 | while read pid; do kill -9 \$pid 2>/dev/null; done").exec()
+                // Wait for old server to die
+                delay(2000)
+            } else {
+                return
+            }
         }
         Log.d("CleanerTest", "tryStartServer: server not running, attempting to start")
         withContext(Dispatchers.IO) {
