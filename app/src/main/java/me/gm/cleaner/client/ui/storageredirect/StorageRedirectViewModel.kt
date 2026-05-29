@@ -7,6 +7,8 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.os.Build
 import android.os.Bundle
+import android.os.DeadObjectException
+import android.util.Log
 import androidx.core.os.bundleOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
@@ -266,8 +268,18 @@ class StorageRedirectViewModel(private val application: Application, state: Save
     fun writeMountRules() {
         val packageNames = sharedProcessPackages?.map { it.packageName } ?: emptyList()
         ServicePreferences.putStorageRedirect(mountRules, packageNames)
+        Log.i(
+            "MC/Test",
+            "writeMountRules: service=${CleanerClient.service != null}, " +
+                    "ruleCount=${mountRules.size}"
+        )
         CleanerClient.service?.let { service ->
-            service.notifySrChanged()
+            try {
+                service.notifySrChanged()
+                Log.i("MC/Test", "writeMountRules: notifySrChanged success")
+            } catch (e: Exception) {
+                Log.e("MC/Test", "writeMountRules: notifySrChanged failed", e)
+            }
         }
     }
 
@@ -296,7 +308,17 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         ServicePreferences.putReadOnly(
             readOnlyPaths, sharedUserIdPackages?.map { it.packageName } ?: emptyList()
         )
-        CleanerClient.service?.notifyReadOnlyChanged()
+        Log.i(
+            "MC/Test",
+            "writeReadOnlyPaths: service=${CleanerClient.service != null}, " +
+                    "readOnlyCount=${readOnlyPaths.size}"
+        )
+        try {
+            CleanerClient.service?.notifyReadOnlyChanged()
+            Log.i("MC/Test", "writeReadOnlyPaths: notifyReadOnlyChanged success")
+        } catch (e: Exception) {
+            Log.e("MC/Test", "writeReadOnlyPaths: notifyReadOnlyChanged failed", e)
+        }
     }
 
     private val _appTypeMarksFlow: MutableStateFlow<NetworkConnectionState<AppTypeMarks?>> =
@@ -354,9 +376,43 @@ class StorageRedirectViewModel(private val application: Application, state: Save
 
     fun setPackagePermission(ai: ApplicationInfo, permission: String, grant: Boolean) {
         val userId = ai.uid.toUserId()
-        CleanerClient.service?.setPackagePermission(
-            ai, permission, isRuntime(permission), userId, grant
+        Log.i(
+            "MC/Test",
+            "setPackagePermission: packageName=${ai.packageName}, permission=$permission, " +
+                    "grant=$grant, isRuntime=${isRuntime(permission)}, userId=$userId"
         )
+        if (!CleanerClient.pingBinder()) {
+            Log.e(
+                "MC/Test",
+                "setPackagePermission: binder dead, service=${CleanerClient.service != null}"
+            )
+            return
+        }
+        try {
+            CleanerClient.service?.setPackagePermission(
+                ai, permission, isRuntime(permission), userId, grant
+            )
+            Log.i(
+                "MC/Test",
+                "setPackagePermission: success for ${ai.packageName}, permission=$permission"
+            )
+        } catch (e: DeadObjectException) {
+            Log.e(
+                "MC/Test",
+                "setPackagePermission: DeadObjectException for ${ai.packageName}, " +
+                        "permission=$permission, cleaning up binder state",
+                e
+            )
+            // 清理 binder 状态，允许下次调用时重新连接
+            CleanerClient.resetConnection()
+        } catch (e: Exception) {
+            Log.e(
+                "MC/Test",
+                "setPackagePermission: unexpected error for ${ai.packageName}, " +
+                        "permission=$permission",
+                e
+            )
+        }
     }
 }
 

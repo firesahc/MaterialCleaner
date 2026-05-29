@@ -6,6 +6,7 @@ import android.app.AppOpsManager
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -55,9 +56,24 @@ class PermissionsCategoryAdapter(
             return
         }
         val permission = permissions[position - 1]
-        val grantResult = CleanerClient.service?.getPackagePermission(
-            ai, permission, viewModel.isRuntime(permission)
-        ) ?: PackageManager.PERMISSION_DENIED
+        Log.d(
+            "MC/Test",
+            "onBindViewHolder: position=$position, permission=$permission, " +
+                    "packageName=${ai.packageName}, service=${CleanerClient.service != null}"
+        )
+        val grantResult = try {
+            CleanerClient.service?.getPackagePermission(
+                ai, permission, viewModel.isRuntime(permission)
+            ) ?: PackageManager.PERMISSION_DENIED
+        } catch (e: Exception) {
+            Log.e(
+                "MC/Test",
+                "onBindViewHolder: getPackagePermission failed for ${ai.packageName}, " +
+                        "permission=$permission",
+                e
+            )
+            PackageManager.PERMISSION_DENIED
+        }
         viewModel.permissionToGrant[permission] = grantResult
         val binding = (holder as ItemViewHolder).binding
         binding.title.setText(storagePermissionTranslations[permission]!!)
@@ -74,6 +90,11 @@ class PermissionsCategoryAdapter(
         popupWindow.setSelectedIndex(checkPermissionResultTranslations.keys.indexOf(grantResult))
         popupWindow.onItemClickListener = SimpleMenuPopupWindow.OnItemClickListener { i ->
             val clicked = checkPermissionResultTranslations.keys.toList()[i]
+            Log.i(
+                "MC/Test",
+                "onItemClick: permission=$permission, clicked=$clicked, " +
+                        "packageName=${ai.packageName}"
+            )
             try {
                 when (clicked) {
                     PackageManager.PERMISSION_GRANTED -> viewModel.setPackagePermission(
@@ -85,6 +106,11 @@ class PermissionsCategoryAdapter(
                 }
                 notifyItemChanged(position)
             } catch (tr: Throwable) {
+                Log.e(
+                    "MC/Test",
+                    "onItemClick: error for ${ai.packageName}, permission=$permission",
+                    tr
+                )
                 Toast.makeText(context, tr.message ?: tr.javaClass.simpleName, Toast.LENGTH_SHORT).show()
             }
         }

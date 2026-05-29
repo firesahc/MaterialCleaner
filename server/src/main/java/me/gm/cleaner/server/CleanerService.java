@@ -157,10 +157,11 @@ public class CleanerService extends ICleanerService.Stub {
         var runtimeResult = PackageManager.PERMISSION_DENIED;
         if (isRuntime) {
             runtimeResult = SystemService.checkPermission(permissionName, appInfo.uid);
-            if (runtimeResult == PackageManager.PERMISSION_DENIED) {
-                return runtimeResult;
-            }
         }
+        // 始终检查 AppOps 模式，即使 runtime 权限检查返回 DENIED
+        // 因为 setPackagePermission 同时设置了 runtime 权限和 AppOps 模式
+        // 在 Android 15+ 上，READ/WRITE_EXTERNAL_STORAGE 已废弃，
+        // grantRuntimePermission 可能失败，但 AppOps 仍然有效
         switch (getOpMode(appInfo, permissionName)) {
             case AppOpsManager.MODE_ALLOWED:
                 return PackageManager.PERMISSION_GRANTED;
@@ -182,10 +183,17 @@ public class CleanerService extends ICleanerService.Stub {
             throws RemoteException {
         enforceManager(BuildConfig.DEBUG ? "setPackagePermission" : 6);
         if (isRuntime) {
-            if (grant) {
-                SystemService.grantRuntimePermission(appInfo.packageName, permissionName, userId);
-            } else {
-                SystemService.revokeRuntimePermission(appInfo.packageName, permissionName, userId);
+            try {
+                if (grant) {
+                    SystemService.grantRuntimePermission(appInfo.packageName, permissionName, userId);
+                } else {
+                    SystemService.revokeRuntimePermission(appInfo.packageName, permissionName, userId);
+                }
+            } catch (NoSuchMethodError e) {
+                // Android 15+ 上 IPermissionManager 接口方法签名可能已变更
+                // 跳过 runtime 权限操作，仅设置 AppOps 模式
+                Log.w("CleanerService", "setPackagePermission: runtime permission API not available, " +
+                        "falling back to AppOps only", e);
             }
         }
         final var opCode = HiddenApiBridge.permissionToOpCode(permissionName);
