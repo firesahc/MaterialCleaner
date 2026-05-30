@@ -254,8 +254,7 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                                 if (!TextUtils.isEmpty(packageName)) {
                                     final var pid = Integer.parseInt(StringUtils.substring(start, 0, start.indexOf(':')));
                                     Log.i("MC_REDIRECT", "[AMLogsObserver] Process start detected: pkg=" + packageName + " pid=" + pid + " uid=" + uid);
-                                    if (!CleanerHooksClient.pingBinder() ||
-                                            MagiskDenyListObserver.isInDenyList(packageName)) {
+                                    if (!MagiskDenyListObserver.isInDenyList(packageName)) {
                                         Log.i("MC_REDIRECT", "[AMLogsObserver] Triggering bindMount for " + packageName);
                                         getMounter().bindMountAsync(packageName, pid, uid);
                                     }
