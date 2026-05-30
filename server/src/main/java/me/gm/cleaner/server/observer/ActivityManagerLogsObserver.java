@@ -1,7 +1,5 @@
 package me.gm.cleaner.server.observer;
 
-import static me.gm.cleaner.server.observer.LogcatObserverKt.INDEX_OF_TAG;
-
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -17,7 +15,9 @@ import me.gm.cleaner.server.CleanerServer;
 import me.gm.cleaner.server.ServerConstants;
 import me.gm.cleaner.server.util.StringUtils;
 
-public class ActivityManagerLogsObserver extends BaseProcessObserver implements LogcatObserver {
+public class ActivityManagerLogsObserver extends BaseProcessObserver {
+    private static final int INDEX_OF_TAG = 33;
+
     private final CleanerServer mServer;
     private volatile boolean mHasAmStart = false;
     private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
