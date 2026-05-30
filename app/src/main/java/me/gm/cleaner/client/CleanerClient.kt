@@ -5,6 +5,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.server.ICleanerService
 
 object CleanerClient {
@@ -21,7 +22,7 @@ object CleanerClient {
         private set
     private val DEATH_RECIPIENT: IBinder.DeathRecipient = IBinder.DeathRecipient {
         Log.w("MC/Test", "DEATH_RECIPIENT: Binder death detected! Server disconnected.")
-        Log.w("CleanerTest", "Binder death received! Server disconnected.")
+        if (BuildConfig.DEBUG) Log.w("CleanerTest", "Binder death received! Server disconnected.")
         binder = null
         service = null
         serverVersion = -1
@@ -30,16 +31,16 @@ object CleanerClient {
     fun pingBinder(): Boolean {
         Log.d("MC/Test", "pingBinder: binder=${binder != null}, result=${binder?.pingBinder()}")
         val result = binder?.pingBinder() == true
-        Log.d("CleanerTest", "pingBinder: result=$result")
+        if (BuildConfig.DEBUG) Log.d("CleanerTest", "pingBinder: result=$result")
         return result
     }
 
     @Synchronized
     fun onBinderReceived(newBinder: IBinder) {
         Log.i("MC/Test", "onBinderReceived: newBinder received, currentBinder=${binder != null}")
-        Log.i("CleanerTest", "onBinderReceived: newBinder=$newBinder, currentBinder=$binder")
+        if (BuildConfig.DEBUG) Log.i("CleanerTest", "onBinderReceived: newBinder=$newBinder, currentBinder=$binder")
         if (binder == newBinder) {
-            Log.d("CleanerTest", "onBinderReceived: same binder, skipping")
+            if (BuildConfig.DEBUG) Log.d("CleanerTest", "onBinderReceived: same binder, skipping")
             return
         }
         binder?.unlinkToDeath(DEATH_RECIPIENT, 0)
@@ -48,7 +49,7 @@ object CleanerClient {
         service = ICleanerService.Stub.asInterface(newBinder)
         serverVersion = service?.serverVersion ?: -1
         Log.i("MC/Test", "onBinderReceived: service established, serverVersion=$serverVersion")
-        Log.i("CleanerTest", "onBinderReceived: service set, serverVersion=$serverVersion")
+        if (BuildConfig.DEBUG) Log.i("CleanerTest", "onBinderReceived: service set, serverVersion=$serverVersion")
     }
 
     fun getInstalledPackages(flags: Int): List<PackageInfo> {

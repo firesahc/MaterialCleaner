@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Process
 import android.util.Log
 import com.topjohnwu.superuser.Shell
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.util.FileUtils.toUserId
@@ -15,15 +16,15 @@ class BootCompleteReceiver : BroadcastReceiver() {
         if (Process.myUid().toUserId() > 0) return
         val isStartOnBoot = RootPreferences.isStartOnBoot
         val pingBinder = CleanerClient.pingBinder()
-        Log.i("CleanerTest", "BootCompleteReceiver.onReceive: action=${intent?.action}, isStartOnBoot=$isStartOnBoot, pingBinder=$pingBinder")
+        if (BuildConfig.DEBUG) Log.i("CleanerTest", "BootCompleteReceiver.onReceive: action=${intent?.action}, isStartOnBoot=$isStartOnBoot, pingBinder=$pingBinder")
         if (isStartOnBoot && !pingBinder) {
             val shell = try {
                 Shell.getShell()
             } catch (e: Exception) {
-                Log.e("CleanerTest", "BootCompleteReceiver: failed to get shell", e)
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "BootCompleteReceiver: failed to get shell", e)
                 return
             }
-            Log.i("CleanerTest", "BootCompleteReceiver: shell.isRoot=${shell.isRoot}")
+            if (BuildConfig.DEBUG) Log.i("CleanerTest", "BootCompleteReceiver: shell.isRoot=${shell.isRoot}")
             if (shell.isRoot) {
                 runCatching {
                     if (RootPreferences.isStartOnBoot) {
@@ -31,9 +32,9 @@ class BootCompleteReceiver : BroadcastReceiver() {
                     }
                     Starter.writeDataFiles(context)
                     Shell.cmd(Starter.command).exec()
-                    Log.i("CleanerTest", "BootCompleteReceiver: server start command executed")
+                    if (BuildConfig.DEBUG) Log.i("CleanerTest", "BootCompleteReceiver: server start command executed")
                 }.onFailure { e ->
-                    Log.e("CleanerTest", "BootCompleteReceiver: Failed to start server", e)
+                    if (BuildConfig.DEBUG) Log.e("CleanerTest", "BootCompleteReceiver: Failed to start server", e)
                 }
             }
         }

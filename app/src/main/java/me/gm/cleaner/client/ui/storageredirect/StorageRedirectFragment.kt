@@ -27,6 +27,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseFragment
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.app.InfoDialog
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_ERROR
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_INFO
@@ -120,7 +121,7 @@ class StorageRedirectFragment : BaseFragment() {
         val wizardAdapter = WizardAdapter(this, viewModel)
 
         viewModel.modeLiveData.observe(viewLifecycleOwner) { mode ->
-            Log.i("CleanerTest", "StorageRedirect: mode=$mode")
+            if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: mode=$mode")
             val dynamicAdapters = listOf(mountRuleTitleAdapter, mountRulesAdapter, wizardAdapter)
             val currentAdapters = when (mode) {
                 is Mode.Welcome -> emptyList()
@@ -456,7 +457,7 @@ class StorageRedirectFragment : BaseFragment() {
         }
 
         R.id.menu_delete_all_mount_rules -> {
-            Log.i("CleanerTest", "StorageRedirect: delete all mount rules")
+            if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: delete all mount rules")
             viewModel.updateMountRules {
                 clear()
                 add(null to null)
@@ -493,7 +494,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
 
             SAVE_AND_EXIT -> {
-                Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
+                if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
                         viewModel.writeMountRules()
@@ -513,7 +514,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
 
             SAVE_AND_REMOUNT_AND_EXIT -> {
-                Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
+                if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
                         viewModel.writeMountRules()

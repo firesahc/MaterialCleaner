@@ -32,6 +32,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.starter.Starter
@@ -143,7 +144,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
         try {
             hasRoot = Shell.getShell().isRoot
         } catch (e: Exception) {
-            Log.e("CleanerTest", "AppListFragment: failed to check root", e)
+            if (BuildConfig.DEBUG) Log.e("CleanerTest", "AppListFragment: failed to check root", e)
             hasRoot = false
         }
     }
@@ -193,10 +194,10 @@ class AppListFragment : BaseServiceSettingsFragment() {
                         Toast.makeText(requireContext(), "正在启动...", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    Log.e("CleanerTest", "startServer: command failed: ${result.err.joinToString()}")
+                    if (BuildConfig.DEBUG) Log.e("CleanerTest", "startServer: command failed: ${result.err.joinToString()}")
                 }
             } catch (e: Exception) {
-                Log.e("CleanerTest", "startServer: exception", e)
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "startServer: exception", e)
             }
         }
     }
@@ -209,7 +210,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 updateServiceStatus()
                 Toast.makeText(requireContext(), "已停止", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Log.e("CleanerTest", "stopServer: exception", e)
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "stopServer: exception", e)
             }
         }
     }
@@ -220,7 +221,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 try {
                     AppListLoader().load()
                 } catch (e: Exception) {
-                    Log.e("CleanerTest", "AppListFragment.loadMountedApps: failed", e)
+                    if (BuildConfig.DEBUG) Log.e("CleanerTest", "AppListFragment.loadMountedApps: failed", e)
                     emptyList()
                 }
             }
