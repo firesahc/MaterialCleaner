@@ -172,22 +172,23 @@ class AppListFragment : BaseServiceSettingsFragment() {
         statusTitle?.visibility = android.view.View.GONE
 
         // 构建三行状态信息
-        val rootStatus = if (hasRoot) "可用" else "不可用"
+        val ctx = requireContext()
+        val rootStatus = ctx.getString(if (hasRoot) R.string.root_available else R.string.root_unavailable)
         val serverPid = CleanerClient.service?.serverPid?.toString() ?: "-"
         val xposedStatus = when {
-            !isRunning -> "等待服务器启动"
-            isXposedConnected -> "已连接"
-            else -> "等待 MediaProvider 连接"
+            !isRunning -> ctx.getString(R.string.server_waiting)
+            isXposedConnected -> ctx.getString(R.string.xposed_connected) + " ✅"
+            else -> ctx.getString(R.string.waiting_media_provider)
         }
 
         statusSubtitle?.text = buildString {
-            appendLine("守护进程: PID $serverPid | Root $rootStatus")
-            appendLine("已挂载: $mountedCount 个应用 | $totalRules 条规则")
-            append("Xposed Hooks: $xposedStatus")
+            appendLine(ctx.getString(R.string.server_status_daemon, serverPid, rootStatus))
+            appendLine(ctx.getString(R.string.server_status_mounted, mountedCount, totalRules))
+            append(ctx.getString(R.string.server_status_xposed, xposedStatus))
         }
 
         mountedCountTextView?.visibility = android.view.View.GONE
-        btnToggleServer?.text = if (isRunning) "停止服务器" else "启动服务器"
+        btnToggleServer?.text = ctx.getString(if (isRunning) R.string.btn_stop_server else R.string.btn_start_server)
 
         // 只有全部条件满足才显示绿色对勾
         val allReady = isRunning && hasRoot && isXposedConnected
@@ -212,7 +213,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 val result = Shell.cmd(Starter.command).exec()
                 if (result.isSuccess) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), "正在启动...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), R.string.toast_starting, Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     if (BuildConfig.DEBUG) Log.e("CleanerTest", "startServer: command failed: ${result.err.joinToString()}")
@@ -229,7 +230,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 CleanerClient.exit()
                 CleanerClient.resetConnection()
                 updateServiceStatus()
-                Toast.makeText(requireContext(), "已停止", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.toast_stopped, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) Log.e("CleanerTest", "stopServer: exception", e)
             }

@@ -98,7 +98,7 @@ class GoUpAdapter(private val filePicker: FilePickerViewModel) :
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
-        binding.title.text = ".."
+        binding.title.text = binding.root.context.getString(R.string.parent_directory)
         binding.root.setOnClickListener {
             if (filePicker.canGoUp) {
                 filePicker.goUp(true)
