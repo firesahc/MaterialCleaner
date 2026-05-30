@@ -26,17 +26,17 @@ jint JNI_OnLoad(JavaVM *jvm, void *v __unused) {
     if (jvm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
-    jclass clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/xposed/InlineHookConfig"));
+    jclass clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/xposed/InlineHookConfig")); // "me/gm/cleaner/xposed/InlineHookConfig"
     if (clazz == nullptr) {
         return JNI_ERR;
     }
-    auto a = AY_OBFUSCATE("a");
-    auto init = AY_OBFUSCATE("init");
+    auto a = AY_OBFUSCATE("a"); // "a" - short method name
+    auto init = AY_OBFUSCATE("init"); // "init"
     JNINativeMethod methods[] = {
-            {a, AY_OBFUSCATE("([Ljava/lang/String;)V"), (void *) bpf_hook::setMountPoint},
-            {a, AY_OBFUSCATE(
+            {a, AY_OBFUSCATE("([Ljava/lang/String;)V"), (void *) bpf_hook::setMountPoint}, // "([Ljava/lang/String;)V"
+            {a, AY_OBFUSCATE( // "(Z)V"
                         "(Z)V"),                        (void *) bpf_hook::setRecordExternalAppSpecificStorage},
-            {init, AY_OBFUSCATE("()V"),                 (void *) xhook_init_jni},
+            {init, AY_OBFUSCATE("()V"),                 (void *) xhook_init_jni}, // "()V"
     };
     if (env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0]))) {
         return JNI_ERR;

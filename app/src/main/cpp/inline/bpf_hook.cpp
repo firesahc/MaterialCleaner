@@ -117,59 +117,59 @@ namespace bpf_hook {
 
     void Hook(void *handle) {
         if (!IsFuse()) {
-            LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str());
+            LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str()); // "FUSE not available, skipping hook"
             return;
         }
-        LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str());
+        LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
         if (GetApiLevel() >= 31) {
-            auto startsWith = dlsym(handle, AY_OBFUSCATE(
-                    "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_"));
+        auto startsWith = dlsym(handle, AY_OBFUSCATE( // "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_"
+                "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_"));
             if (startsWith != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_", (void *) new_StartsWith, (void **) &old_StartsWith);
             } else {
-                LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str());
+                LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str()); // "failed to find StartsWith"
             }
         }
-        auto containsMount_31 = dlsym(handle, AY_OBFUSCATE(
+        auto containsMount_31 = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"
                 "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"));
         if (containsMount_31 != nullptr) {
             xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE", (void *) new_containsMount_31,
                       (void **) &old_containsMount_31);
         } else {
-            auto containsMount_30 = dlsym(handle, AY_OBFUSCATE(
+            auto containsMount_30 = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_"
                     "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_"));
             if (containsMount_30 != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_", (void *) new_containsMount_30,
                           (void **) &old_containsMount_30);
             } else {
-                LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str());
+                LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str()); // "failed to find containsMount"
             }
         }
-        auto IsFuseBpfEnabled = dlsym(handle, AY_OBFUSCATE(
+        auto IsFuseBpfEnabled = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv"
                 "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv"));
         if (IsFuseBpfEnabled != nullptr) {
             xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv", (void *) new_IsFuseBpfEnabled,
                       (void **) &old_IsFuseBpfEnabled);
 
 
-            auto fuse_req_userdata = dlsym(handle, AY_OBFUSCATE("fuse_req_userdata"));
+            auto fuse_req_userdata = dlsym(handle, AY_OBFUSCATE("fuse_req_userdata")); // "fuse_req_userdata"
             if (fuse_req_userdata != nullptr) {
                 xhook_register("libfuse_jni\\.so", "fuse_req_userdata", (void *) new_fuse_req_userdata,
                           (void **) &old_fuse_req_userdata);
             } else {
-                LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str());
+                LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str()); // "failed to find fuse_req_userdata"
             }
 
-            auto fuse_bpf_install = dlsym(handle, AY_OBFUSCATE(
+            auto fuse_bpf_install = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi"
                     "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi"));
             if (fuse_bpf_install != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi", (void *) new_fuse_bpf_install,
                           (void **) &old_fuse_bpf_install);
             } else {
-                LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str());
+                LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str()); // "failed to find fuse_bpf_install"
             }
         } else {
-            LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str());
+            LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str()); // "failed to find IsFuseBpfEnabled"
         }
         xhook_refresh(0);
     }
