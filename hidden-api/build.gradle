@@ -25,6 +25,7 @@ android {
 }
 
 dependencies {
+    compileOnly project(':aidl')
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
 }
