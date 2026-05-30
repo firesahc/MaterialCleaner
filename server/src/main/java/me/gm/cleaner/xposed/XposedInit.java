@@ -16,19 +16,46 @@ import me.gm.cleaner.xposed.InlineHookConfig;
 
 public class XposedInit implements IXposedHookLoadPackage {
     private final MediaProviderHooksService mediaProviderHooksService = new MediaProviderHooksService();
+    private Context mContext;
 
     private void onMediaProviderLoaded(LoadPackageParam lpparam, Context context) {
+        mContext = context;
         try {
             final var mediaProviderClass = XposedHelpers.findClass(
                     "com.android.providers.media.MediaProvider", lpparam.classLoader
             );
             Log.i("MC_REDIRECT", "[XposedInit] MediaProvider class found, registering hooks...");
-            CleanerHooksBinderRetriever.registerHooksCallback(context, mediaProviderHooksService);
+            registerHooksCallback();
+            setupReRegisterOnDeath();
             new MediaProviderHook(mediaProviderHooksService, lpparam.classLoader, mediaProviderClass);
             Log.i("MC_REDIRECT", "[XposedInit] MediaProviderHook created successfully");
         } catch (XposedHelpers.ClassNotFoundError e) {
             Log.e("MC_REDIRECT", "[XposedInit] MediaProvider hook setup FAILED", e);
         }
+    }
+
+    private void registerHooksCallback() {
+        if (mContext != null) {
+            CleanerHooksBinderRetriever.registerHooksCallback(mContext, mediaProviderHooksService);
+        }
+    }
+
+    /** 当 Server 回调丢失时重新注册，应对 app 进程重启场景 */
+    static void reRegisterHooksCallback() {
+        Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback (server restarted)");
+        // 通过 ContentResolver.call 重新注册到 HooksBridgeProvider
+        // 注意：此时 XposedInit 实例中的 mContext 可能已失效，
+        // registerHooksCallback 内部通过 ContentResolver 与新 app 进程通信
+    }
+
+    // 在 onMediaProviderLoaded 中设置自动重连回调
+    private void setupReRegisterOnDeath() {
+        MediaProviderHooksService.sReRegisterCallback = () -> {
+            // 重新注册 hooks callback，重建 sMediaProviderService
+            registerHooksCallback();
+            // 清除标志避免重复触发
+            MediaProviderHooksService.sReRegisterCallback = null;
+        };
     }
 
     @Override

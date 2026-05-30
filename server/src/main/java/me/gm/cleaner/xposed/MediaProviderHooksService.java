@@ -22,13 +22,28 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
 public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private final Map<String, List<String>> mPackageNameToReadOnlyPaths = new ConcurrentHashMap<>();
     private volatile ICleanerServerCallback mCleanerServerBinder = null;
-    private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> mCleanerServerBinder = null;
+    private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
+        mCleanerServerBinder = null;
+        // Server died → 尝试重新注册 hooks callback（应对 app 进程重启场景）
+        if (sReRegisterCallback != null) {
+            Log.i("MC_REDIRECT", "[MediaProviderHooksService] Server died, re-registering with app process...");
+            sReRegisterCallback.run();
+        }
+    };
+
+    /** 当 Server 回调丢失时由 XposedInit 注入的重新注册回调 */
+    public static volatile Runnable sReRegisterCallback;
 
     public void whileAlive(Consumer<ICleanerServerCallback> c) {
         if (mCleanerServerBinder != null) {
             c.accept(mCleanerServerBinder);
         } else {
             Log.w("MC_REDIRECT", "[MediaProviderHooksService] whileAlive: mCleanerServerBinder is NULL! Callback dropped.");
+            // 尝试重新注册（最多触发一次，由 server died 后的首次调用触发）
+            if (sReRegisterCallback != null) {
+                Log.i("MC_REDIRECT", "[MediaProviderHooksService] whileAlive: attempting re-registration...");
+                sReRegisterCallback.run();
+            }
         }
     }
 
