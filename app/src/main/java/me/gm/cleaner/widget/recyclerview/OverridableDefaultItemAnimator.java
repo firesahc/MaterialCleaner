@@ -32,7 +32,28 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * This implementation of {@link RecyclerView.ItemAnimator} provides basic
+ * AOSP DefaultItemAnimator 副本，唯一区别是访问修饰符从 private/package-private
+ * 提升为 protected。
+ *
+ * <p><b>保留原因（不可替换为 DefaultItemAnimator）：</b></p>
+ * <ul>
+ *   <li>{@link ChildItemAnimator} 需要读取 mPendingRemovals、mPendingMoves、
+ *       mPendingChanges、mPendingAdditions 等受保护字段来计算 deltaHeight</li>
+ *   <li>{@link ChildItemAnimator} 需要重写 animateRemoveImpl、animateAddImpl、
+ *       animateMoveImpl、animateChangeImpl 等受保护方法以在动画完成后触发
+ *       resize() 自伸缩动画</li>
+ *   <li>标准 {@code DefaultItemAnimator} 将这些字段和方法标记为 private /
+ *       package-private，无法被子类访问或重写</li>
+ * </ul>
+ *
+ * <p>如果未来要移除这个副本，方案包括：</p>
+ * <ol>
+ *   <li>将 ChildItemAnimator 重写为独立的 SimpleItemAnimator 实现</li>
+ *   <li>放弃 RecyclerView 自伸缩动画，改用标准 DefaultItemAnimator</li>
+ *   <li>通过 AdapterDataObserver 监听数据变更手动调整 RecyclerView 高度</li>
+ * </ol>
+ *
+ * <p>This implementation of {@link RecyclerView.ItemAnimator} provides basic
  * animations on remove, add, and move events that happen to the items in
  * a RecyclerView. RecyclerView uses a DefaultItemAnimator by default.
  *
