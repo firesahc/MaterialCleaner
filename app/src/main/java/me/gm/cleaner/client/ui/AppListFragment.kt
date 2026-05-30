@@ -34,7 +34,9 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
+import me.gm.cleaner.client.HooksBridgeProvider
 import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.server.BuildConfig as ServerBuildConfig
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.fitsSystemWindowInsets
 
@@ -167,19 +169,28 @@ class AppListFragment : BaseServiceSettingsFragment() {
         if (!isAdded) return
 
         val isRunning = CleanerClient.pingBinder()
-        val version = CleanerClient.serverVersion
+        val isXposedConnected = HooksBridgeProvider.isMediaProviderConnected()
+        val mountedCount = ServicePreferences.srPackages.size
+        val totalRules = ServicePreferences.srPackages.sumOf { pkg ->
+            ServicePreferences.getPackageSrCount(pkg)
+        }
 
         statusTitle?.text = if (isRunning) "服务器运行中" else "服务器已停止"
 
         statusSubtitle?.text = buildString {
-            append("版本: ")
-            append(if (version >= 0) version.toString() else "N/A")
-            append(" | Root: ")
-            append(if (hasRoot) "可用" else "不可用")
+            appendLine("版本: ${CleanerClient.serverVersion.let { if (it >= 0) "$it" else "N/A" }} | Root: ${if (hasRoot) "可用" else "不可用"} | 进程: ${CleanerClient.service?.serverPid?.toString() ?: "-"}")
+            appendLine("已挂载: $mountedCount 个应用 | 规则: $totalRules 条")
+            append("Xposed Hooks: ")
+            if (!isRunning) {
+                append("等待服务器启动...")
+            } else if (isXposedConnected) {
+                append("已连接 ✅")
+            } else {
+                append("等待 MediaProvider 连接...")
+            }
         }
 
-        mountedCountTextView?.text =
-            "已挂载应用: ${ServicePreferences.srPackages.size} 个"
+        mountedCountTextView?.visibility = android.view.View.GONE
 
         btnToggleServer?.text = if (isRunning) "停止服务器" else "启动服务器"
 

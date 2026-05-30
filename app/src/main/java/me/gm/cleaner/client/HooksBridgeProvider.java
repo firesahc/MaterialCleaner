@@ -39,6 +39,11 @@ public class HooksBridgeProvider extends ContentProvider {
     /** Xposed-side service registered from MediaProvider process. */
     private static volatile IMediaProviderHooksService sMediaProviderService;
 
+    /** 查询 Xposed 模块是否已注册到 HooksBridge */
+    public static boolean isMediaProviderConnected() {
+        return sMediaProviderService != null;
+    }
+
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
 
