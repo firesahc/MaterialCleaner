@@ -59,12 +59,15 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
                 unknownPids += packageStatus.pids[index]
             }
         }
-        return if (packageStatus.pids.size == mountedPids.size) {
+        return if (packageStatus.pids.isNotEmpty()
+            && packageStatus.pids.size == mountedPids.size) {
             AppListModel.STATE_MOUNTED
         } else if (unknownPids.isNotEmpty()) {
             AppListModel.STATE_UNKNOWN
-        } else {
+        } else if (mountedPids.isNotEmpty()) {
             AppListModel.STATE_MOUNT_EXCEPTION
+        } else {
+            AppListModel.STATE_UNMOUNTED
         }
     }
 

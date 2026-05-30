@@ -127,7 +127,13 @@ abstract class AppListViewModelBase(application: Application) :
             val value = _appsFlow.value
             if (value is AppListState.Done) {
                 _appsFlow.value = AppListState.Loading
-                val list = AppListLoader().updateRuleCount(value.list)
+                // 重新加载完整列表（更新规则数、挂载状态等）
+                val list = try {
+                    AppListLoader().load()
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) Log.e("CleanerTest", "updateAppsRuleCount: reload failed", e)
+                    value.list
+                }
                 _appsFlow.value = AppListState.Done(list)
             }
         }

@@ -97,13 +97,27 @@ class AppListFragment : BaseServiceSettingsFragment() {
             if (isAdded) updateServiceStatus()
         }
 
+        // 观察 appsFlow → ViewModel 加载完成后自动更新挂载列表
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.appsFlow.collect { state ->
+                    when (state) {
+                        is AppListState.Done -> {
+                            val mounted = state.list.filter { it.mountRulesCount > 0 }
+                            adapter.submitList(mounted)
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+
         // Observe preferences changes → refresh rule count and mounted list
         ServicePreferences.preferencesChangeLiveData.observe(viewLifecycleOwner) {
             viewModel.updateAppsRuleCount()
-            loadMountedApps(adapter)
         }
 
-        // Load initial mounted apps
+        // Load initial mounted apps（添加重试等待服务器就绪）
         loadMountedApps(adapter)
 
         super.onCreateView(inflater, container, savedInstanceState)
@@ -217,6 +231,12 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     private fun loadMountedApps(adapter: AppListAdapter) {
         lifecycleScope.launch {
+            // 等待服务器就绪（最长重试 20 次 = ~10 秒）
+            var retries = 0
+            while (!CleanerClient.pingBinder() && retries < 20) {
+                delay(500)
+                retries++
+            }
             val loaded = withContext(Dispatchers.Default) {
                 try {
                     AppListLoader().load()
