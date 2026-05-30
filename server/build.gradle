@@ -23,10 +23,8 @@ android {
 }
 
 dependencies {
-    compileOnly project(':hidden-api-stub')
     implementation project(':aidl')
-    implementation project(':hidden-api-bridge')
-    implementation project(':hidden-system-api')
+    implementation project(':hidden-api')
     implementation project(':shared')
     compileOnly files('libs/api-82.jar')
 

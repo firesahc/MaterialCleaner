@@ -3,5 +3,5 @@ import org.apache.tools.ant.DirectoryScanner
 DirectoryScanner.removeDefaultExclude('**/.gitattributes')
 
 rootProject.name = "Cleaner"
-include ':hidden-api-stub', 'hidden-api-bridge', 'hidden-system-api'
+include ':hidden-api'
 include ':app', ':server', ':shared', ':aidl'

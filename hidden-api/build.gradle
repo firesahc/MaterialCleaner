@@ -14,13 +14,17 @@ android {
         sourceCompatibility rootProject.ext.javaVersion
         targetCompatibility rootProject.ext.javaVersion
     }
-    namespace 'me.gm.cleaner.api'
+    namespace 'me.gm.cleaner.hidden'
+    sourceSets {
+        main {
+            java {
+                srcDirs = ['src/main/java/stub', 'src/main/java/bridge', 'src/main/java/api']
+            }
+        }
+    }
 }
 
 dependencies {
-    compileOnly project(':hidden-api-stub')
-    implementation project(':hidden-api-bridge')
-
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
 }
