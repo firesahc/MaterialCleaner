@@ -51,10 +51,13 @@ public class XposedInit implements IXposedHookLoadPackage {
     // 在 onMediaProviderLoaded 中设置自动重连回调
     private void setupReRegisterOnDeath() {
         MediaProviderHooksService.sReRegisterCallback = () -> {
-            // 重新注册 hooks callback，重建 sMediaProviderService
-            registerHooksCallback();
-            // 清除标志避免重复触发
-            MediaProviderHooksService.sReRegisterCallback = null;
+            try {
+                Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                registerHooksCallback();
+                Log.i("MC_REDIRECT", "[XposedInit] Re-registration call completed");
+            } catch (Exception e) {
+                Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed", e);
+            }
         };
     }
 
