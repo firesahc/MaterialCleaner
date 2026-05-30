@@ -1,5 +1,10 @@
 package me.gm.cleaner.client.ui
 
+/**
+ * Logcat 抓取和分享工具：运行 logcat 命令抓取当前日志并分享。
+ * 用于用户主动触发的诊断日志分享。
+ * 请勿与 [LogUtils]（文件日志写入）混淆。
+ */
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -10,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import java.io.File
 
@@ -35,7 +41,7 @@ fun Fragment.grabLogcatAndShare(context: Context) {
                 )
             }
         } catch (e: Exception) {
-            Log.e("CleanerTest", "logcat grab failed", e)
+            if (BuildConfig.DEBUG) Log.e("CleanerTest", "logcat grab failed", e)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     context,
