@@ -19,3 +19,6 @@ all_methods.txt
 all_methods2.txt
 server/libs/
 build_tmp_mainjar/
+
+# Backup directories from refactoring
+*.bak/
