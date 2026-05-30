@@ -1,3 +1,10 @@
+/**
+ * 窄用专用工具，仅用于 RationaleDialog.kt。
+ *
+ * 功能：在 RecyclerView 中固定指定位置的 item 作为 sticky header。
+ * 通过 adapter.createViewHolder() + bindViewHolder() 创建实际视图并添加到父容器。
+ * 不可直接替代为标准库/框架 API（ItemDecoration 无法创建实际 View 实例）。
+ */
 package me.gm.cleaner.widget.recyclerview
 
 import android.view.View

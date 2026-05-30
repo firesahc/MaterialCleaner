@@ -1,3 +1,12 @@
+/**
+ * 窄用专用工具，仅用于 MountWizard.kt。
+ *
+ * 功能：在 DiffUtil 计算结果派发更新时追踪当前列表状态，
+ * 提供 onInserted/onRemoved/onMoved/onChanged 回调，
+ * 用于计算存储重定向迁移路径。
+ *
+ * 不可直接替代为标准库/框架 API（AsyncListDiffer 仅用于 RecyclerView 适配器）。
+ */
 package me.gm.cleaner.widget.recyclerview
 
 import androidx.annotation.CallSuper

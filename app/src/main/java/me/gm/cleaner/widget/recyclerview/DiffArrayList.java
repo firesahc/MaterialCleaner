@@ -1,3 +1,13 @@
+/**
+ * 窄用专用工具，仅用于以下文件：
+ * - MountWizard.kt
+ * - StorageRedirectViewModel.kt
+ * - StorageRedirectFragment.kt
+ *
+ * 功能：扩展 ObservableArrayList，在数据变更时自动累积 pending update 事件，
+ * 配合 submitDiffList() 扩展函数使用，避免 submitList 的完整 diff 计算开销。
+ * 不可直接替代为标准库/框架 API。
+ */
 package me.gm.cleaner.widget.recyclerview;
 
 import androidx.annotation.Nullable;
