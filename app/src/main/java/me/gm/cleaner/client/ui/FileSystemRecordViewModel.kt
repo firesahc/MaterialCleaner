@@ -2,6 +2,7 @@ package me.gm.cleaner.client.ui
 
 import android.app.Application
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -10,10 +11,12 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.ServicePreferences
@@ -132,7 +135,18 @@ class FileSystemRecordViewModel(application: Application) :
             if (::bulkCursor.isInitialized) {
                 bulkCursor.close()
             }
-            bulkCursor = CleanerClient.service?.queryAllRecords(
+            // 等待服务器就绪（最长重试 20 次 = ~10 秒）
+            var retries = 0
+            while (CleanerClient.service == null && retries < 20) {
+                delay(500)
+                retries++
+                ensureActive()
+            }
+            if (CleanerClient.service == null) {
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "FileSystemRecord.reload: server not ready after timeout")
+                return@launch
+            }
+            bulkCursor = CleanerClient.service!!.queryAllRecords(
                 isHideAppSpecificStorage, if (isSearching) queryText else null
             ) ?: return@launch
             fileSystemRecord += loadMoreInternal(LOAD_SIZE)
@@ -161,6 +175,19 @@ class FileSystemRecordViewModel(application: Application) :
 
     fun startLoadingRecord() {
         viewModelScope.launch {
+            // 服务器就绪后再注册文件变更观察者
+            var retries = 0
+            while (CleanerClient.service == null && retries < 20) {
+                delay(500)
+                retries++
+            }
+            try {
+                CleanerClient.service?.registerFileChangeObserver(fileSystemChangeObserver)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "FileSystemRecord: register observer failed", e)
+            }
+        }
+        viewModelScope.launch {
             combine(
                 _checkedFilterAppsFlow, _isHideAppSpecificStorageFlow,
                 _isSearchingFlow, _queryTextFlow
@@ -169,7 +196,6 @@ class FileSystemRecordViewModel(application: Application) :
                 reload()
             }
         }
-        CleanerClient.service?.registerFileChangeObserver(fileSystemChangeObserver)
     }
 
     init {
