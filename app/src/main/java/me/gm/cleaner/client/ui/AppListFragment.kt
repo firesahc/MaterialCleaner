@@ -175,28 +175,30 @@ class AppListFragment : BaseServiceSettingsFragment() {
             ServicePreferences.getPackageSrCount(pkg)
         }
 
-        statusTitle?.text = if (isRunning) "服务器运行中" else "服务器已停止"
+        statusTitle?.visibility = android.view.View.GONE
+
+        // 构建三行状态信息
+        val rootStatus = if (hasRoot) "可用" else "不可用"
+        val serverPid = CleanerClient.service?.serverPid?.toString() ?: "-"
+        val xposedStatus = when {
+            !isRunning -> "等待服务器启动..."
+            isXposedConnected -> "已连接 ✅"
+            else -> "等待 MediaProvider 连接..."
+        }
 
         statusSubtitle?.text = buildString {
-            appendLine("版本: ${CleanerClient.serverVersion.let { if (it >= 0) "$it" else "N/A" }} | Root: ${if (hasRoot) "可用" else "不可用"} | 进程: ${CleanerClient.service?.serverPid?.toString() ?: "-"}")
+            appendLine("守护进程: PID $serverPid | Root $rootStatus")
             appendLine("已挂载: $mountedCount 个应用 | 规则: $totalRules 条")
-            append("Xposed Hooks: ")
-            if (!isRunning) {
-                append("等待服务器启动...")
-            } else if (isXposedConnected) {
-                append("已连接 ✅")
-            } else {
-                append("等待 MediaProvider 连接...")
-            }
+            append("Xposed Hooks: $xposedStatus")
         }
 
         mountedCountTextView?.visibility = android.view.View.GONE
-
         btnToggleServer?.text = if (isRunning) "停止服务器" else "启动服务器"
 
-        // Update status dot icon and tint
+        // 只有全部条件满足才显示绿色对勾
+        val allReady = isRunning && hasRoot && isXposedConnected
         val context = requireContext()
-        if (isRunning) {
+        if (allReady) {
             statusDot?.setImageResource(R.drawable.ic_baseline_check_circle_24)
             statusDot?.imageTintList = android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(context, android.R.color.holo_green_dark)
