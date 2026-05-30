@@ -33,9 +33,14 @@ public class XposedInit implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(LoadPackageParam lpparam) {
-        if ((lpparam.appInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
-            // MediaProvider must be a system app.
-            return;
+        // 只处理 MediaProvider 进程，忽略其他所有系统应用
+        switch (lpparam.packageName) {
+            case "com.android.providers.media":
+            case "com.android.providers.media.module":
+            case "com.google.android.providers.media.module":
+                break;
+            default:
+                return;
         }
         Log.i("MC_REDIRECT", "[XposedInit] Loading inline lib for package: " + lpparam.packageName);
         try {

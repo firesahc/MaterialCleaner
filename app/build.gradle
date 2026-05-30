@@ -85,9 +85,92 @@ android {
     namespace 'me.gm.cleaner'
 }
 
-// 生成 Xposed 模块 assets/main.jar（配合 git 外的手动生成脚本）
-// main.jar 应放在 app/src/main/assets/ 目录下，由 mergeDebugAssets 自动打包
-// 生成方式: d8 --min-api 26 --output /tmp/classes server/.../classes.jar && cd /tmp && zip main.jar classes.dex
+// ── Xposed 模块 assets/main.jar 自动构建 ──────────────────────────
+// 将 server 模块的 classes.jar 通过 d8 转为 DEX，打包为 main.jar
+// 放入 app/src/main/assets/ 由 mergeDebugAssets 自动打包进 APK
+// ─────────────────────────────────────────────────────────────────
+def buildMainJarTask = tasks.register('buildXposedMainJar') {
+    description = '构建 Xposed 模块 main.jar（d8 + zip）'
+    group = 'Cleaner'
+
+    // 依赖 server 模块编译完成
+    dependsOn ':server:compileDebugKotlin'
+    dependsOn ':server:compileDebugJavaWithJavac'
+    dependsOn ':server:syncDebugLibJars'
+
+    // 输入：server 模块的 classes.jar
+    def serverJar = project(':server').buildDir.path +
+            '/intermediates/aar_main_jar/debug/classes.jar'
+    inputs.file serverJar
+
+    // 输出：main.jar
+    def outputJar = "${projectDir}/src/main/assets/main.jar"
+    outputs.file outputJar
+
+    doLast {
+        def serverJarFile = file(serverJar)
+        if (!serverJarFile.exists()) {
+            throw new GradleException("server classes.jar 未找到: ${serverJar}")
+        }
+
+        // 定位 d8 工具
+        def buildToolsDir = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}"
+        def d8 = new File(buildToolsDir, 'd8')
+        if (!d8.exists()) {
+            d8 = new File(buildToolsDir, 'd8.bat')
+        }
+        if (!d8.exists()) {
+            throw new GradleException("d8 未找到: ${buildToolsDir}")
+        }
+
+        // 临时目录
+        def tmpDir = layout.buildDirectory.dir('tmp/mainjar').get().asFile
+        tmpDir.mkdirs()
+        def dexZip = new File(tmpDir, 'classes.zip')
+        def androidJar = "${android.sdkDirectory}/platforms/android-${android.compileSdk}/android.jar"
+
+        // Step 1: d8 将 classes.jar 转为 DEX（输出为 zip）
+        exec {
+            commandLine d8.path,
+                    '--lib', androidJar,
+                    '--min-api', '26',
+                    '--output', dexZip.path,
+                    serverJarFile.path
+        }
+
+        if (!dexZip.exists()) {
+            throw new GradleException("d8 转换失败，classes.zip 未生成")
+        }
+
+        // Step 2: 从 zip 中提取 classes.dex 并打包为 main.jar
+        def outputFile = file(outputJar)
+        def parent = outputFile.parentFile
+        parent.mkdirs()
+
+        fileTree(tmpDir).include('**/*.dex').each { dexFile ->
+            outputFile.withOutputStream { out ->
+                def zipOut = new java.util.zip.ZipOutputStream(out)
+                zipOut.putNextEntry(new java.util.zip.ZipEntry('classes.dex'))
+                zipOut << dexFile.bytes
+                zipOut.closeEntry()
+                zipOut.close()
+            }
+        }
+
+        if (outputFile.exists()) {
+            logger.lifecycle("✅ main.jar 已生成: ${outputJar} (${outputFile.size()} 字节)")
+        } else {
+            throw new GradleException("main.jar 生成失败")
+        }
+    }
+}
+
+// 将 main.jar 构建任务挂接到 assets 合并之前
+tasks.whenTaskAdded { task ->
+    if (task.name.startsWith('merge') && task.name.endsWith('Assets')) {
+        task.dependsOn buildMainJarTask
+    }
+}
 
 dependencies {
     implementation project(':aidl')
