@@ -30,7 +30,7 @@
     (and android:drawableStart) because of bug on api 17 that aligned drawable both left and
     right when in RTL configurations
 -->
-<me.gm.cleaner.widget.AutoCheckLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<me.gm.cleaner.widget.CheckableLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -51,4 +51,4 @@
         android:textAlignment="viewStart"
         app:drawableLeftCompat="?android:attr/listChoiceIndicatorMultiple"
         app:drawableStartCompat="?android:attr/listChoiceIndicatorMultiple" />
-</me.gm.cleaner.widget.AutoCheckLinearLayout>
+</me.gm.cleaner.widget.CheckableLinearLayout>

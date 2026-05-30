@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import androidx.annotation.AttrRes
 import androidx.annotation.StyleRes
 import androidx.core.os.ParcelCompat
+import androidx.core.view.children
 
 open class CheckableLinearLayout @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, @AttrRes defStyleAttr: Int = 0,
@@ -24,14 +25,28 @@ open class CheckableLinearLayout @JvmOverloads constructor(
             refreshDrawableState()
         }
 
+    var autoCheckChildren: Boolean = true
+
     override fun setChecked(checked: Boolean) {
         mChecked = checked
+        if (autoCheckChildren) {
+            children.filterIsInstance<Checkable>().forEach {
+                it.isChecked = checked
+            }
+        }
     }
 
     override fun isChecked(): Boolean = mChecked
 
     override fun toggle() {
         isChecked = !mChecked
+    }
+
+    override fun performClick(): Boolean {
+        if (autoCheckChildren) {
+            toggle()
+        }
+        return super.performClick()
     }
 
     override fun onCreateDrawableState(extraSpace: Int): IntArray =
