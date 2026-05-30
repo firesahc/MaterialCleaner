@@ -31,6 +31,7 @@ import me.gm.cleaner.dao.ServicePreferences;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
 import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
+import me.gm.cleaner.server.observer.StorageMountObserver;
 import me.gm.cleaner.util.FileUtils;
 import me.gm.cleaner.util.LibUtils;
 
@@ -125,7 +126,10 @@ public class CleanerServer extends ContextWrapper {
                 throw new RuntimeException(e);
             }
         });
-        new StorageEventListenerImpl(this).start();
+        final var mountObserver = ObserverManager.INSTANCE.getObserver(StorageMountObserver.class);
+        if (mountObserver != null) {
+            mountObserver.setCleanerServer(this);
+        }
         BinderSender.register(cleanerService);
         sendBinderToManger(cleanerService);
     }
