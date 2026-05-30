@@ -1,11 +1,10 @@
 package me.gm.cleaner.nio
 
+import android.util.Log
 import com.google.flatbuffers.FlatBufferBuilder
 import me.gm.cleaner.browser.IProgressListener
 import me.gm.cleaner.browser.IRootWorkerService
 import me.gm.cleaner.model.ParceledException
-import me.gm.cleaner.nio.fs.StructStatPath
-import android.util.Log
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
 import java.net.URI

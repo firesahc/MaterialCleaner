@@ -11,7 +11,10 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
-import androidx.preference.*
+import androidx.preference.Preference
+import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceRecyclerViewAccessibilityDelegate
+import androidx.preference.SwitchPreferenceCompat
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -27,7 +30,10 @@ import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.settings.PathListPreference
 import me.gm.cleaner.settings.PathListPreferenceFragmentCompat
-import me.gm.cleaner.util.*
+import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.util.fitsSystemWindowInsets
+import me.gm.cleaner.util.fixEdgeEffect
+import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import org.json.JSONObject
 
 class MoreOptionsFragment : PreferenceFragmentCompat() {

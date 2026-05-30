@@ -1,5 +1,6 @@
 package com.android.internal.app;
 
+import android.app.AppOpsManager;
 import android.os.IBinder;
 import android.os.IInterface;
 import android.os.RemoteException;
@@ -7,8 +8,6 @@ import android.os.RemoteException;
 import androidx.annotation.RequiresApi;
 
 import java.util.List;
-
-import android.app.AppOpsManager;
 
 public interface IAppOpsService extends IInterface {
 

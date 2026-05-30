@@ -17,7 +17,6 @@
 package me.gm.cleaner.widget
 
 import android.content.Context
-import android.graphics.Rect
 import android.os.Build
 import android.util.AttributeSet
 import android.view.WindowInsets

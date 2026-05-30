@@ -2,10 +2,10 @@ package me.gm.cleaner.server;
 
 import android.content.Intent;
 import android.os.RemoteException;
+import android.util.Log;
 
 import java.io.File;
 import java.io.IOException;
-import android.util.Log;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;

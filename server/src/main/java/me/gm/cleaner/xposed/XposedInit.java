@@ -2,17 +2,15 @@ package me.gm.cleaner.xposed;
 
 import android.content.ContentProvider;
 import android.content.Context;
-import android.util.Log;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.ProviderInfo;
 import android.provider.MediaStore;
+import android.util.Log;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import me.gm.cleaner.client.CleanerHooksBinderRetriever;
-import me.gm.cleaner.xposed.InlineHookConfig;
 
 public class XposedInit implements IXposedHookLoadPackage {
     private final MediaProviderHooksService mediaProviderHooksService = new MediaProviderHooksService();

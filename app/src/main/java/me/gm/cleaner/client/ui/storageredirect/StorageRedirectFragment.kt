@@ -1,10 +1,10 @@
 package me.gm.cleaner.client.ui.storageredirect
 
-import android.util.Log
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -23,11 +23,11 @@ import androidx.recyclerview.widget.GridLayoutManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseFragment
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.app.InfoDialog
-import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_ERROR
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_INFO

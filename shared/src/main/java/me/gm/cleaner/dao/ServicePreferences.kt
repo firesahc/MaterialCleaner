@@ -2,6 +2,7 @@ package me.gm.cleaner.dao
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -16,7 +17,6 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
-import android.util.Log
 import java.nio.ByteBuffer
 
 // Preference key constants (values match existing R.string values to preserve user data)

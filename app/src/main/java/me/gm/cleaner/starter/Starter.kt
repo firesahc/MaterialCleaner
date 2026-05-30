@@ -5,7 +5,8 @@ import android.system.Os
 import android.util.Log
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.util.LibUtils
-import java.io.*
+import java.io.File
+import java.io.IOException
 import java.util.zip.ZipFile
 
 object Starter {

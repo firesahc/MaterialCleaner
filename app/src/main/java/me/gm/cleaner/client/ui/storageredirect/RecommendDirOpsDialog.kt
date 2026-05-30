@@ -11,8 +11,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
-import me.gm.cleaner.util.getSerializableCompat
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
+import me.gm.cleaner.util.getSerializableCompat
 
 class RecommendDirOpsDialog : AppCompatDialogFragment() {
     private val parentFragment: StorageRedirectFragment

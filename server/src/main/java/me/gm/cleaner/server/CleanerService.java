@@ -22,9 +22,6 @@ import android.util.Log;
 
 import com.google.common.collect.ArrayListMultimap;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -56,12 +53,12 @@ import me.gm.cleaner.nio.RootFileService;
 import me.gm.cleaner.nio.RootWorkerService;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
-import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
-import me.gm.cleaner.server.observer.StorageMountObserver;
 import me.gm.cleaner.server.observer.FileSystemObserver;
 import me.gm.cleaner.server.observer.MagiskDenyListObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
 import me.gm.cleaner.server.observer.PackageInfoMapper;
+import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
+import me.gm.cleaner.server.observer.StorageMountObserver;
 import me.gm.cleaner.util.FileUtils;
 
 public class CleanerService extends ICleanerService.Stub {

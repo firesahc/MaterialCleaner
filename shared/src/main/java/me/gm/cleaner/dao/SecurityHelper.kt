@@ -3,10 +3,10 @@ package me.gm.cleaner.dao
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedFile
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.io.CharConversionException
 import java.io.File

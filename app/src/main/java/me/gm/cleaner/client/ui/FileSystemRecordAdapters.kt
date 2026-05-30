@@ -22,7 +22,6 @@ import me.gm.cleaner.util.ClipboardUtils
 import me.gm.cleaner.util.FormatUtils
 import me.gm.cleaner.util.OpenUtils
 import java.io.File
-import java.util.*
 
 class FileSystemRecordAdapter(private val fragment: FileSystemRecordFragment) :
     BaseKtListAdapter<FileSystemRecordModel, FileSystemRecordAdapter.ViewHolder>(CALLBACK) {

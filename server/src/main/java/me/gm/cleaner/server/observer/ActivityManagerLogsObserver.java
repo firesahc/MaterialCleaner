@@ -9,7 +9,6 @@ import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import me.gm.cleaner.client.CleanerHooksClient;
 import me.gm.cleaner.server.BuildConfig;
 import me.gm.cleaner.server.CleanerServer;
 import me.gm.cleaner.server.ServerConstants;

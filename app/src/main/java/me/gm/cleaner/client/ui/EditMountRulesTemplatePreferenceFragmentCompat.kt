@@ -22,7 +22,12 @@ import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.TempCodeRecords
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountWizardQuestionsBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
-import me.gm.cleaner.util.*
+import me.gm.cleaner.util.createMaterialAlertDialogThemedContext
+import me.gm.cleaner.util.getDimenByAttr
+import me.gm.cleaner.util.materialDialogBackgroundDrawable
+import me.gm.cleaner.util.materialDialogBackgroundInsets
+import me.gm.cleaner.util.toBase64String
+import me.gm.cleaner.util.toParcelable
 
 class EditMountRulesTemplatePreferenceFragmentCompat : PreferenceDialogFragmentCompat() {
     private val editTemplatePreference: EditMountRulesTemplatePreference

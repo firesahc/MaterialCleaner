@@ -1,7 +1,6 @@
 package me.gm.cleaner.server.observer
 
 import android.app.ActivityManager
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.ArrayMap
