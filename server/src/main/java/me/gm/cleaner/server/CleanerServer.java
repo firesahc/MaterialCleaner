@@ -129,6 +129,9 @@ public class CleanerServer extends ContextWrapper {
         final var mountObserver = ObserverManager.INSTANCE.getObserver(StorageMountObserver.class);
         if (mountObserver != null) {
             mountObserver.setCleanerServer(this);
+            // 注册 StorageMountObserver 自身（实现 IStorageEventListener）到监听器链
+            // 替代原 StorageEventListenerImpl.start() 中的 registerListener(this)
+            mountObserver.registerListener(mountObserver);
         }
         BinderSender.register(cleanerService);
         sendBinderToManger(cleanerService);
