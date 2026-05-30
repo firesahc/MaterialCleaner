@@ -1,7 +1,5 @@
 package me.gm.cleaner.client.ui
 
-import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -14,8 +12,6 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
-import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -25,18 +21,16 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.topjohnwu.superuser.Shell
-import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import me.gm.cleaner.R
 import me.gm.cleaner.BuildConfig
+import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.HooksBridgeProvider
 import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.server.BuildConfig as ServerBuildConfig
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.fitsSystemWindowInsets
 
@@ -181,14 +175,14 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val rootStatus = if (hasRoot) "可用" else "不可用"
         val serverPid = CleanerClient.service?.serverPid?.toString() ?: "-"
         val xposedStatus = when {
-            !isRunning -> "等待服务器启动..."
-            isXposedConnected -> "已连接 ✅"
-            else -> "等待 MediaProvider 连接..."
+            !isRunning -> "等待服务器启动"
+            isXposedConnected -> "已连接"
+            else -> "等待 MediaProvider 连接"
         }
 
         statusSubtitle?.text = buildString {
             appendLine("守护进程: PID $serverPid | Root $rootStatus")
-            appendLine("已挂载: $mountedCount 个应用 | 规则: $totalRules 条")
+            appendLine("已挂载: $mountedCount 个应用 | $totalRules 条规则")
             append("Xposed Hooks: $xposedStatus")
         }
 
