@@ -54,7 +54,6 @@ import me.gm.cleaner.nio.RootWorkerService;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
 import me.gm.cleaner.server.observer.FileSystemObserver;
-import me.gm.cleaner.server.observer.MagiskDenyListObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
 import me.gm.cleaner.server.observer.PackageInfoMapper;
 import me.gm.cleaner.server.observer.StorageEventListenerDelegate;
@@ -364,12 +363,6 @@ public class CleanerService extends ICleanerService.Stub {
         return observer.getMountedDirs();
     }
 
-    @Override
-    public boolean isInMagiskDenyList(String packageName) {
-        enforceManager(BuildConfig.DEBUG ? "isInMagiskDenyList" : 11);
-        return MagiskDenyListObserver.isInDenyList(packageName);
-    }
-
     /**
      * Cautious: {@link SharedPreferences.Editor} uses {@link SharedPreferences.Editor#apply()}
      * by default, which may cause this reload method called before the preferences are written to
@@ -578,7 +571,6 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public void exit() {
         enforceManager(BuildConfig.DEBUG ? "exit" : 29);
-        MagiskDenyListObserver.close();
         mServer.onDestroy();
         System.exit(0);
     }

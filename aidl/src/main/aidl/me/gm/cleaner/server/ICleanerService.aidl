@@ -36,8 +36,6 @@ interface ICleanerService {
 
     List<String> getMountedDirs() = 10;
 
-    boolean isInMagiskDenyList(String packageName) = 11;
-
     void notifyPreferencesChanged() = 12;
 
     void notifySrChanged() = 13;

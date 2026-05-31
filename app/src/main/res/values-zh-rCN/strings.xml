@@ -150,7 +150,6 @@
     <string name="storage_redirect_confirm_media">您不应对此应用使用存储重定向。如果您一定要尝试，请确认已做好救砖准备。对于媒体存储的管理，您可以考虑使用我们开发的 Xposed 模块，它是开源免费的。</string>
     <string name="storage_redirect_warn_system">此应用是系统应用，错误的挂载规则会造成严重问题</string>
     <string name="storage_redirect_warn_no_storage_permissions">此应用未声明所有文件访问权限，它只能写入标准文件夹</string>
-    <string name="storage_redirect_warn_denylist">此应用在 Magisk 的排除列表中，应用刚启动的短时间内存储重定向不会生效</string>
     <string name="storage_redirect_warn_shared_userid">此应用与 %2$s 共享 uid %1$s。建议您允许此应用直接访问上述应用的专属存储空间，以免破坏此应用的相关功能</string>
     <string name="storage_redirect_warn_shared_proc">此应用与 %2$s 共享进程 %1$s。它们的挂载规则会被自动同步</string>
     <string name="storage_redirect_mount_header">挂载规则</string>

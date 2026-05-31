@@ -188,7 +188,6 @@
     <string name="storage_redirect_confirm_media">You should NOT use storage redirect for this app. If you must try it, make sure you are well prepared to survive the "soft brick". For media storage management, you can consider using the Xposed module developed by us, which is open-source and free.</string>
     <string name="storage_redirect_warn_system">This is a system app. Wrong mount rules can lead to disaster.</string>
     <string name="storage_redirect_warn_no_storage_permissions">The app doesn\'t declare all files access permission. It can only write to standard dirs.</string>
-    <string name="storage_redirect_warn_denylist">The app is in Magisk\'s DenyList. Storage redirect will not take effect for a short time after the app is launched.</string>
     <string name="storage_redirect_warn_shared_userid">The app shares uid %1$s with %2$s. It is recommended to allow the app to directly access the app-specific storage of the apps mentioned above, so as not to break the related functions of the app.</string>
     <string name="storage_redirect_warn_shared_proc">The app shares process %1$s with %2$s. Their mount rules will be synchronized.</string>
     <string name="storage_redirect_mount_header">MOUNT RULES</string>

@@ -211,14 +211,6 @@ class StorageRedirectViewModel(private val application: Application, state: Save
             )
         }
 
-    var isInMagiskDenyList: Boolean? = null
-
-    fun loadIsInMagiskDenyListAsync(packageName: String) =
-        viewModelScope.async(Dispatchers.Default) {
-            isInMagiskDenyList = CleanerClient.pingBinder() &&
-                    CleanerClient.service?.isInMagiskDenyList(packageName) ?: false
-        }
-
     var sharedUserIdPackages: List<PackageInfo>? = null
         private set
 

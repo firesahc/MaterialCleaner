@@ -231,15 +231,6 @@ class StorageRedirectFragment : BaseFragment() {
                 }
             }
 
-            if (viewModel.isInMagiskDenyList == null) {
-                viewModel.loadIsInMagiskDenyListAsync(args.pi.packageName).await()
-                if (viewModel.isInMagiskDenyList!!) {
-                    viewModel.addHint(
-                        LEVEL_WARN, getString(R.string.storage_redirect_warn_denylist)
-                    )
-                }
-            }
-
             if (viewModel.sharedUserIdPackages == null) {
                 viewModel.loadSharedUserIdPackagesAsync(args.pi).await()
                 val sharedUserIdPackages = viewModel.sharedUserIdPackages!!
