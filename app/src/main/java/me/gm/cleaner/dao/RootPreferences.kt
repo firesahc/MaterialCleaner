@@ -25,32 +25,6 @@ object RootPreferences {
     val isPostNotification: Boolean
         get() = preferences.getBoolean(res.getString(R.string.post_notification_key), true)
 
-    // SCAN
-    val isShowLength: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.length_key), true)
-    val isSort: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.sort_key), true)
-    val isMonitor: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.monitor_key), true)
-    val maximize: Int
-        get() = preferences.getString(res.getString(R.string.maximize_key), null)?.toIntOrNull()
-            ?: 50000
-    val isConfirmDelete: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.confirm_delete_key), true)
-    val isScanSystemApp: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.scan_system_app_key), false)
-
-    var noTick: String
-        get() = preferences.getString(res.getString(R.string.no_tick_key), "")!!
-        set(value) = preferences.edit {
-            putString(res.getString(R.string.no_tick_key), value)
-        }
-    var noScan: Set<String>
-        get() = preferences.getStringSet(res.getString(R.string.no_scan_key), emptySet())!!
-        set(value) = preferences.edit {
-            putStringSet(res.getString(R.string.no_scan_key), value)
-        }
-
     // LANGUAGE
     val locale: Locale
         get() {

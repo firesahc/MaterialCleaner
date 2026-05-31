@@ -15,7 +15,6 @@ import android.widget.Toast
 import androidx.annotation.AnyRes
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorInt
-import androidx.core.content.getSystemService
 
 fun Context.startActivitySafe(intent: Intent) {
     try {

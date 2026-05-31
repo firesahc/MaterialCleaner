@@ -8,7 +8,6 @@ import java.lang.reflect.Modifier
 
 fun Parcelable.toBase64String(): String {
     val parcel = Parcel.obtain()
-//    parcel.writeParcelable(this, 0)
     writeToParcel(parcel, 0)
     val bytes = parcel.marshall()
     parcel.recycle()
@@ -23,7 +22,6 @@ inline fun <reified T : Parcelable> String.toParcelable(
     parcel.unmarshall(bytes, 0, bytes.size)
     parcel.setDataPosition(0)
     try {
-//        return ParcelCompat.readParcelable(parcel, loader, clazz) as T
         val creator = findParcelableCreator(clazz)
         if (creator is Parcelable.ClassLoaderCreator<*>) {
             return creator.createFromParcel(parcel, loader) as T

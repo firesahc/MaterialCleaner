@@ -31,7 +31,6 @@ import me.gm.cleaner.app.InfoDialog
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_ERROR
 import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_INFO
-import me.gm.cleaner.client.ui.storageredirect.ConnectionState.Companion.LEVEL_WARN
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.ASK_OR_EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_EXIT

@@ -83,7 +83,7 @@ public class PackageInfoMapper {
                                         sProcessNameToSystemPackageNames.put(processName, packageName));
                             }
                         }
-                        // LogcatObserver doesn't provide standard appPrincipalName, so we have to do a workaround.
+                        // getAppPrincipalName format: "u0a123" or "u0a123_sr"; normalize by stripping underscores for consistent lookup.
                         if (srPackages.contains(packageName)) {
                             final var logFormatAppPrincipalName = AndroidFilesystemConfig
                                     .getAppPrincipalName(uid)
@@ -113,7 +113,7 @@ public class PackageInfoMapper {
         }
     }
 
-    // LogcatObserver: logFormatAppPrincipalName -> uid -> srPackageName
+    // Mapping: normalized appPrincipalName (underscores stripped) -> uid -> srPackageName
     public static int getUid(String logFormatAppPrincipalName) {
         if (TextUtils.isDigitsOnly(logFormatAppPrincipalName)) {
             return Integer.parseInt(logFormatAppPrincipalName);

@@ -215,11 +215,6 @@ private class AlwaysClipToPaddingEdgeEffectFactory : RecyclerView.EdgeEffectFact
                 }
                 return super.draw(canvas)
             }
-        }.apply {
-            // debug glow type
-//            val field = EdgeEffect::class.java.getDeclaredField("mEdgeEffectType")
-//            field.isAccessible = true
-//            field.set(this, 0)
         }
 
     companion object {
