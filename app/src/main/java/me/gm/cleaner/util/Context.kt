@@ -6,8 +6,6 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.TypedArray
 import android.graphics.drawable.Drawable
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -78,15 +76,3 @@ fun Context.dpToPx(dps: Int): Int {
     val density = resources.displayMetrics.density
     return (dps * density + 0.5F).toInt()
 }
-
-fun Context.pxToDp(px: Int): Int {
-    val density = resources.displayMetrics.density
-    return (px / density).toInt()
-}
-
-val Context.hasWifiTransport: Boolean
-    get() {
-        val connManager = getSystemService<ConnectivityManager>()!!
-        val capabilities = connManager.getNetworkCapabilities(connManager.activeNetwork)
-        return capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-    }

@@ -13,8 +13,4 @@ object TempCodeRecords {
      * ```
      */
     fun fixBug(commitVersion: String, comment: String = "") {}
-    fun advance(commitVersion: String, comment: String = "") {}
 }
-
-@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
-annotation class TempCode(val comment: String = "")

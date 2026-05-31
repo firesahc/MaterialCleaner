@@ -38,14 +38,6 @@ public class XposedInit implements IXposedHookLoadPackage {
         }
     }
 
-    /** 当 Server 回调丢失时重新注册，应对 app 进程重启场景 */
-    static void reRegisterHooksCallback() {
-        Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback (server restarted)");
-        // 通过 ContentResolver.call 重新注册到 HooksBridgeProvider
-        // 注意：此时 XposedInit 实例中的 mContext 可能已失效，
-        // registerHooksCallback 内部通过 ContentResolver 与新 app 进程通信
-    }
-
     // 在 onMediaProviderLoaded 中设置自动重连回调
     private void setupReRegisterOnDeath() {
         MediaProviderHooksService.sReRegisterCallback = () -> {

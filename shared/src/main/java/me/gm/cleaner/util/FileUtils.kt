@@ -100,20 +100,7 @@ object FileUtils {
         return fallbackUserId
     }
 
-    inline fun extractPathOwnerPackageName(path: String): String? {
-        if (path.startsWith("/storage/", true)) {
-            val m = KNOWN_APP_DIR_PATHS.matcher(path)
-            if (m.matches()) {
-                return m.group(3)
-            }
-        } else {
-            val m = APP_DATA_DIR_PATHS.matcher(path)
-            if (m.matches()) {
-                return m.group(4)
-            }
-        }
-        return null
-    }
+
 
     inline fun getPathAsUser(path: String, userId: Int): String {
         val m = APP_DATA_DIR_PATHS.matcher(path)
@@ -159,8 +146,7 @@ object FileUtils {
         child.equals(parent, true) || parent.equals(File.separator, true) ||
                 child.startsWith(parent + File.separator, true)
 
-    @Throws(IOException::class)
-    inline fun fileTreeSize(path: Path): Long = 0
+
 
     @OptIn(ExperimentalPathApi::class)
     inline fun move(source: Path, target: Path): Boolean {
@@ -246,11 +232,7 @@ object FileUtils {
         a(dir, uid, isPrivate)
     }
 
-    /**
-     * Process observers using this function should be careful since the cmdline changes when proc init.
-     */
-    private external fun a(pid: Int): String
-    fun read_cmdline(pid: Int): String = a(pid)
+
 
     /**
      * Process observers using this function should be careful since the cgroup changes when proc init.

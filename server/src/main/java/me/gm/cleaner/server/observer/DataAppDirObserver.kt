@@ -71,9 +71,7 @@ class DataAppDirObserver : BaseIntentObserver() {
     }
 
     companion object {
-        private const val RANDOM_DIR_PREFIX = "~~"
         private const val RANDOM_CODEPATH_PREFIX = '-'
         private const val RANDOM_DIR_SUFFIX = "=="
-        private const val PACKAGE_SCHEME = "package"
     }
 }

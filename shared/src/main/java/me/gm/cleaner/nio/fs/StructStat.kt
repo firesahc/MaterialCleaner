@@ -44,15 +44,6 @@ fun StructStat.lastAccessTime(): FileTime = toFileTime(
     }
 )
 
-fun StructStat.ctime(): FileTime = toFileTime(
-    st_ctime,
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-        st_ctim.tv_nsec
-    } else {
-        0L
-    }
-)
-
 fun StructStat.isRegularFile(): Boolean = OsConstants.S_ISREG(st_mode)
 
 fun StructStat.isDirectory(): Boolean = OsConstants.S_ISDIR(st_mode)

@@ -22,7 +22,6 @@ import me.gm.cleaner.server.ktx.IContentProviderKt;
 
 public class BinderSender {
     private static final String TAG = "BinderSender";
-    public static int foregroundUid;
     private static final Set<Integer> PID_SET = new HashSet<>();
     private static CleanerService sCleanerService;
 
@@ -32,7 +31,6 @@ public class BinderSender {
             if (!foregroundActivities) {
                 return;
             }
-            foregroundUid = uid;
             if (PID_SET.add(pid)) {
                 onActive(uid, pid);
             }

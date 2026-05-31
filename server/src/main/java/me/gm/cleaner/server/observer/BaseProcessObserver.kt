@@ -32,14 +32,6 @@ abstract class BaseProcessObserver : BaseObserver() {
             isMounterActiveForUid(procInfo.uid) && procInfo.pkgList.any { packageNames.contains(it) }
         }
 
-    fun forceStopPackages(packageNames: Array<String>) {
-        getRunningAppProcesses(packageNames).forEach { procInfo ->
-            procInfo.pkgList.forEach { packageName ->
-                SystemService.forceStopPackageNoThrow(packageName, procInfo.uid.toUserId())
-            }
-        }
-    }
-
     fun remountForPackages(packageNames: Array<String>) {
         mounter.forProcList(getRunningAppProcesses(packageNames), false, true)
     }

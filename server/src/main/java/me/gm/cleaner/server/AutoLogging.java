@@ -10,12 +10,8 @@ import java.io.IOException;
 public class AutoLogging {
     public static final int MODE_CONTINUOUSLY = 1;
     private static final File sLogsDir = new File("/data/local/tmp/cleaner_logs");
-    private final int mVersionCode;
-    private final String mVersionName;
 
     public AutoLogging(final android.content.pm.PackageInfo packageInfo) {
-        mVersionCode = packageInfo.versionCode;
-        mVersionName = packageInfo.versionName;
     }
 
     private void grabLogs(final Object logName, final String cmd) {
