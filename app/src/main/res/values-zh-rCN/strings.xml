@@ -52,9 +52,7 @@
     <string name="black_dark_theme_title">黑色主题</string>
 
     <!-- 服务更多选项 -->
-    <string name="cleanup_title">清理</string>
-    <string name="enable_relatime_title">（实验性）启用相对访问时间</string>
-    <string name="enable_relatime_summary">启用文件系统的相对访问时间功能，这能帮助清理应用最大限度地筛选可以删除的文件，同时避免删除频繁使用的文件。不过，这会略微降低文件系统的性能</string>
+
     <string name="open_wizard_by_default_title">默认打开向导</string>
     <string name="share_title">分享</string>
     <string name="import_title">导入</string>

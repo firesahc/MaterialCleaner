@@ -28,8 +28,8 @@ jint JNI_OnLoad_Extra(JNIEnv *env, jclass clazz) {
                         "(I)I"),                                           (void *) ProcInfo::read_uid},
             {a, AY_OBFUSCATE( // "(I[Ljava/lang/String;)[I"
                         "(I[Ljava/lang/String;)[I"),                       (void *) ProcInfo::check_mounts},
-            {a, AY_OBFUSCATE( // "(IIZZZ[Ljava/lang/String;[Ljava/lang/String;)Z"
-                        "(IIZZZ[Ljava/lang/String;[Ljava/lang/String;)Z"), (void *) Mount::bind_mount},
+            {a, AY_OBFUSCATE( // "(IIZZ[Ljava/lang/String;[Ljava/lang/String;)Z"
+                        "(IIZZ[Ljava/lang/String;[Ljava/lang/String;)Z"), (void *) Mount::bind_mount},
     };
     return env->RegisterNatives(clazz, methods, NELEM(methods));
 }

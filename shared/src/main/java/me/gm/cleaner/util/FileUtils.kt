@@ -262,12 +262,12 @@ object FileUtils {
     fun check_mounts(pid: Int, targets: Array<String>): IntArray? = a(pid, targets)
 
     private external fun a(
-        pid: Int, uid: Int, enableRelatime: Boolean, unmountDataRestriction: Boolean,
+        pid: Int, uid: Int, unmountDataRestriction: Boolean,
         fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
     ): Boolean
 
     fun bind_mount(
-        pid: Int, uid: Int, enableRelatime: Boolean, unmountDataRestriction: Boolean,
+        pid: Int, uid: Int, unmountDataRestriction: Boolean,
         fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
-    ): Boolean = a(pid, uid, enableRelatime, unmountDataRestriction, fuseBypass, sources, targets)
+    ): Boolean = a(pid, uid, unmountDataRestriction, fuseBypass, sources, targets)
 }

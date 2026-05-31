@@ -37,7 +37,7 @@ class Mounter {
     private val rmdirPackages: MutableSet<String> = mutableSetOf()
     private var rmdirQueueSize: Int = 0
 
-    fun mountForAllPackages(): Boolean = ServicePreferences.enableRelatime ||
+    fun mountForAllPackages(): Boolean =
             !isFuseBpfEnabled && ServicePreferences.recordExternalAppSpecificStorage
 
     fun bindMountAsync(packageName: String, pid: Int, uid: Int) {
@@ -72,15 +72,13 @@ class Mounter {
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
         Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid")
-        val enableRelatime = ServicePreferences.enableRelatime &&
-                !ServicePreferences.denylist.contains(packageName)
         val recordExternalAppSpecificStorage =
             ServicePreferences.recordExternalAppSpecificStorage &&
                     !ServicePreferences.denylist.contains(packageName)
 
         if (ServicePreferences.getPackageSrCount(packageName) == 0) {
             return FileUtils.bind_mount(
-                pid, uid, enableRelatime,
+                pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
                 emptyArray(), emptyArray()
             )
@@ -100,7 +98,7 @@ class Mounter {
             rules = MountRules(getPackageSr(packageName, userId))
         }
         val ret = FileUtils.bind_mount(
-            pid, uid, enableRelatime,
+            pid, uid,
             !isFuseBpfEnabled && recordExternalAppSpecificStorage, isFuseBpfEnabled,
             rules.sources.toTypedArray(), rules.targets.toTypedArray()
         )

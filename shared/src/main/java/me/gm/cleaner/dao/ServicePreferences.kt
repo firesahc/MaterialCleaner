@@ -27,7 +27,6 @@ private const val MENU_HIDE_SYSTEM_APP_KEY = "hide_system_app"
 private const val MENU_HIDE_DISABLED_APP_KEY = "hide_disabled_app"
 private const val MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY = "hide_no_storage_permissions"
 private const val MENU_HIDE_APP_SPECIFIC_STORAGE_KEY = "hide_app_specific_storage"
-private const val ENABLE_RELATIME_KEY = "enable_relatime"
 private const val AGGRESSIVELY_PROMPT_FOR_READING_MEDIA_FILES_KEY = "aggressively_prompt_for_reading_media_files"
 private const val AUTO_LOGGING_KEY = "auto_logging"
 private const val RECORD_SHARED_STORAGE_KEY = "record_shared_storage"
@@ -407,10 +406,6 @@ object ServicePreferences {
         }
 
     // EXTRA
-    @Server
-    val enableRelatime: Boolean
-        get() = preferences.getBoolean(ENABLE_RELATIME_KEY, false)
-
     @App
     @Server
     val aggressivelyPromptForReadingMediaFiles: Boolean

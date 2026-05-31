@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Service -->
-    <string name="enable_relatime_key" translatable="false">enable_relatime</string>
     <string name="aggressively_prompt_for_reading_media_files_key">aggressively_prompt_for_reading_media_files</string>
     <string name="auto_logging_key">auto_logging</string>
     <string name="record_shared_storage_key" translatable="false">record_shared_storage</string>

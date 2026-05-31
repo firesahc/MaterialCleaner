@@ -71,12 +71,7 @@
     <string name="black_dark_theme_title">Black dark theme</string>
 
     <!-- Service More Options -->
-    <string name="cleanup_title">CLEANUP</string>
-    <string name="enable_relatime_title">(Experimental) Enable relative access time</string>
-    <string name="enable_relatime_summary">Enable the file system\'s relative access time feature,
-        which can help cleanup apps maximize the filtering of deletable files,
-        while also avoiding the deletion of frequently used files.
-        However, this will slightly reduce the file system\'s performance.</string>
+
     <string name="open_wizard_by_default_key" translatable="false">open_wizard_by_default</string>
     <string name="open_wizard_by_default_title">Open wizard by default</string>
     <string name="share_key" translatable="false">share</string>

@@ -131,11 +131,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
         preferenceManager.setStorageDeviceProtected()
         addPreferencesFromResource(R.xml.service_more_options_preferences)
 
-        val enableAtime = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.enable_relatime_key)
-        )!!
-        enableAtime.onPreferenceChangeListener = notifyPreferencesChangedListener
-
         val aggressivelyPromptForReadingMediaFiles = findPreference<SwitchPreferenceCompat>(
             getString(me.gm.cleaner.shared.R.string.aggressively_prompt_for_reading_media_files_key)
         )!!

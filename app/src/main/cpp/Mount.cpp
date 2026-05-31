@@ -133,7 +133,7 @@ static bool isFuse() {
 
 namespace Mount {
     jboolean bind_mount(JNIEnv *env, jclass clazz, jint pid, jint uid,
-                        jboolean enableRelatime, jboolean unmountDataRestriction,
+                        jboolean unmountDataRestriction,
                         jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets) {
         /// @see /system/vold/Utils.cpp IsSdcardfsUsed()
         const bool useSdcardFs = !isFuse();
@@ -285,16 +285,6 @@ namespace Mount {
                     write_int(sock, -1);
                     sys__exit(1);
                 }
-            }
-        }
-        if (enableRelatime) {
-            const std::string privateVolumePath = StringPrintf("/data/user/%d"_iobfs.c_str(),
-                                                               user_id);
-            if (TEMP_FAILURE_RETRY(
-                    mount(nullptr, privateVolumePath.c_str(), nullptr,
-                          MS_BIND | MS_REC | MS_REMOUNT | MS_RELATIME, nullptr))) {
-                LOGE("Failed to enable relatime for %s:%s"_iobfs.c_str(), privateVolumePath.c_str(),
-                     strerror(errno));
             }
         }
 #endif // REMOUNT_STORAGE

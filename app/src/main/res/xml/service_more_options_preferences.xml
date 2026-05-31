@@ -2,17 +2,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <PreferenceCategory
-        android:title="@string/cleanup_title"
-        app:iconSpaceReserved="false">
-
-        <SwitchPreferenceCompat
-            android:key="@string/enable_relatime_key"
-            android:summary="@string/enable_relatime_summary"
-            android:title="@string/enable_relatime_title"
-            app:iconSpaceReserved="false" />
-    </PreferenceCategory>
-
-    <PreferenceCategory
         android:key="@string/storage_redirect_title"
         android:title="@string/storage_redirect_title"
         app:iconSpaceReserved="false"
