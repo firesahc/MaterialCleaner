@@ -67,7 +67,8 @@
     <string name="applied_template_to_package">已將模板應用到 %s</string>
     <string name="aggressively_prompt_for_reading_media_files_title">激進地提示讀取媒體檔案</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">會出現很多不必要的提示，不過如果您對儲存重定向功能還不熟悉，開啟有助於減少意外問題</string>
-    <string name="auto_logging_title">自動抓取開關機日誌並自動救磚</string>
+    <string name="auto_logging_title">保存日誌到檔案用於診斷</string>
+    <string name="auto_logging_summary">持續將 logcat 輸出寫入 /data/local/tmp/cleaner_logs/，有助於排查啟動或崩潰問題。</string>
     <string name="app_category_title">在線應用類型標記</string>
     <string name="app_category_summary">為“根據文件系統記錄自動填寫”和“自動應用掛載規則模板到新應用”提供依據</string>
     <string name="app_category_repo_header">在線庫</string>

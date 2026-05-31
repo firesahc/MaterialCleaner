@@ -45,7 +45,6 @@
     <string name="start_on_boot_summary">Make sure the service works fine on your device before ticking.</string>
     <string name="post_notification_key" translatable="false">post_notification</string>
     <string name="post_notification_title">Receive update notifications</string>
-    <string name="nonpublic_key" translatable="false">nonpublic</string>
     <string name="sort_key" translatable="false">sort_by</string>
     <string name="length_key" translatable="false">length</string>
     <string name="monitor_key" translatable="false">monitor</string>
@@ -98,7 +97,8 @@
     <string name="applied_template_to_package">Applied template to %s</string>
     <string name="aggressively_prompt_for_reading_media_files_title">Aggressively prompt for reading media files</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">Many unnecessary prompts will appear, but if you are unfamiliar with the storage redirect feature, enabling it can help reduce unintended problems.</string>
-    <string name="auto_logging_title">Automatically grab the boot/shutdown log and automatically rescue the soft bricks</string>
+    <string name="auto_logging_title">Save logcat to files for diagnostics</string>
+    <string name="auto_logging_summary">Continuously writes logcat output to /data/local/tmp/cleaner_logs/. Useful for troubleshooting boot or crash issues.</string>
     <string name="app_category_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
     <string name="app_category_title">Online Apps Type Marks</string>
     <string name="app_category_summary">Provide the basis for \"Autocomplete wizard according to file system record\" and \"Apply mount rules template to new package automatically\".</string>

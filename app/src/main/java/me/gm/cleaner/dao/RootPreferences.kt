@@ -24,8 +24,6 @@ object RootPreferences {
         get() = preferences.getBoolean(res.getString(R.string.start_on_boot_key), false)
     val isPostNotification: Boolean
         get() = preferences.getBoolean(res.getString(R.string.post_notification_key), true)
-    val isShowNonpublic: Boolean
-        get() = preferences.getBoolean(res.getString(R.string.nonpublic_key), false)
 
     // SCAN
     val isShowLength: Boolean

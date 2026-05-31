@@ -59,6 +59,7 @@
             android:defaultValue="true"
             android:key="@string/auto_logging_key"
             android:title="@string/auto_logging_title"
+            android:summary="@string/auto_logging_summary"
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 </PreferenceScreen>

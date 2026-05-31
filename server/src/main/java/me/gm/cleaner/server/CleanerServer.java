@@ -116,6 +116,10 @@ public class CleanerServer extends ContextWrapper {
         CleanerHooksClient.INSTANCE.onStart(this);
         ObserverManager.INSTANCE.startAllObservers(this);
         mPackageReceiver.registerPackageReceiver();
+        // 根据 auto_logging 偏好启动日志文件转储（写入 /data/local/tmp/cleaner_logs/）
+        if (ServicePreferences.INSTANCE.getAutoLogging()) {
+            mAutoLogging.registerBootShutdownReceiver(AutoLogging.MODE_CONTINUOUSLY);
+        }
         CleanerHooksClient.whileAlive(service -> {
             try {
                 service.setCleanerServerBinder(mCleanerServerCallback);

@@ -67,7 +67,8 @@
     <string name="applied_template_to_package">已将模板应用到 %s</string>
     <string name="aggressively_prompt_for_reading_media_files_title">激进地提示读取媒体文件</string>
     <string name="aggressively_prompt_for_reading_media_files_summary">会出现很多不必要的提示，不过如果您对存储重定向功能还不熟悉，开启有助于减少意外问题</string>
-    <string name="auto_logging_title">自动抓取开关机日志并自动救砖</string>
+    <string name="auto_logging_title">保存日志到文件用于诊断</string>
+    <string name="auto_logging_summary">持续将 logcat 输出写入 /data/local/tmp/cleaner_logs/，有助于排查启动或崩溃问题。</string>
     <string name="app_category_title">在线应用类型标记</string>
     <string name="app_category_summary">为“根据文件系统记录自动填写”和“自动应用挂载规则模板到新应用”提供依据</string>
     <string name="app_category_repo_header">在线库</string>
