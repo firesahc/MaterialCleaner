@@ -41,7 +41,14 @@ class MountAppPickerFragment : BaseFragment() {
         val binding = MountAppPickerFragmentBinding.inflate(inflater)
         setAppBar(binding.root)
 
-        val adapter = MountAppPickerAdapter(this).apply {
+        val adapter = AppListAdapter(
+            fragment = this,
+            navDestinationId = R.id.mount_app_picker_fragment,
+            navAction = { model ->
+                MountAppPickerFragmentDirections
+                    .mountAppPickerToStorageRedirectAction(model.packageInfo)
+            }
+        ).apply {
             stateRestorationPolicy = StateRestorationPolicy.PREVENT_WHEN_EMPTY
         }
         val list = binding.list

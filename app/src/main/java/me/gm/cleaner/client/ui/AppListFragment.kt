@@ -20,6 +20,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
@@ -56,13 +57,26 @@ class AppListFragment : BaseServiceSettingsFragment() {
         mountedCountTextView = view.findViewById(R.id.mounted_count)
         btnToggleServer = view.findViewById(R.id.btn_toggle_server)
         val btnNewMount = view.findViewById<MaterialButton>(R.id.btn_new_mount)
+        val listContainer = view.findViewById<SwipeRefreshLayout>(R.id.list_container)
         val list = view.findViewById<RecyclerView>(R.id.list)
 
         // Setup RecyclerView
-        val adapter = AppListAdapter(this)
+        val adapter = AppListAdapter(
+            fragment = this,
+            navDestinationId = R.id.service_settings_fragment,
+            navAction = { model ->
+                ServiceSettingsFragmentDirections
+                    .serviceSettingsToStorageRedirectAction(model.packageInfo)
+            }
+        )
         list.adapter = adapter
         list.layoutManager = GridLayoutManager(requireContext(), 1)
         list.setHasFixedSize(true)
+
+        // Pull-to-refresh: only refresh app list, not server/status
+        listContainer.setOnRefreshListener {
+            viewModel.updateAppsRuleCount()
+        }
 
         // Check root once at setup
         checkRootAccess()
@@ -102,8 +116,11 @@ class AppListFragment : BaseServiceSettingsFragment() {
                         is AppListState.Done -> {
                             val mounted = state.list.filter { it.mountRulesCount > 0 }
                             adapter.submitList(mounted)
+                            listContainer.isRefreshing = false
                         }
-                        else -> {}
+                        is AppListState.Loading -> {
+                            // keep refreshing indicator visible during reload
+                        }
                     }
                 }
             }
@@ -124,6 +141,8 @@ class AppListFragment : BaseServiceSettingsFragment() {
     @SuppressLint("RepeatOnLifecycleWrongUsage")
     override fun onResume() {
         super.onResume()
+        // Refresh mounted apps list when returning from mount creation/edit
+        viewModel.loadApps()
         // Poll pingBinder() every 3 seconds while resumed
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -252,11 +271,14 @@ class AppListFragment : BaseServiceSettingsFragment() {
                     AppListLoader().load()
                 } catch (e: Exception) {
                     if (BuildConfig.DEBUG) Log.e("CleanerTest", "AppListFragment.loadMountedApps: failed", e)
-                    emptyList()
+                    null
                 }
             }
-            val mounted = loaded.filter { it.mountRulesCount > 0 }
-            adapter.submitList(mounted)
+            // Only update if load succeeded; don't overwrite existing data on failure
+            if (loaded != null) {
+                val mounted = loaded.filter { it.mountRulesCount > 0 }
+                adapter.submitList(mounted)
+            }
         }
     }
 }

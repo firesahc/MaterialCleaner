@@ -6,7 +6,9 @@ import android.view.MenuItem
 import android.view.ViewGroup
 import android.widget.PopupMenu
 import androidx.core.view.forEach
+import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavDirections
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.BaseKtListAdapter
 import androidx.recyclerview.widget.DiffUtil
@@ -21,10 +23,12 @@ import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.databinding.ApplistItemBinding
 import me.gm.cleaner.util.buildStyledTitle
 
-class AppListAdapter(private val fragment: AppListFragment) :
-    BaseKtListAdapter<AppListModel, AppListAdapter.ViewHolder>(CALLBACK) {
-    private val activity: ServiceSettingsActivity =
-        fragment.requireActivity() as ServiceSettingsActivity
+class AppListAdapter(
+    private val fragment: Fragment,
+    private val navDestinationId: Int,
+    private val navAction: (AppListModel) -> NavDirections,
+) : BaseKtListAdapter<AppListModel, AppListAdapter.ViewHolder>(CALLBACK) {
+    private val activity = fragment.requireActivity()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder = ViewHolder(
         ApplistItemBinding.inflate(LayoutInflater.from(parent.context))
@@ -76,10 +80,8 @@ class AppListAdapter(private val fragment: AppListFragment) :
         }
         binding.root.setOnClickListener {
             val navController = fragment.findNavController()
-            if (navController.currentDestination?.id == R.id.service_settings_fragment) {
-                val direction = ServiceSettingsFragmentDirections
-                    .serviceSettingsToStorageRedirectAction(model.packageInfo)
-                navController.navigate(direction)
+            if (navController.currentDestination?.id == navDestinationId) {
+                navController.navigate(navAction(model))
             }
         }
         binding.root.setOnLongClickListener { view ->
