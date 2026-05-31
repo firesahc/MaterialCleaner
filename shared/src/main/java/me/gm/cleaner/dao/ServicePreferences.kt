@@ -8,8 +8,6 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.preference.PreferenceManager
 import me.gm.cleaner.SharedConstants
-import me.gm.cleaner.annotation.App
-import me.gm.cleaner.annotation.Server
 import me.gm.cleaner.util.FileUtils
 import me.gm.cleaner.util.toList
 import org.json.JSONArray
@@ -55,8 +53,8 @@ object ServicePreferences {
     private lateinit var denylistFile: File
     private var denylistCache: List<String>? = null
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun init(context: Context) {
         preferences = PreferenceManager.getDefaultSharedPreferences(context)
         storageRedirectFile = context.filesDir.resolve(SharedConstants.PREF_STORAGE_REDIRECT)
@@ -75,7 +73,7 @@ object ServicePreferences {
     }
 
     // APP LIST CONFIG
-    @App
+    // @App
     var sortBy: Int
         get() = preferences.getInt(SORT_BY_KEY, SORT_BY_NAME)
         set(value) {
@@ -85,32 +83,32 @@ object ServicePreferences {
             notifyListeners()
         }
 
-    @App
+    // @App
     var ruleCount: Boolean
         get() = preferences.getBoolean(MENU_RULE_COUNT_KEY, true)
         set(value) = putBoolean(MENU_RULE_COUNT_KEY, value)
 
-    @App
+    // @App
     var mountState: Boolean
         get() = preferences.getBoolean(MENU_MOUNT_STATE_KEY, true)
         set(value) = putBoolean(MENU_MOUNT_STATE_KEY, value)
 
-    @App
+    // @App
     var isHideSystemApp: Boolean
         get() = preferences.getBoolean(MENU_HIDE_SYSTEM_APP_KEY, true)
         set(value) = putBoolean(MENU_HIDE_SYSTEM_APP_KEY, value)
 
-    @App
+    // @App
     var isHideDisabledApp: Boolean
         get() = preferences.getBoolean(MENU_HIDE_DISABLED_APP_KEY, true)
         set(value) = putBoolean(MENU_HIDE_DISABLED_APP_KEY, value)
 
-    @App
+    // @App
     var isHideNoStoragePermissionApp: Boolean
         get() = preferences.getBoolean(MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY, false)
         set(value) = putBoolean(MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY, value)
 
-    @App
+    // @App
     var isHideAppSpecificStorage: Boolean
         get() = preferences.getBoolean(MENU_HIDE_APP_SPECIFIC_STORAGE_KEY, false)
         set(value) = putBoolean(MENU_HIDE_APP_SPECIFIC_STORAGE_KEY, value)
@@ -123,7 +121,7 @@ object ServicePreferences {
     }
 
     // STORAGE REDIRECT
-    @App
+    // @App
     @Synchronized
     fun putStorageRedirect(rawRules: List<Pair<String, String>>, packageNames: List<String>) {
         if (rawRules.isEmpty()) {
@@ -137,7 +135,7 @@ object ServicePreferences {
         writeStorageRedirect(all)
     }
 
-    @App
+    // @App
     @Synchronized
     fun removeStorageRedirect(packageNames: List<String>) {
         val all = readStorageRedirect()
@@ -145,19 +143,19 @@ object ServicePreferences {
         writeStorageRedirect(all)
     }
 
-    @App
+    // @App
     fun getUninstalledSrPackages(installedPackages: Set<String>): List<String> {
         val packages = readStorageRedirect().keys().asSequence()
         return (packages - installedPackages).toList()
     }
 
-    @App
-    @Server
+    // @App
+    // @Server
     val srPackages: Set<String>
         get() = readStorageRedirect().keys().asSequence().toSet()
 
-    @App
-    @Server
+    // @App
+    // @Server
     val srRulesCount: Int
         get() {
             var count = 0
@@ -168,8 +166,8 @@ object ServicePreferences {
             return count
         }
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun getPackageSrCount(packageName: String): Int {
         val all = readStorageRedirect()
         if (all.has(packageName)) {
@@ -178,8 +176,8 @@ object ServicePreferences {
         return 0
     }
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun getPackageSr(packageName: String, userId: Int): Pair<List<String>, List<String>> {
         val source = mutableListOf<String>()
         val target = mutableListOf<String>()
@@ -195,8 +193,8 @@ object ServicePreferences {
         return source to target
     }
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun getPackageSrZipped(packageName: String, userId: Int = 0): List<Pair<String, String>> {
         val list = mutableListOf<Pair<String, String>>()
         val all = readStorageRedirect()
@@ -215,19 +213,19 @@ object ServicePreferences {
         return list
     }
 
-    @Server
+    // @Server
     @Synchronized
     fun invalidateSrCache() {
         storageRedirectCache = null
     }
 
-    @App
+    // @App
     @Synchronized
     fun beginBatchOperation() {
         inBatch = true
     }
 
-    @App
+    // @App
     @Synchronized
     fun endBatchOperation() {
         inBatch = false
@@ -250,8 +248,8 @@ object ServicePreferences {
         }
     }
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun readRawStorageRedirect(): String = storageRedirectFile.readText()
 
     @Synchronized
@@ -276,7 +274,7 @@ object ServicePreferences {
     }
 
     // READ ONLY
-    @App
+    // @App
     @Synchronized
     fun putReadOnly(rawRules: List<String>, packageNames: List<String>) {
         if (rawRules.isEmpty()) {
@@ -289,7 +287,7 @@ object ServicePreferences {
         writeReadOnly(all)
     }
 
-    @App
+    // @App
     @Synchronized
     fun removeReadOnly(packageNames: List<String>) {
         val all = readReadOnly()
@@ -297,13 +295,13 @@ object ServicePreferences {
         writeReadOnly(all)
     }
 
-    @App
+    // @App
     fun getUninstalledReadOnlyPackages(installedPackages: Set<String>): List<String> {
         val packages = readReadOnly().keys().asSequence()
         return (packages - installedPackages).toList()
     }
 
-    @App
+    // @App
     fun getPackageReadOnly(packageName: String, userId: Int = 0): List<String> {
         val all = readReadOnly()
         if (!all.has(packageName)) {
@@ -314,7 +312,7 @@ object ServicePreferences {
         }
     }
 
-    @Server
+    // @Server
     fun getAllReadOnly(): Map<String, List<String>> {
         val ret = mutableMapOf<String, List<String>>()
         val all = readReadOnly()
@@ -322,7 +320,7 @@ object ServicePreferences {
         return ret
     }
 
-    @Server
+    // @Server
     @Synchronized
     fun invalidateReadOnlyCache() {
         readOnlyCache = null
@@ -341,8 +339,8 @@ object ServicePreferences {
         }
     }
 
-    @App
-    @Server
+    // @App
+    // @Server
     fun readRawReadOnly(): String {
         readOnlyFile.inputStream().use {
             val bb = ByteBuffer.allocate(readOnlyFile.length().toInt())
@@ -370,7 +368,7 @@ object ServicePreferences {
     }
 
     // FILE SYSTEM RECORD
-    @Server
+    // @Server
     var denylist: List<String>
         @Synchronized
         get() = try {
@@ -406,28 +404,28 @@ object ServicePreferences {
         }
 
     // EXTRA
-    @App
-    @Server
+    // @App
+    // @Server
     val aggressivelyPromptForReadingMediaFiles: Boolean
         get() = preferences.getBoolean(AGGRESSIVELY_PROMPT_FOR_READING_MEDIA_FILES_KEY, true)
 
-    @App
-    @Server
+    // @App
+    // @Server
     val autoLogging: Boolean
         get() = preferences.getBoolean(AUTO_LOGGING_KEY, true)
 
-    @App
-    @Server
+    // @App
+    // @Server
     val recordSharedStorage: Boolean
         get() = preferences.getBoolean(RECORD_SHARED_STORAGE_KEY, false)
 
-    @App
-    @Server
+    // @App
+    // @Server
     val recordExternalAppSpecificStorage: Boolean
         get() = recordSharedStorage && preferences.getBoolean(RECORD_EXTERNAL_APP_SPECIFIC_STORAGE_KEY, false)
 
-    @App
-    @Server
+    // @App
+    // @Server
     val upsert: Boolean
         get() = preferences.getBoolean(UPSERT_KEY, true)
 }

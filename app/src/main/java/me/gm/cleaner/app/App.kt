@@ -8,7 +8,6 @@ import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.util.LogUtils
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 class App : Application() {
@@ -23,7 +22,6 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        LogUtils.init(this)
         AppLabelCache.init(this)
         val dpsContext = createDeviceProtectedStorageContext()
         RootPreferences.init(dpsContext)
