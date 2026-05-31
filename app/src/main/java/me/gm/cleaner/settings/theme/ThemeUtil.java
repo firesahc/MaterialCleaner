@@ -10,9 +10,11 @@ import androidx.appcompat.app.AppCompatDelegate;
 import java.util.HashMap;
 import java.util.Map;
 
+import android.content.res.Configuration;
+import android.os.Build;
+
 import me.gm.cleaner.R;
 import me.gm.cleaner.dao.RootPreferences;
-import me.gm.cleaner.util.ConfigurationKt;
 
 public class ThemeUtil {
     public static final String MODE_NIGHT_FOLLOW_SYSTEM = "MODE_NIGHT_FOLLOW_SYSTEM";
@@ -53,10 +55,18 @@ public class ThemeUtil {
 
     public static String getNightTheme(Context context) {
         if (isBlackNightTheme() &&
-                ConfigurationKt.isNightModeActiveCompat(context.getResources().getConfiguration()))
+                isNightModeActiveCompat(context.getResources().getConfiguration()))
             return THEME_BLACK;
 
         return THEME_DEFAULT;
+    }
+
+    private static boolean isNightModeActiveCompat(Configuration configuration) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return configuration.isNightModeActive();
+        } else {
+            return (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        }
     }
 
     @StyleRes
