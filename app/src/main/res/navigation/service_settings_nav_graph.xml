@@ -15,13 +15,6 @@
             app:popEnterAnim="@anim/slide_down_background"
             app:popExitAnim="@anim/slide_down" />
         <action
-            android:id="@+id/service_settings_to_app_category_settings_action"
-            app:destination="@id/app_category_settings_fragment"
-            app:enterAnim="@anim/nav_default_enter_anim"
-            app:exitAnim="@anim/nav_default_exit_anim"
-            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
-            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
-        <action
             android:id="@+id/service_settings_to_mount_app_picker_action"
             app:destination="@id/mount_app_picker_fragment"
             app:enterAnim="@anim/nav_default_enter_anim"
