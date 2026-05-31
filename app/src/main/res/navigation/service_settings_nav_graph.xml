@@ -33,11 +33,6 @@
     </fragment>
 
     <fragment
-        android:id="@+id/app_category_settings_fragment"
-        android:name="me.gm.cleaner.client.ui.AppCategorySettingsFragmentStub"
-        android:label="@string/app_category_title" />
-
-    <fragment
         android:id="@+id/mount_app_picker_fragment"
         android:name="me.gm.cleaner.client.ui.MountAppPickerFragment"
         android:label="@string/storage_redirect_title">

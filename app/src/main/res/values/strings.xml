@@ -97,26 +97,6 @@
     <string name="auto_logging_summary">Continuously writes logcat output to /data/local/tmp/cleaner_logs/. Useful for troubleshooting boot or crash issues.</string>
     <string name="app_category_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
     <string name="app_category_title">Online Apps Type Marks</string>
-    <string name="app_category_summary">Provide the basis for \"Autocomplete wizard according to file system record\" and \"Apply mount rules template to new package automatically\".</string>
-    <string name="app_category_repo_header">Online repository</string>
-    <string name="app_category_repo_key" translatable="false">app_category_repo</string>
-    <string name="app_category_repo_title">Repository address</string>
-    <string name="app_category_repo_summary">Request URL is the address you set + application package name + .yml</string>
-    <string name="app_category_refresh_key" translatable="false">app_category_refresh</string>
-    <string name="app_category_refresh_title">Refresh cache</string>
-    <string name="upload_app_category_key" translatable="false">upload_app_category</string>
-    <string name="upload_app_category_title">Upload apps type marks to online repo</string>
-    <string name="upload_app_category_hint">%s is marked as %s app.\nMarked directories are:\n%s</string>
-    <string name="app_category_repo_correct_errors_key" translatable="false">correct_errors</string>
-    <string name="app_category_repo_correct_errors_title">Correct errors</string>
-    <string name="app_category_repo_correct_errors_summary">This action cannot be performed in the app. You need to fork the repository, then edit the markup files to fix issues, and finally pull requests. Click to open the repository.</string>
-    <string name="auto_complete_by_record_merge_key" translatable="false">auto_complete_by_record_merge</string>
-    <string name="auto_complete_by_record_merge_title">Complete by merging</string>
-    <string name="auto_complete_by_record_respect_key" translatable="false">auto_complete_by_record_respect</string>
-    <string name="auto_complete_by_record_respect_title">Respect online repository</string>
-    <string name="apply_online_rules_to_key" translatable="false">apply_online_rules_to</string>
-    <string name="apply_online_rules_to_title">Apply online rules to…</string>
-    <string name="apply_online_rules_to_summary">If you are sure that there are rules for a certain app in the online repository but not here, please click the refresh cache button above.</string>
     <string name="record_shared_storage_title">Record file operations in shared storage</string>
     <string name="record_external_app_specific_storage_title">(Experimental) Record file operations in external app-specific storage</string>
     <string name="record_external_app_specific_storage_summary">Enabling apps to access their specific storage via FUSE, which will cause a significant performance regression.</string>
