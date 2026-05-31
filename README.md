@@ -1,11 +1,170 @@
-# MaterialCleaner
+# MaterialCleaner — 质感清理
 
-由于以下原因，此项目停止开发：
+> 一款 Android 存储重定向工具，通过 bind mount + Xposed Hook 实现文件系统级路径重定向。
+> 需要 Root（KernelSU / APatch / Magisk）和 LSPosed 框架。
 
-这个项目自在 GitHub 发布第一个版本已经两年多了，其中一年多的时间都是在按上班强度开发。我知道这是一个过于小众的需求，注定无法进入大众视野。然而如果所有人都在做大众项目，小的需求谁来满足呢？总有人要做吃亏的那一个。
+---
 
-是的，我明白这个就是从一开始就注定要亏本的项目。虽然安卓的设计没有非常强调“文件”的概念（苹果系统的早期版本甚至根本没有“文件”的概念），然而受 Windows 影响，我还是会经常使用文件管理器，一个自由定制文件存放的功能非常令我着迷。以普遍理性而言，找一个程序员定制开发需要每月付至少 2000 多元（按照国内法定最低工资标准），这个功能逻辑较为复杂，不知需要多久才能好用，定制的价格是普通人难以承受的，找一个现成的产品显然更加划算。没错，现成的产品就是存储空间隔离，起初我认为这个应用有着良好的提示和完善的逻辑，然而我使用一段时间后发现操作有些繁琐，而且最令我难以接受的是强制要求导出在二级目录和不能重定向私有目录，所以我决定还是自己做一个。
+## 功能
 
-两年多时间过去了，我自己的软件终于有了完善的逻辑，也接入了 Google Play 的支付系统。虽然项目收入很低，总收入约 8600 元（相关资料已放在最后的 release 中），平均下来连低保水平都不到，但是看着与我有同样需求的用户付费支持、在群内积极反馈应用问题，自己的需求也得到了满足，我还是非常开心。然而在我项目巨大亏损的情况下，却被酷安大神带节奏，质疑定价太贵。虽然这个应用的功能也许确实会让多数用户认为不值得（也许这也就是手机厂商都不愿意做的原因吧，性价比太低），但是我认为考虑到做小众项目更加困难，70 人民币永久的价格还算合理。然而即便如此，当我看到评论区一些用户也说太贵，我决定还是开源并放出一个完全免费的版本。然而在得罪两百多个付费用户之后，得到的结果是评论区把带节奏的人当做英雄，带节奏之人的回复是“既然有能力改变”，有能力说的是我吗？恐怕是在炫耀有能力轻松地让一个弱小项目破产的你。
+- **存储重定向**：拦截应用文件读写，将指定路径重定向到其他目录
+- **bind mount 机制**：通过 `mount --bind` 在目标进程 mount namespace 内创建路径映射
+- **InsertHooker**：Hook MediaProvider.insertFile()，在 ContentValues 层替换 `_data` 列路径
+- **bpf_hook + xhook**：PLT/GOT Hook libfuse_jni.so，拦截 FUSE containsMount 实现内核级 I/O 重定向
+- **文件系统记录**：记录应用的文件操作历史，辅助创建挂载规则
+- **挂载规则模板**：预设规则模板，新应用安装时自动应用
+- **向导式规则创建**：根据文件系统记录自动建议挂载规则
+- **三语言支持**：简体中文、繁体中文、英文
 
-现在这个项目已经大概率要停更了，如果你还在寻找替代品，我还是会推荐存储空间隔离，第一是因为据用户反馈它对各种定制系统有良好的兼容性（这是质感清理现在还没有做到的），第二是因为我不觉得谁还有动力和实力克服众多困难开发下一个替代品了。
+## 架构
+
+### 三进程 Binder 中继链
+
+```
+┌────────────────────┐      Binder        ┌──────────────────────┐
+│  cleaner_server    │◄──────────────────►│  App Process         │
+│  (root, app_proc)  │  getContentProvider│  HooksBridgeProvider │
+│  CleanerServer     │   External         │  (ContentProvider)   │
+│  CleanerHooksClient│                    │                      │
+│  BinderSender      │                    │  ◄──── relay ─────►  │
+└────────────────────┘                    │  ICleanerHooksService│
+                                          └──────────┬───────────┘
+                                                     │ Binder
+                                                     ▼
+                              ┌──────────────────────────────────────┐
+                              │  MediaProvider (LSPosed Xposed Hook) │
+                              │  MediaProviderHooksService           │
+                              │  bpf_hook::Hook() → libfuse_jni.so   │
+                              │  InsertHooker → _data 列替换          │
+                              └──────────────────────────────────────┘
+```
+
+### 两套重定向机制
+
+| 机制 | 层 | 原理 | 依赖 |
+|------|----|------|------|
+| **bind mount** | VFS 层 | `fork() → setns() → mount(MS_BIND)` 在目标进程 namespace 中创建绑定挂载 | root 权限 |
+| **InsertHooker** | MediaStore 层 | Hook `MediaProvider.insertFile()`，替换 ContentValues 中的 `_data` 列 | LSPosed |
+| **bpf_hook (xhook)** | FUSE 内核层 | PLT/GOT Hook libfuse_jni.so 中的 `containsMount`、`StartsWith` 等 6 个函数 | LSPosed |
+
+### 模块结构
+
+```
+MaterialCleaner/
+├── app/          # Android App 主模块（UI / ViewModel / C++ JNI）
+├── server/       # Android Library（root 守护进程逻辑）
+│   ├── xposed/   # Xposed 模块代码（XposedInit, InsertHooker, MediaProviderHook...）
+│   └── observer/ # Observer 管理器（AM Logs、Storage Mount、File System...）
+├── shared/       # 公共库（Dao、工具类、Preferences）
+├── hidden-api/   # Android SDK 桩类 + 反射桥接 + SystemService 封装
+├── aidl/         # AIDL 接口定义
+└── external/     # 第三方依赖（abseil-cpp）
+```
+
+## 环境要求
+
+- **Android 8.0+**（API 26）
+- **Root 权限**：KernelSU / APatch / Magisk
+- **LSPosed 框架**（用于加载 Xposed 模块到 MediaProvider 进程）
+- **NDK**：CMake + Android NDK 用于编译 C++ 本地代码
+
+## 构建指南
+
+### 环境准备
+
+```bash
+# Android SDK 路径（Windows）
+set ANDROID_HOME=D:\Android\Sdk
+
+# 使用项目自带的 Gradle Wrapper
+./gradlew --version
+```
+
+### 编译 APK
+
+```bash
+# Debug 构建
+./gradlew :app:assembleDebug
+
+# Release 构建
+./gradlew :app:assembleRelease
+```
+
+构建过程会自动执行以下步骤：
+
+1. 编译 `server` 模块（含 Xposed 代码）
+2. 运行 `buildXposedMainJar` 任务——将 server 模块的 classes.jar 通过 d8 转为 DEX 并打包为 `assets/main.jar`
+3. 编译 C++ 本地代码（libinline.so、libcleaner.so、starter）
+4. 打包为 APK
+
+### 安装
+
+```bash
+# 安装 Debug APK
+adb install -r app/build/outputs/apk/debug/Cleaner_*-debug.apk
+
+# 强制重启服务器（安装后需要）
+adb shell am force-stop me.gm.cleaner
+adb shell am start -n me.gm.cleaner/.app.MainActivity
+```
+
+### LSPosed 配置
+
+1. 安装 APK 后打开 LSPosed Manager
+2. 启用 MaterialCleaner 模块
+3. 作用域勾选 `com.android.providers.media.module`
+4. 重启设备
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| UI | Kotlin + Material Design 3 + DataBinding + Navigation |
+| 架构 | ViewModel + LiveData + Flow + Coroutines |
+| 进程通信 | Binder AIDL + ContentProvider |
+| Xposed | LSPosed + Xposed Framework API 82 |
+| 本地代码 | C++（xhook PLT/GOT Hook、mount namespace 操作） |
+| 数据库 | Room + SQLite |
+| Root | libsu（topjohnwu） |
+| 构建 | Gradle + CMake + d8 |
+
+## 关键技术实现
+
+### main.jar 自动构建
+
+Xposed 模块以 `assets/main.jar`（DEX 格式）打包在 APK 中。Gradle task `buildXposedMainJar` 自动完成转换：
+
+```bash
+# 手动方式（如不通过 Gradle）：
+d8 --min-api 26 --output /tmp/dex server/build/intermediates/aar_main_jar/debug/classes.jar
+cd /tmp/dex && zip main.jar classes.dex
+```
+
+### 服务器进程启动
+
+```
+App → Shell.cmd(Starter.command) → start.sh → starter (ELF 二进制)
+  → execvp app_process → CleanerServerLoader.main()
+    → System.loadLibrary("android|compiler_rt|jnigraphics")
+    → CleanerServer() → onStorageManagerServiceReady()
+      → ObserverManager.startAllObservers()
+      → BinderSender.register() → sendBinderToManger()
+```
+
+## 已知限制
+
+- **LSPosed 必需**：InsertHooker 和 bpf_hook 需要 LSPosed 加载 Xposed 模块到 MediaProvider
+- **定制 ROM 兼容性**：部分定制系统（MIUI/HyperOS）可能因 SELinux 策略导致 bind mount 失败
+- **main.jar 需随代码更新**：修改 server/xposed 下代码后需重新构建，Gradle task 会自动处理
+
+## 原作者的话
+
+> 由于以下原因，此项目停止开发：
+> 
+> 这个项目自在 GitHub 发布第一个版本已经两年多了，其中一年多的时间都是在按上班强度开发。我知道这是一个过于小众的需求，注定无法进入大众视野。然而如果所有人都在做大众项目，小的需求谁来满足呢？总有人要做吃亏的那一个。
+> 
+> 是的，我明白这个就是从一开始就注定要亏本的项目。虽然安卓的设计没有非常强调“文件”的概念（苹果系统的早期版本甚至根本没有“文件”的概念），然而受 Windows 影响，我还是会经常使用文件管理器，一个自由定制文件存放的功能非常令我着迷。以普遍理性而言，找一个程序员定制开发需要每月付至少 2000 多元（按照国内法定最低工资标准），这个功能逻辑较为复杂，不知需要多久才能好用，定制的价格是普通人难以承受的，找一个现成的产品显然更加划算。没错，现成的产品就是存储空间隔离，起初我认为这个应用有着良好的提示和完善的逻辑，然而我使用一段时间后发现操作有些繁琐，而且最令我难以接受的是强制要求导出在二级目录和不能重定向私有目录，所以我决定还是自己做一个。
+>
+> 两年多时间过去了，我自己的软件终于有了完善的逻辑，也接入了 Google Play 的支付系统。虽然项目收入很低，总收入约 8600 元（相关资料已放在最后的 release 中），平均下来连低保水平都不到，但是看着与我有同样需求的用户付费支持、在群内积极反馈应用问题，自己的需求也得到了满足，我还是非常开心。然而在我项目巨大亏损的情况下，却被酷安大神带节奏，质疑定价太贵。虽然这个应用的功能也许确实会让多数用户认为不值得（也许这也就是手机厂商都不愿意做的原因吧，性价比太低），但是我认为考虑到做小众项目更加困难，70 人民币永久的价格还算合理。然而即便如此，当我看到评论区一些用户也说太贵，我决定还是开源并放出一个完全免费的版本。然而在得罪两百多个付费用户之后，得到的结果是评论区把带节奏的人当做英雄，带节奏之人的回复是“既然有能力改变”，有能力说的是我吗？恐怕是在炫耀有能力轻松地让一个弱小项目破产的你。
+>
+> 现在这个项目已经大概率要停更了，如果你还在寻找替代品，我还是会推荐存储空间隔离，第一是因为据用户反馈它对各种定制系统有良好的兼容性（这是质感清理现在还没有做到的），第二是因为我不觉得谁还有动力和实力克服众多困难开发下一个替代品了。
