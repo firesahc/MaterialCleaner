@@ -96,6 +96,10 @@
     <string name="btn_stop_server">停止服务器</string>
     <string name="toast_starting">正在启动</string>
     <string name="toast_stopped">已停止</string>
+    <string name="server_stopped_manually">储存重定向已停止，点击"启动服务器"恢复</string>
+    <string name="toast_server_started_n_mounted">服务器已启动，%d 个应用已重新挂载</string>
+    <string name="toast_server_started_empty">服务器已启动，尚未配置任何应用</string>
+    <string name="toast_start_failed">启动服务器失败</string>
     <string name="parent_directory">..</string>
 
     <!-- 服务 -->

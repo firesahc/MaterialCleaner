@@ -184,6 +184,22 @@ class AppListFragment : BaseServiceSettingsFragment() {
         if (!isAdded) return
 
         val isRunning = CleanerClient.pingBinder()
+        val isManuallyStopped = ServicePreferences.isServerManuallyStopped
+
+        // 手动停止状态：显示已暂停
+        if (!isRunning && isManuallyStopped) {
+            val ctx = requireContext()
+            statusTitle?.visibility = android.view.View.GONE
+            statusSubtitle?.text = ctx.getString(R.string.server_stopped_manually)
+            mountedCountTextView?.visibility = android.view.View.GONE
+            btnToggleServer?.text = ctx.getString(R.string.btn_start_server)
+            statusDot?.setImageResource(R.drawable.ic_baseline_error_24)
+            statusDot?.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(ctx, android.R.color.holo_orange_dark)
+            )
+            return
+        }
+
         val isXposedConnected = HooksBridgeProvider.isMediaProviderConnected()
         val mountedCount = ServicePreferences.srPackages.size
         val totalRules = ServicePreferences.srPackages.sumOf { pkg ->
@@ -230,17 +246,69 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private fun startServer() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                // Step 1: 清除"停止"标志
+                withContext(Dispatchers.Main) {
+                    ServicePreferences.isServerManuallyStopped = false
+                }
+
+                // Step 2: 杀死旧服务器进程
+                val shell = Shell.getShell()
+                if (shell.isRoot) {
+                    Shell.cmd("ps -A | grep cleaner_server | tr -s ' ' | cut -d' ' -f2 | while read pid; do kill -9 \$pid 2>/dev/null; done").exec()
+                    delay(2000)
+                }
+
+                // Step 3: 启动新服务器
                 Starter.writeDataFiles(requireContext())
                 val result = Shell.cmd(Starter.command).exec()
-                if (result.isSuccess) {
+                if (!result.isSuccess) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), R.string.toast_starting, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), R.string.toast_start_failed, Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    if (BuildConfig.DEBUG) Log.e("CleanerTest", "startServer: command failed: ${result.err.joinToString()}")
+                    return@launch
+                }
+
+                // Step 4: 等待 Binder 就绪（重试最多 20 次）
+                var retries = 0
+                while (!CleanerClient.pingBinder() && retries < 20) {
+                    delay(500)
+                    retries++
+                }
+                if (!CleanerClient.pingBinder()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(requireContext(), R.string.toast_start_failed, Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                // Step 5: 重载配置并重新挂载（每个核心点带重试）
+                val svc = CleanerClient.service
+                reloadConfigWithRetry("notifyPreferencesChanged") { svc?.notifyPreferencesChanged() }
+                reloadConfigWithRetry("notifySrChanged") { svc?.notifySrChanged() }
+                reloadConfigWithRetry("notifyReadOnlyChanged") { svc?.notifyReadOnlyChanged() }
+
+                // Step 6: 重新挂载所有已配置的应用
+                val packages = ServicePreferences.srPackages.toTypedArray()
+                if (packages.isNotEmpty()) {
+                    reloadConfigWithRetry("remount") { svc?.remount(packages) }
+                }
+
+                // Step 7: 重载应用列表并更新 UI
+                withContext(Dispatchers.Main) {
+                    viewModel.loadApps()
+                    updateServiceStatus()
+                    val msg = if (packages.isNotEmpty()) {
+                        requireContext().getString(R.string.toast_server_started_n_mounted, packages.size)
+                    } else {
+                        requireContext().getString(R.string.toast_server_started_empty)
+                    }
+                    Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) Log.e("CleanerTest", "startServer: exception", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(requireContext(), R.string.toast_start_failed, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -248,8 +316,19 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private fun stopServer() {
         lifecycleScope.launch {
             try {
+                // 设置"已停止"标志 → 阻止自动重启
+                ServicePreferences.isServerManuallyStopped = true
+
+                // 优雅退出再强制杀死
                 CleanerClient.exit()
                 CleanerClient.resetConnection()
+
+                // 备份：root shell 强制杀死
+                val shell = Shell.getShell()
+                if (shell.isRoot) {
+                    Shell.cmd("ps -A | grep cleaner_server | tr -s ' ' | cut -d' ' -f2 | while read pid; do kill -9 \$pid 2>/dev/null; done").exec()
+                }
+
                 updateServiceStatus()
                 Toast.makeText(requireContext(), R.string.toast_stopped, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -258,8 +337,45 @@ class AppListFragment : BaseServiceSettingsFragment() {
         }
     }
 
+    /**
+     * Execute [action] with retry on failure (max [maxRetries] attempts, 1s between).
+     * Each retry first verifies pingBinder() is still true.
+     */
+    private suspend fun reloadConfigWithRetry(
+        name: String,
+        maxRetries: Int = 3,
+        action: suspend () -> Unit
+    ) {
+        var attempt = 0
+        while (attempt < maxRetries) {
+            try {
+                if (!CleanerClient.pingBinder()) {
+                    if (BuildConfig.DEBUG) Log.w("CleanerTest", "reloadConfig: $name - Binder lost at attempt ${attempt + 1}")
+                    delay(500)  // 给 Binder 一点时间恢复
+                    attempt++
+                    continue
+                }
+                action()
+                return  // 成功
+            } catch (e: Exception) {
+                attempt++
+                if (BuildConfig.DEBUG) Log.e("CleanerTest", "reloadConfig: $name failed attempt $attempt/$maxRetries", e)
+                if (attempt < maxRetries) {
+                    delay(1000)
+                }
+            }
+        }
+        if (BuildConfig.DEBUG) Log.e("CleanerTest", "reloadConfig: $name FAILED after $maxRetries retries")
+    }
+
     private fun loadMountedApps(adapter: AppListAdapter) {
         lifecycleScope.launch {
+            // 如果服务器已手动停止，不等待，直接返回空列表
+            if (ServicePreferences.isServerManuallyStopped) {
+                adapter.submitList(emptyList())
+                return@launch
+            }
+
             // 等待服务器就绪（最长重试 20 次 = ~10 秒）
             var retries = 0
             while (!CleanerClient.pingBinder() && retries < 20) {

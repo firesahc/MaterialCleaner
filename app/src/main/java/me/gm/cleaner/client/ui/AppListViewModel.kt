@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
+import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.starter.Starter
 
 class AppListViewModel(application: Application) : AppListViewModelBase(application) {
@@ -66,7 +67,9 @@ class AppListViewModel(application: Application) : AppListViewModelBase(applicat
         viewModelScope.launch {
             if (BuildConfig.DEBUG) Log.i("CleanerTest", "AppListViewModel.loadApps: start")
             _appsFlow.value = AppListState.Loading
-            tryStartServer()
+            if (!ServicePreferences.isServerManuallyStopped) {
+                tryStartServer()
+            }
             loadAppsCommon(includeServerStart = false)
         }
     }

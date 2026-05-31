@@ -125,6 +125,10 @@
     <string name="btn_stop_server">Stop Server</string>
     <string name="toast_starting">Starting</string>
     <string name="toast_stopped">Stopped</string>
+    <string name="server_stopped_manually">Storage redirect stopped. Tap Start Server to resume.</string>
+    <string name="toast_server_started_n_mounted">Server started, %d apps remounted</string>
+    <string name="toast_server_started_empty">Server started, no apps configured</string>
+    <string name="toast_start_failed">Failed to start server</string>
     <string name="parent_directory">..</string>
 
     <!-- Service -->
