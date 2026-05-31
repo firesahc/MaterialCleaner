@@ -4,8 +4,7 @@
     <PreferenceCategory
         android:key="@string/storage_redirect_title"
         android:title="@string/storage_redirect_title"
-        app:iconSpaceReserved="false"
-        app:initialExpandedChildrenCount="7">
+        app:iconSpaceReserved="false">
 
         <SwitchPreferenceCompat
             android:defaultValue="true"
@@ -29,6 +28,24 @@
             android:title="@string/import_title"
             app:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:key="@string/apply_template_on_package_added_key"
+            android:title="@string/apply_template_on_package_added_title"
+            app:iconSpaceReserved="false" />
+
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="@string/auto_logging_key"
+            android:title="@string/auto_logging_title"
+            android:summary="@string/auto_logging_summary"
+            app:iconSpaceReserved="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="@string/advanced_header"
+        app:iconSpaceReserved="false">
+
         <me.gm.cleaner.settings.PathListPreference
             android:key="@string/edit_read_only_template_key"
             android:title="@string/edit_read_only_template_title"
@@ -49,17 +66,6 @@
             android:title="@string/apply_mount_rules_template_to_title"
             app:iconSpaceReserved="false" />
 
-        <SwitchPreferenceCompat
-            android:key="@string/apply_template_on_package_added_key"
-            android:title="@string/apply_template_on_package_added_title"
-            app:iconSpaceReserved="false" />
-
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:key="@string/auto_logging_key"
-            android:title="@string/auto_logging_title"
-            android:summary="@string/auto_logging_summary"
-            app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
     <PreferenceCategory

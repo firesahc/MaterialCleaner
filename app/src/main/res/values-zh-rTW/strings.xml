@@ -54,7 +54,8 @@
     <!-- 服務更多選項 -->
 
     <string name="open_wizard_by_default_title">默認打開嚮導</string>
-    <string name="share_title">分享</string>
+    <string name="share_title">導出</string>
+    <string name="advanced_header">進階</string>
     <string name="import_title">導入</string>
     <string name="edit_mount_rules_template_title">編輯掛載規則模板</string>
     <string name="apply_mount_rules_template_to_title">將掛載規則模板應用到…</string>

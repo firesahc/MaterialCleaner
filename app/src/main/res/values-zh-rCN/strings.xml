@@ -54,7 +54,8 @@
     <!-- 服务更多选项 -->
 
     <string name="open_wizard_by_default_title">默认打开向导</string>
-    <string name="share_title">分享</string>
+    <string name="share_title">导出</string>
+    <string name="advanced_header">高级</string>
     <string name="import_title">导入</string>
     <string name="edit_mount_rules_template_title">编辑挂载规则模板</string>
     <string name="apply_mount_rules_template_to_title">将挂载规则模板应用到…</string>

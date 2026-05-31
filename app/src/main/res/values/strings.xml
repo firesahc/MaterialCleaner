@@ -75,7 +75,8 @@
     <string name="open_wizard_by_default_key" translatable="false">open_wizard_by_default</string>
     <string name="open_wizard_by_default_title">Open wizard by default</string>
     <string name="share_key" translatable="false">share</string>
-    <string name="share_title">Share</string>
+    <string name="share_title">Export</string>
+    <string name="advanced_header">Advanced</string>
     <string name="import_key" translatable="false">import</string>
     <string name="import_title">Import</string>
     <string name="edit_mount_rules_template_key" translatable="false">edit_mount_rules_template</string>
