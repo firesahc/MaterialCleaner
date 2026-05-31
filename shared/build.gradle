@@ -22,34 +22,6 @@ android {
     }
 }
 
-task generateFbsKotlin(type: Exec) {
-    def inputDir = file("$rootDir/fbs")
-    def outputKotlinDir = file("$rootDir/shared/src/main/java")
-    def fbsFiles = layout.files { file(inputDir).listFiles() }.filter { File f -> f.name.endsWith(".fbs") }.toList()
-    ignoreExitValue(true)
-
-    standardOutput = new ByteArrayOutputStream()
-    errorOutput = new ByteArrayOutputStream()
-
-    setErrorOutput(errorOutput)
-    setStandardOutput(standardOutput)
-
-    def commandLineArgs = ["$inputDir/flatc", '-o', outputKotlinDir, '--kotlin']
-    fbsFiles.forEach {
-        commandLineArgs.add(it.path)
-    }
-    commandLine commandLineArgs
-
-    doFirst {
-        mkdir "$outputKotlinDir/"
-    }
-    doLast {
-        if (executionResult.get().exitValue != 0) {
-            throw new GradleException("flatc failed with: ${executionResult.get().toString()}")
-        }
-    }
-}
-
 dependencies {
     implementation project(':aidl')
 

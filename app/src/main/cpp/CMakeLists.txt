@@ -29,9 +29,8 @@ find_library(z-lib z)
 add_subdirectory(external)
 
 include_directories(include)
-aux_source_directory(include/android-base BASE)
 add_library(cleaner SHARED
-        ${BASE}
+        include/android-base/stringprintf.cpp
         include/misc.cpp include/socket.cpp
         FileUtils.cpp Mount.cpp ProcInfo.cpp
         jni_extra.cpp JNI_OnLoad.cpp
