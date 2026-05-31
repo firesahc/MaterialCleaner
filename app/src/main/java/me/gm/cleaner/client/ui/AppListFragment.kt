@@ -1,5 +1,6 @@
 package me.gm.cleaner.client.ui
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -120,6 +121,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
         return view
     }
 
+    @SuppressLint("RepeatOnLifecycleWrongUsage")
     override fun onResume() {
         super.onResume()
         // Poll pingBinder() every 3 seconds while resumed
@@ -177,14 +179,14 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val serverPid = CleanerClient.service?.serverPid?.toString() ?: "-"
         val xposedStatus = when {
             !isRunning -> ctx.getString(R.string.server_waiting)
-            isXposedConnected -> ctx.getString(R.string.xposed_connected) + " ✅"
+            isXposedConnected -> ctx.getString(R.string.xposed_connected)
             else -> ctx.getString(R.string.waiting_media_provider)
         }
 
         statusSubtitle?.text = buildString {
             appendLine(ctx.getString(R.string.server_status_daemon, serverPid, rootStatus))
-            appendLine(ctx.getString(R.string.server_status_mounted, mountedCount, totalRules))
-            append(ctx.getString(R.string.server_status_xposed, xposedStatus))
+            appendLine(ctx.getString(R.string.server_status_xposed, xposedStatus))
+            append(ctx.getString(R.string.server_status_mounted, mountedCount, totalRules))
         }
 
         mountedCountTextView?.visibility = android.view.View.GONE

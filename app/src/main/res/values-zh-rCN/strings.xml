@@ -5,20 +5,12 @@
     <string name="delimiter">、</string>
     <string name="yes">是</string>
     <string name="no">否</string>
-    <string name="update">更新</string>
-    <string name="new_version">质感清理 %s 已发布</string>
-
-    <string name="rationale_shouldShowRationale">%s需要写入外部存储空间权限</string>
-    <string name="rationale_permanentlyDenied">%s需要写入外部存储空间权限，请在应用信息中手动授予</string>
-    <string name="rationale_external_storage_manager">%s需要所有文件访问权限，请在下个页面中授予</string>
-
     <!-- 菜单 -->
     <string name="settings">设置</string>
-    <string name="email">电子邮件</string>
-    <string name="qq_channel">QQ 频道</string>
     <string name="view">查看</string>
     <string name="menu_sort_by_name_title">应用名</string>
     <string name="menu_sort_by_update_time_title">更新时间</string>
+    <string name="sort_title">排序方式</string>
     <string name="menu_rule_count">启用规则的优先</string>
     <string name="menu_mount_state">挂载状态</string>
     <string name="menu_hide_title">隐藏</string>
@@ -26,7 +18,6 @@
     <string name="menu_hide_disabled_app_title">已禁用应用</string>
     <string name="menu_hide_no_storage_permissions_title">无存储权限应用</string>
     <string name="menu_hide_pick_apps">选择应用</string>
-    <string name="menu_batch_operation">批量操作</string>
     <string name="menu_select_all">全选</string>
     <string name="menu_open">打开</string>
     <string name="menu_copy">复制</string>
@@ -48,18 +39,6 @@
     <string name="start_on_boot_title">开机启动 Cleaner 服务</string>
     <string name="start_on_boot_summary">启用前请确保服务能在您的设备上正常工作</string>
     <string name="post_notification_title">接收更新通知</string>
-    <string name="nonpublic_summary">主要用于清理存储重定向侧漏的文件，非存储重定向类软件用户不建议开启</string>
-    <string name="no_tick_title">不勾选</string>
-    <string name="no_tick_summary">根据输入的正则表达式匹配路径，匹配的条目不会默认勾选</string>
-    <string name="no_scan_title">不扫描</string>
-    <string name="length_title">显示文件（夹）大小</string>
-    <string name="length_summary">关闭可提高扫描速度，不过文件大小是判断能否安全删除的一个很好的参考，您需要自行权衡利弊</string>
-    <string name="sort_title">排序方式</string>
-    <string name="monitor_title">自动重新扫描</string>
-    <string name="monitor_summary">使用 inotify 监听共享存储空间，当文件变化时执行增量扫描。监听的文件数目大于 8192 时会失效</string>
-    <string name="maximize_title">扫描结果最大数目</string>
-    <string name="maximize_summary">防止内存不足错误</string>
-    <string name="confirm_delete_title">删除前显示确认对话框</string>
     <string name="language_header">语言</string>
     <string name="language_title">语言</string>
     <string name="theme_header">主题</string>
@@ -74,7 +53,6 @@
 
     <!-- 服务更多选项 -->
     <string name="cleanup_title">清理</string>
-    <string name="automatic_cleanup_title">自动清理</string>
     <string name="enable_relatime_title">（实验性）启用相对访问时间</string>
     <string name="enable_relatime_summary">启用文件系统的相对访问时间功能，这能帮助清理应用最大限度地筛选可以删除的文件，同时避免删除频繁使用的文件。不过，这会略微降低文件系统的性能</string>
     <string name="open_wizard_by_default_title">默认打开向导</string>
@@ -118,30 +96,33 @@
     <string name="prompt_media_not_found">受存储重定向影响，%1$s 无法读取媒体文件 %2$s</string>
     <string name="prompt_media_not_found_aggressively">%1$s 可能正受存储重定向影响无法读取媒体文件 %2$s，您看到此提示是因为您启用了服务设置-更多选项-激进地提示读取媒体文件</string>
 
+    <!-- 服务器状态 -->
+    <string name="root_available">可用</string>
+    <string name="root_unavailable">不可用</string>
+    <string name="server_waiting">等待服务器启动</string>
+    <string name="xposed_connected">已连接</string>
+    <string name="waiting_media_provider">等待 MediaProvider 连接</string>
+    <string name="server_status_daemon">守护进程: PID %1$s | Root %2$s</string>
+    <string name="server_status_mounted">已挂载: %1$d 个应用 | %2$d 条规则</string>
+    <string name="server_status_xposed">Xposed Hooks: %1$s</string>
+    <string name="btn_start_server">启动服务器</string>
+    <string name="btn_stop_server">停止服务器</string>
+    <string name="toast_starting">正在启动</string>
+    <string name="toast_stopped">已停止</string>
+    <string name="parent_directory">..</string>
+
     <!-- 服务 -->
-    <string name="start_cleaner_service">启动 Cleaner 服务</string>
-    <string name="confirm_exit">停止 Cleaner 服务？</string>
     <string name="confirm_exit_restart">重新启动</string>
     <string name="no_root_access">无法访问 root</string>
-    <string name="time_out">启动服务超时，将此日志发送给开发者也许能得到帮助</string>
-    <string name="service_running">服务运行中</string>
     <string name="service_need_upgrade">服务需升级</string>
-    <string name="service_exception">服务环境异常</string>
     <string name="service_exception_logcat_shutdown">日志猫已退出，请重启 Cleaner 服务</string>
-    <string name="service_exception_no_am_log">没有活动管理器日志，存储重定向无法正常工作（如果刚启动服务请忽略）</string>
 
-    <string name="storage_volumes_mount_exception">存储卷挂载异常（如果刚开机请忽略）</string>
-    <string name="server_version">服务版本：%d%s</string>
     <string name="service_settings">质感清理</string>
     <string name="file_picker_title">选择文件</string>
     <string name="file_picker_unselected">选定的文件</string>
     <string name="file_picker_hint">路径</string>
     <string name="file_picker_error_starts_with">非 %s 中的路径</string>
-    <string name="file_picker_error_format">格式错误</string>
     <string name="enabled">已启用 %s</string>
-    <plurals name="enabled_rule_count">
-        <item quantity="other">%d 条规则</item>
-    </plurals>
     <string name="enabled_mount_rules_count">%d 条挂载规则</string>
     <string name="enabled_read_only_count">%d 条只读</string>
     <string name="storage_redirect_title">存储重定向</string>
@@ -149,16 +130,13 @@
     <string name="storage_redirect_list_mounted">已挂载</string>
     <string name="storage_redirect_list_unknown">未知状态</string>
     <string name="storage_redirect_list_mount_exception">挂载异常</string>
-    <string name="certification_revalidating">正在重新验证许可</string>
-    <string name="free_version">免费版</string>
-    <string name="require_enable_in_lsp">请在 LSPosed 中激活质感清理并重启系统</string>
     <plurals name="uninstalled_package">
         <item quantity="other">%s 已卸载，是否立即删除它（们）的设置？</item>
     </plurals>
     <string name="storage_redirect_not_saved">未保存</string>
     <string name="storage_redirect_status_header">运行状态</string>
     <string name="storage_redirect_status_summary_prefix">此应用正在运行，其进程 id：%s。</string>
-    <string name="storage_redirect_status_summary_suffix_mounted">已为所有进程挂载 \uD83D\uDE0B\ </string>
+    <string name="storage_redirect_status_summary_suffix_mounted">已为所有进程挂载 \uD83D\uDE0B</string>
     <plurals name="storage_redirect_status_summary_suffix_not_mounted">
         <item quantity="other">由于%s，%s 中挂载状态异常 \uD83E\uDD14\ </item>
     </plurals>
@@ -243,28 +221,9 @@
     <string name="filesystem_record_flags_file">文件</string>
     <string name="filesystem_record_flags_dir">文件夹</string>
 
-
-
-
-
-    <!-- 管理备份和回收站 -->
-    <!--    <string name="snapshot_diff">对比</string>-->
-    <!--    <string name="a">生成机器学习训练数据需要使用情况访问权限</string>-->
-
-    <!--  生成机器学习的训练数据  -->
-    <!--  应用未被授予使用情况访问权限，因此无法生成机器学习的训练数据  -->
-    <!--    <string name="how_to_train_model">您想要如何训练模型？</string>-->
-
-    <!-- 机器学习 -->
-    <!--    <string name="how_to_train_model">您想要如何训练模型？</string>-->
-    <!--    <string name="shared">从共享的权重开始，并匿名共享训练数据（训练数据不包含文件内容）</string>-->
-    <!--    <string name="standalone">从零开始，不共享训练数据</string>-->
-
     <string name="copied">已复制：%s</string>
     <string name="loading">加载中</string>
     <string name="network_connection_failed">网络连接失败</string>
-
-    <string name="confirm_delete">删除这些文件？</string>
 
     <!-- 关于 -->
     <string name="slogan">质感设计的清理应用</string>

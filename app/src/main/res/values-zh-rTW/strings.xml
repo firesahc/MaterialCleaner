@@ -5,20 +5,12 @@
     <string name="delimiter">、</string>
     <string name="yes">是</string>
     <string name="no">否</string>
-    <string name="update">更新</string>
-    <string name="new_version">質感清理 %s 已發布</string>
-
-    <string name="rationale_shouldShowRationale">%s需要寫入外部儲存空間權限</string>
-    <string name="rationale_permanentlyDenied">%s需要寫入外部儲存空間權限，請在應用訊息中手動授予</string>
-    <string name="rationale_external_storage_manager">%s需要所有文件訪問權限，請在下個頁面中授予</string>
-
     <!-- 菜单 -->
     <string name="settings">設置</string>
-    <string name="email">電子郵件</string>
-    <string name="qq_channel">QQ 頻道</string>
     <string name="view">檢視</string>
     <string name="menu_sort_by_name_title">應用名</string>
     <string name="menu_sort_by_update_time_title">更新時間</string>
+    <string name="sort_title">排序方式</string>
     <string name="menu_rule_count">啟用規則的優先</string>
     <string name="menu_mount_state">掛載狀態</string>
     <string name="menu_hide_title">隱藏</string>
@@ -26,7 +18,6 @@
     <string name="menu_hide_disabled_app_title">已禁用應用</string>
     <string name="menu_hide_no_storage_permissions_title">無儲存許可權應用</string>
     <string name="menu_hide_pick_apps">選擇應用</string>
-    <string name="menu_batch_operation">批次操作</string>
     <string name="menu_select_all">全選</string>
     <string name="menu_open">開啟</string>
     <string name="menu_copy">複製</string>
@@ -48,18 +39,6 @@
     <string name="start_on_boot_title">開機啟動 Cleaner 服務</string>
     <string name="start_on_boot_summary">啟用前請確保服務能在您的設備上正常工作</string>
     <string name="post_notification_title">接收更新通知</string>
-    <string name="nonpublic_summary">主要用於清理存儲重定向側漏的文件，非存儲重定向類軟體用戶不建議開啟</string>
-    <string name="no_tick_title">不勾選</string>
-    <string name="no_tick_summary">根據輸入的正則表達式匹配路徑，匹配的條目不會默認勾選</string>
-    <string name="no_scan_title">不掃描</string>
-    <string name="length_title">顯示文件（夾）大小</string>
-    <string name="length_summary">關閉可提高掃描速度，不過檔案大小是判斷能否安全刪除的一個很好的參考，您需要自行權衡利弊</string>
-    <string name="sort_title">排序方式</string>
-    <string name="monitor_title">自動重新掃描</string>
-    <string name="monitor_summary">使用 inotify 監聽共享儲存空間，當文件變化時執行增量掃描。監聽的文件數目大於 8192 時會失效</string>
-    <string name="maximize_title">掃描結果最大數目</string>
-    <string name="maximize_summary">防止記憶體不足錯誤</string>
-    <string name="confirm_delete_title">刪除前顯示確認對話框</string>
     <string name="language_header">語言</string>
     <string name="language_title">語言</string>
     <string name="theme_header">主題</string>
@@ -74,7 +53,6 @@
 
     <!-- 服務更多選項 -->
     <string name="cleanup_title">清理</string>
-    <string name="automatic_cleanup_title">自動清理</string>
     <string name="enable_relatime_title">（實驗性）啟用相對訪問時間</string>
     <string name="enable_relatime_summary">啟用文件系統的相對訪問時間功能，這能幫助清理應用最大限度地篩選可以刪除的文件，同時避免刪除頻繁使用的文件。不過，這會略微降低文件系統的性能</string>
     <string name="open_wizard_by_default_title">默認打開嚮導</string>
@@ -118,30 +96,33 @@
     <string name="prompt_media_not_found">受儲存重定向影響，%1$s 無法讀取媒體檔案 %2$s</string>
     <string name="prompt_media_not_found_aggressively">%1$s 可能正受儲存重定向影響無法讀取媒體檔案 %2$s，您看到此提示是因為您啟用了服務設定-更多選項-激進地提示讀取媒體檔案</string>
 
+    <!-- 伺服器狀態 -->
+    <string name="root_available">可用</string>
+    <string name="root_unavailable">不可用</string>
+    <string name="server_waiting">等待伺服器啟動</string>
+    <string name="xposed_connected">已連接</string>
+    <string name="waiting_media_provider">等待 MediaProvider 連接</string>
+    <string name="server_status_daemon">守護程序: PID %1$s | Root %2$s</string>
+    <string name="server_status_mounted">已掛載: %1$d 個應用 | %2$d 條規則</string>
+    <string name="server_status_xposed">Xposed Hooks: %1$s</string>
+    <string name="btn_start_server">啟動伺服器</string>
+    <string name="btn_stop_server">停止伺服器</string>
+    <string name="toast_starting">正在啟動</string>
+    <string name="toast_stopped">已停止</string>
+    <string name="parent_directory">..</string>
+
     <!-- 服务 -->
-    <string name="start_cleaner_service">啟動 Cleaner 服务</string>
-    <string name="confirm_exit">停止 Cleaner 服務？</string>
     <string name="confirm_exit_restart">重新啟動</string>
     <string name="no_root_access">無法訪問 root</string>
-    <string name="time_out">啟動服務超時，將此日誌發送給開發者也許能得到幫助</string>
-    <string name="service_running">服務運行中</string>
     <string name="service_need_upgrade">服務需升級</string>
-    <string name="service_exception">服務環境異常</string>
     <string name="service_exception_logcat_shutdown">日誌貓已退出，請重啟 Cleaner 服務</string>
-    <string name="service_exception_no_am_log">沒有活動管理器日誌，儲存重定向無法正常工作（如果剛啟動服務請忽略）</string>
 
-    <string name="storage_volumes_mount_exception">儲存卷掛載異常（如果剛開機請忽略）</string>
-    <string name="server_version">服務版本：%d%s</string>
     <string name="service_settings">質感清理</string>
     <string name="file_picker_title">選擇文件</string>
     <string name="file_picker_unselected">所選文件</string>
     <string name="file_picker_hint">路徑</string>
     <string name="file_picker_error_starts_with">非 %s 中的路徑</string>
-    <string name="file_picker_error_format">格式錯誤</string>
     <string name="enabled">已啟用 %s</string>
-    <plurals name="enabled_rule_count">
-        <item quantity="other">%d 條規則</item>
-    </plurals>
     <string name="enabled_mount_rules_count">%d 條掛載規則</string>
     <string name="enabled_read_only_count">%d 條只讀</string>
     <string name="storage_redirect_title">存儲重定向</string>
@@ -149,16 +130,13 @@
     <string name="storage_redirect_list_mounted">已掛載</string>
     <string name="storage_redirect_list_unknown">未知狀態</string>
     <string name="storage_redirect_list_mount_exception">掛載異常</string>
-    <string name="certification_revalidating">正在重新驗證許可</string>
-    <string name="free_version">免費版</string>
-    <string name="require_enable_in_lsp">請在 LSPosed 中啟用質感清理並重啟系統</string>
     <plurals name="uninstalled_package">
         <item quantity="other">%s 已卸載，是否立即刪除它（們）的設置？</item>
     </plurals>
     <string name="storage_redirect_not_saved">未保存</string>
     <string name="storage_redirect_status_header">運行狀態</string>
     <string name="storage_redirect_status_summary_prefix">此應用正在運行，其進程 id：%s。</string>
-    <string name="storage_redirect_status_summary_suffix_mounted">已為所有進程掛載 \uD83D\uDE0B\ </string>
+    <string name="storage_redirect_status_summary_suffix_mounted">已為所有進程掛載 \uD83D\uDE0B</string>
     <plurals name="storage_redirect_status_summary_suffix_not_mounted">
         <item quantity="other">由於%s，%s 中掛載狀態異常 \uD83E\uDD14\ </item>
     </plurals>
@@ -243,15 +221,9 @@
     <string name="filesystem_record_flags_file">文件</string>
     <string name="filesystem_record_flags_dir">文件夾</string>
 
-
-
-
-
     <string name="copied">已複製：%s</string>
     <string name="loading">載入中</string>
     <string name="network_connection_failed">網路連線失敗</string>
-
-    <string name="confirm_delete">刪除這些文件？</string>
 
     <!-- 关于 -->
     <string name="slogan">質感設計的清理應用</string>
