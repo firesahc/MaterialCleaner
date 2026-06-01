@@ -9,6 +9,7 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
+import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -37,12 +38,18 @@ public class HooksBridgeProvider extends ContentProvider {
     private static final String TAG = "HooksBridge";
 
     /** Xposed-side service registered from MediaProvider process. */
+    @GuardedBy("sMediaProviderLock")
     private static volatile IMediaProviderHooksService sMediaProviderService;
+    private static final Object sMediaProviderLock = new Object();
+
+    /** DeathRecipient on sMediaProviderService Binder — detects Xposed/MediaProvider crash. */
+    private static volatile IBinder.DeathRecipient sXposedDeathRecipient;
 
     /** 查询 Xposed 模块是否已注册到 HooksBridge */
     public static boolean isMediaProviderConnected() {
         return sMediaProviderService != null;
     }
+
 
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
@@ -77,7 +84,31 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public void setMediaProviderBinder(IMediaProviderHooksService service) {
-            sMediaProviderService = service;
+            synchronized (sMediaProviderLock) {
+                // 取消旧 DeathRecipient
+                IMediaProviderHooksService old = sMediaProviderService;
+                if (old != null && old.asBinder() != service.asBinder()
+                        && sXposedDeathRecipient != null) {
+                    old.asBinder().unlinkToDeath(sXposedDeathRecipient, 0);
+                }
+                // 注册新 DeathRecipient
+                sMediaProviderService = service;
+                sXposedDeathRecipient = () -> {
+                    Log.w(TAG, "Xposed/MediaProvider binder died");
+                    XposedConnectionState.INSTANCE.onDisconnected();
+                    ServerStateMachine.INSTANCE.onXposedConnected(false);
+                    synchronized (sMediaProviderLock) {
+                        sMediaProviderService = null;
+                    }
+                };
+                try {
+                    service.asBinder().linkToDeath(sXposedDeathRecipient, 0);
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Failed to link DeathRecipient to Xposed binder", e);
+                }
+                XposedConnectionState.INSTANCE.onConnected();
+                ServerStateMachine.INSTANCE.onXposedConnected(true);
+            }
             // 如果 Server 回调已注册，补发给 Xposed
             ICleanerServerCallback callback = sServerCallback;
             Log.i("MC_REDIRECT", "[HooksBridge] setMediaProviderBinder: sServerCallback=" + (callback != null)
