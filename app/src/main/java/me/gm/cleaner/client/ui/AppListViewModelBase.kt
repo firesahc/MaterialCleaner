@@ -33,6 +33,7 @@ abstract class AppListViewModelBase(application: Application) :
     ) { state, isSearching, queryText ->
         when (state) {
             is AppListState.Loading -> return@combine AppListState.Loading
+            is AppListState.Error -> return@combine state
             else -> {}
         }
         val list = (state as AppListState.Done).list
@@ -83,7 +84,7 @@ abstract class AppListViewModelBase(application: Application) :
         AppListState.Done(sequence.toList())
     }
 
-    protected suspend fun loadAppsCommon(includeServerStart: Boolean = true) {
+    protected suspend fun loadAppsCommon() {
         if (BuildConfig.DEBUG) Log.i(
             "CleanerTest",
             "AppListViewModelBase.loadAppsCommon: start"
@@ -97,7 +98,8 @@ abstract class AppListViewModelBase(application: Application) :
                 "CleanerTest",
                 "AppListViewModelBase.loadAppsCommon: failed to load apps", e
             )
-            emptyList()
+            _appsFlow.value = AppListState.Error(e.message ?: "Unknown error")
+            return
         }
         if (BuildConfig.DEBUG) Log.i(
             "CleanerTest",

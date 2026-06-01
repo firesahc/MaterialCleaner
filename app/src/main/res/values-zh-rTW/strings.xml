@@ -83,23 +83,23 @@
     <string name="prompt_media_not_found">受儲存重定向影響，%1$s 無法讀取媒體檔案 %2$s</string>
     <string name="prompt_media_not_found_aggressively">%1$s 可能正受儲存重定向影響無法讀取媒體檔案 %2$s，您看到此提示是因為您啟用了服務設定-更多選項-激進地提示讀取媒體檔案</string>
 
-    <!-- 伺服器狀態 -->
+    <!-- 服務狀態 -->
     <string name="root_available">可用</string>
     <string name="root_unavailable">不可用</string>
-    <string name="server_waiting">等待伺服器啟動</string>
+    <string name="service_waiting">等待服務啟動</string>
     <string name="xposed_connected">已連接</string>
     <string name="waiting_media_provider">等待 MediaProvider 連接</string>
-    <string name="server_status_daemon">守護程序: PID %1$s | Root %2$s</string>
-    <string name="server_status_mounted">已掛載: %1$d 個應用 | %2$d 條規則</string>
-    <string name="server_status_xposed">Xposed Hooks: %1$s</string>
-    <string name="btn_start_server">啟動伺服器</string>
-    <string name="btn_stop_server">停止伺服器</string>
+    <string name="service_status_daemon">服務程序: PID %1$s | Root %2$s</string>
+    <string name="service_status_mounted">已掛載: %1$d 個應用 | %2$d 條規則</string>
+    <string name="service_status_xposed">Xposed Hooks: %1$s</string>
+    <string name="btn_start_service">啟動服務</string>
+    <string name="btn_stop_service">停止服務</string>
     <string name="toast_starting">正在啟動</string>
     <string name="toast_stopped">已停止</string>
-    <string name="server_stopped_manually">儲存重定向已停止，點選「啟動伺服器」恢復</string>
-    <string name="toast_server_started_n_mounted">伺服器已啟動，%d 個應用已重新掛載</string>
-    <string name="toast_server_started_empty">伺服器已啟動，尚未設定任何應用</string>
-    <string name="toast_start_failed">啟動伺服器失敗</string>
+    <string name="service_stopped_manually">服務已停止，點選「啟動服務」恢復</string>
+    <string name="toast_service_started_n_mounted">服務已啟動，%d 個應用已重新掛載</string>
+    <string name="toast_service_started_empty">服務已啟動，尚未設定任何應用</string>
+    <string name="toast_start_failed">啟動服務失敗</string>
     <string name="parent_directory">..</string>
 
     <!-- 服务 -->

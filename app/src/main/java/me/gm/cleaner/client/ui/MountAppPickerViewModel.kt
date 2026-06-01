@@ -8,7 +8,7 @@ class MountAppPickerViewModel(application: Application) : AppListViewModelBase(a
 
     fun loadApps() {
         viewModelScope.launch {
-            loadAppsCommon(includeServerStart = false)
+            loadAppsCommon()
         }
     }
 

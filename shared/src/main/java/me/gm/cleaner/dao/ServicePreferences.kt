@@ -25,7 +25,7 @@ private const val MENU_HIDE_SYSTEM_APP_KEY = "hide_system_app"
 private const val MENU_HIDE_DISABLED_APP_KEY = "hide_disabled_app"
 private const val MENU_HIDE_NO_STORAGE_PERMISSIONS_KEY = "hide_no_storage_permissions"
 private const val MENU_HIDE_APP_SPECIFIC_STORAGE_KEY = "hide_app_specific_storage"
-private const val SERVER_MANUALLY_STOPPED_KEY = "server_manually_stopped"
+private const val SERVICE_MANUALLY_STOPPED_KEY = "service_manually_stopped"
 private const val AGGRESSIVELY_PROMPT_FOR_READING_MEDIA_FILES_KEY = "aggressively_prompt_for_reading_media_files"
 private const val AUTO_LOGGING_KEY = "auto_logging"
 private const val RECORD_SHARED_STORAGE_KEY = "record_shared_storage"
@@ -115,10 +115,10 @@ object ServicePreferences {
         set(value) = putBoolean(MENU_HIDE_APP_SPECIFIC_STORAGE_KEY, value)
 
     // @App
-    var isServerManuallyStopped: Boolean
-        get() = preferences.getBoolean(SERVER_MANUALLY_STOPPED_KEY, true)
+    var isServiceManuallyStopped: Boolean
+        get() = preferences.getBoolean(SERVICE_MANUALLY_STOPPED_KEY, true)
         set(value) {
-            preferences.edit { putBoolean(SERVER_MANUALLY_STOPPED_KEY, value) }
+            preferences.edit { putBoolean(SERVICE_MANUALLY_STOPPED_KEY, value) }
             notifyListeners()
         }
 

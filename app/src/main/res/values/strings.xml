@@ -112,23 +112,23 @@
     <string name="prompt_media_not_found_aggressively">Media file %2$s may not be readable due to storage redirect affecting %1$s.
         You are seeing this message because you have enabled Service Settings - More Options - Aggressively prompt for reading media files.</string>
 
-    <!-- Server Status -->
+    <!-- Service Status -->
     <string name="root_available">Available</string>
     <string name="root_unavailable">Unavailable</string>
-    <string name="server_waiting">Waiting for server to start</string>
+    <string name="service_waiting">Waiting for service to start</string>
     <string name="xposed_connected">Connected</string>
     <string name="waiting_media_provider">Waiting for MediaProvider to connect</string>
-    <string name="server_status_daemon">Daemon: PID %1$s | Root %2$s</string>
-    <string name="server_status_mounted">Mounted: %1$d apps | %2$d rules</string>
-    <string name="server_status_xposed">Xposed Hooks: %1$s</string>
-    <string name="btn_start_server">Start Server</string>
-    <string name="btn_stop_server">Stop Server</string>
+    <string name="service_status_daemon">Daemon: PID %1$s | Root %2$s</string>
+    <string name="service_status_mounted">Mounted: %1$d apps | %2$d rules</string>
+    <string name="service_status_xposed">Xposed Hooks: %1$s</string>
+    <string name="btn_start_service">Start Service</string>
+    <string name="btn_stop_service">Stop Service</string>
     <string name="toast_starting">Starting</string>
     <string name="toast_stopped">Stopped</string>
-    <string name="server_stopped_manually">Storage redirect stopped. Tap Start Server to resume.</string>
-    <string name="toast_server_started_n_mounted">Server started, %d apps remounted</string>
-    <string name="toast_server_started_empty">Server started, no apps configured</string>
-    <string name="toast_start_failed">Failed to start server</string>
+    <string name="service_stopped_manually">Service stopped. Tap Start Service to resume.</string>
+    <string name="toast_service_started_n_mounted">Service started, %d apps remounted</string>
+    <string name="toast_service_started_empty">Service started, no apps configured</string>
+    <string name="toast_start_failed">Failed to start service</string>
     <string name="parent_directory">..</string>
 
     <!-- Service -->
