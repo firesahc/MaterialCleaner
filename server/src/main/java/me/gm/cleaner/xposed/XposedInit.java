@@ -3,6 +3,9 @@ package me.gm.cleaner.xposed;
 import android.content.ContentProvider;
 import android.content.Context;
 import android.content.pm.ProviderInfo;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.util.Log;
 
@@ -38,16 +41,33 @@ public class XposedInit implements IXposedHookLoadPackage {
         }
     }
 
-    // 在 onMediaProviderLoaded 中设置自动重连回调
+    // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）
     private void setupReRegisterOnDeath() {
-        MediaProviderHooksService.sReRegisterCallback = () -> {
-            try {
-                Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
-                registerHooksCallback();
-                Log.i("MC_REDIRECT", "[XposedInit] Re-registration call completed");
-            } catch (Exception e) {
-                Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed", e);
+        final Handler handler = new Handler(Looper.getMainLooper());
+        final int[] attempts = {0};
+        final Runnable retryTask = new Runnable() {
+            @Override
+            public void run() {
+                attempts[0]++;
+                try {
+                    Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                    registerHooksCallback();
+                    Log.i("MC_REDIRECT", "[XposedInit] Re-registration call completed");
+                    attempts[0] = 0;
+                } catch (Exception e) {
+                    Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed (attempt " + attempts[0] + ")", e);
+                    if (attempts[0] < 10) {
+                        long delay = Math.min(1000L << (attempts[0] - 1), 30000L);
+                        handler.postDelayed(this, delay);
+                    }
+                }
             }
+        };
+        MediaProviderHooksService.sReRegisterCallback = retryTask;
+        MediaProviderHooksService.sResetReRegister = () -> {
+            handler.removeCallbacks(retryTask);
+            attempts[0] = 0;
+            retryTask.run();
         };
     }
 

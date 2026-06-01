@@ -1,8 +1,6 @@
 package me.gm.cleaner.xposed;
 
 import android.os.IBinder;
-import android.os.Handler;
-import android.os.Looper;
 import android.os.RemoteException;
 import android.text.TextUtils;
 import android.util.Log;
@@ -36,6 +34,9 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     /** 当 Server 回调丢失时由 XposedInit 注入的重新注册回调 */
     public static volatile Runnable sReRegisterCallback;
 
+    /** 由 XposedInit 注入的重置并重试注册的回调（用于 setCleanerServerBinder 主动触发） */
+    public static volatile Runnable sResetReRegister;
+
     public void whileAlive(Consumer<ICleanerServerCallback> c) {
         if (mCleanerServerBinder != null) {
             c.accept(mCleanerServerBinder);
@@ -57,17 +58,19 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     @Override
     public void setCleanerServerBinder(ICleanerServerCallback iinterface) {
         Log.i("MC_REDIRECT", "[MediaProviderHooksService] setCleanerServerBinder called, binder=" + (iinterface != null));
+        // 先取消旧 DeathRecipient，防止多次 link 导致重复触发
+        if (mCleanerServerBinder != null) {
+            mCleanerServerBinder.asBinder().unlinkToDeath(mCleanerServerDeathRecipient, 0);
+        }
         mCleanerServerBinder = iinterface;
         try {
             iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
         } catch (final RemoteException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
         }
-        // 新 callback 到达 → app 侧存活 → 确保 app 持有最新 Xposed Binder
-        // 异步投递到主线程，避免 Binder 事务嵌套导致的死锁
-        if (sReRegisterCallback != null) {
-            Log.i("MC_REDIRECT", "[MediaProviderHooksService] Re-registering hooks callback after new server binder");
-            new Handler(Looper.getMainLooper()).post(sReRegisterCallback);
+        // 新 server callback 到达 → app 侧存活 → 确保 app 持有最新 Xposed Binder
+        if (sResetReRegister != null && sReRegisterCallback != null) {
+            sResetReRegister.run();
         }
     }
 
