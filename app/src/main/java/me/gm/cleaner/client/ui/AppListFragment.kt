@@ -90,10 +90,10 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // Toggle service button — start or stop
         btnToggleServer?.setOnClickListener {
-            when {
-                ServerStateMachine.state.value == ServerState.STARTING -> stopServer()
-                ServerStateMachine.isServiceOpen -> stopServer()
-                else -> startServer()
+            if (ServicePreferences.isServiceManuallyStopped) {
+                startServer()
+            } else {
+                stopServer()
             }
         }
 
@@ -231,21 +231,14 @@ class AppListFragment : BaseServiceSettingsFragment() {
         }
 
         mountedCountTextView?.visibility = android.view.View.GONE
-        btnToggleServer?.text = when {
-            serverState == ServerState.STARTING -> ctx.getString(R.string.btn_stop_service)
-            isServiceOpen -> ctx.getString(R.string.btn_stop_service)
-            else -> ctx.getString(R.string.btn_start_service)
+        btnToggleServer?.text = if (ServicePreferences.isServiceManuallyStopped) {
+            ctx.getString(R.string.btn_start_service)
+        } else {
+            ctx.getString(R.string.btn_stop_service)
         }
 
         // 状态点
         when {
-            serverState == ServerState.STARTING -> {
-                // 启动中 → 橙色，表示"过渡中，可点击取消"
-                statusDot?.setImageResource(R.drawable.ic_baseline_error_24)
-                statusDot?.imageTintList = android.content.res.ColorStateList.valueOf(
-                    ContextCompat.getColor(ctx, android.R.color.holo_orange_dark)
-                )
-            }
             isServiceOpen -> {
                 // 完全就绪 → 绿色
                 statusDot?.setImageResource(R.drawable.ic_baseline_check_circle_24)
@@ -253,8 +246,15 @@ class AppListFragment : BaseServiceSettingsFragment() {
                     ContextCompat.getColor(ctx, android.R.color.holo_green_dark)
                 )
             }
+            ServicePreferences.isServiceManuallyStopped -> {
+                // 用户手动停止 → 橙色，可启动
+                statusDot?.setImageResource(R.drawable.ic_baseline_error_24)
+                statusDot?.imageTintList = android.content.res.ColorStateList.valueOf(
+                    ContextCompat.getColor(ctx, android.R.color.holo_orange_dark)
+                )
+            }
             else -> {
-                // 未就绪 → 红色
+                // 异常状态（FAILED/STARTING/缺条件）→ 红色，点"停止"重置
                 statusDot?.setImageResource(R.drawable.ic_baseline_error_24)
                 statusDot?.imageTintList = android.content.res.ColorStateList.valueOf(
                     ContextCompat.getColor(ctx, android.R.color.holo_red_dark)

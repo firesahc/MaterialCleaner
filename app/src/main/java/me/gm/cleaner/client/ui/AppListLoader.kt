@@ -19,7 +19,7 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
         val installedPackages = try {
             CleanerClient.getInstalledPackages(PackageManager.GET_PERMISSIONS)
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e("CleanerTest", "AppListLoader.load: failed to load packages", e)
+            if (BuildConfig.DEBUG) Log.w("CleanerTest", "AppListLoader.load: failed to load packages", e)
             emptyList()
         }
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "AppListLoader.load: installedPackages=${installedPackages.size}")
