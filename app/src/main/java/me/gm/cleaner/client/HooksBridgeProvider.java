@@ -85,10 +85,9 @@ public class HooksBridgeProvider extends ContentProvider {
         @Override
         public void setMediaProviderBinder(IMediaProviderHooksService service) {
             synchronized (sMediaProviderLock) {
-                // 取消旧 DeathRecipient
+                // 取消旧 DeathRecipient（无论 Binder 是否相同，防止堆积）
                 IMediaProviderHooksService old = sMediaProviderService;
-                if (old != null && old.asBinder() != service.asBinder()
-                        && sXposedDeathRecipient != null) {
+                if (old != null && sXposedDeathRecipient != null) {
                     old.asBinder().unlinkToDeath(sXposedDeathRecipient, 0);
                 }
                 // 注册新 DeathRecipient
