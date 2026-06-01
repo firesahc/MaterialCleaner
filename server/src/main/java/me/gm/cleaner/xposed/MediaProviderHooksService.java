@@ -22,6 +22,7 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
 public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private final Map<String, List<String>> mPackageNameToReadOnlyPaths = new ConcurrentHashMap<>();
     private volatile ICleanerServerCallback mCleanerServerBinder = null;
+    private volatile boolean mReRegistering = false;
     private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
         mCleanerServerBinder = null;
         // Server died → 尝试重新注册 hooks callback（应对 app 进程重启场景）
@@ -69,8 +70,13 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
         }
         // 新 server callback 到达 → app 侧存活 → 确保 app 持有最新 Xposed Binder
-        if (sResetReRegister != null && sReRegisterCallback != null) {
-            sResetReRegister.run();
+        if (sResetReRegister != null && sReRegisterCallback != null && !mReRegistering) {
+            mReRegistering = true;
+            try {
+                sResetReRegister.run();
+            } finally {
+                mReRegistering = false;
+            }
         }
     }
 
