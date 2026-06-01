@@ -112,7 +112,7 @@ public class HooksBridgeProvider extends ContentProvider {
             ICleanerServerCallback callback = sServerCallback;
             Log.i("MC_REDIRECT", "[HooksBridge] setMediaProviderBinder: sServerCallback=" + (callback != null)
                     + " needsForward=" + sNeedsServerCallbackForward);
-            if (callback != null) {
+            if (callback != null && callback.asBinder().pingBinder()) {
                 try {
                     service.setCleanerServerBinder(callback);
                     sNeedsServerCallbackForward = false;

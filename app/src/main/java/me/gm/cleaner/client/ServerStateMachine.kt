@@ -151,15 +151,19 @@ object ServerStateMachine {
                 return@withContext false
             }
 
-            // 4) 重载配置到服务器
+            // 4) 重载配置到服务器（逐个 try，单次失败不阻塞后续）
             val svc = CleanerClient.service
             if (svc != null) {
-                svc.notifyPreferencesChanged()
-                svc.notifySrChanged()
-                svc.notifyReadOnlyChanged()
+                runCatching { svc.notifyPreferencesChanged() }
+                    .onFailure { Log.w("MC/StateMachine", "notifyPreferencesChanged failed", it) }
+                runCatching { svc.notifySrChanged() }
+                    .onFailure { Log.w("MC/StateMachine", "notifySrChanged failed", it) }
+                runCatching { svc.notifyReadOnlyChanged() }
+                    .onFailure { Log.w("MC/StateMachine", "notifyReadOnlyChanged failed", it) }
                 val packages = ServicePreferences.srPackages.toTypedArray()
                 if (packages.isNotEmpty()) {
-                    svc.remount(packages)
+                    runCatching { svc.remount(packages) }
+                        .onFailure { Log.w("MC/StateMachine", "remount failed", it) }
                 }
             }
 
@@ -212,7 +216,9 @@ object ServerStateMachine {
             }
             ServerState.STOPPED -> {
                 // 进程重启场景：Binder 意外到达但服务器还在
-                if (!ServicePreferences.isServiceManuallyStopped) {
+                val manuallyStopped = runCatching { ServicePreferences.isServiceManuallyStopped }
+                    .getOrDefault(true) // App.onCreate 未完成时默认为手动停止
+                if (!manuallyStopped) {
                     if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "onBinderReceived: STOPPED → RUNNING (process restart)")
                     _state.value = ServerState.RUNNING
                     hasEverRun = true

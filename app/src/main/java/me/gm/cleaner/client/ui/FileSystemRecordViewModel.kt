@@ -33,9 +33,14 @@ import kotlin.io.path.pathString
 class FileSystemRecordViewModel(application: Application) :
     BaseServiceSettingsViewModel(application) {
     internal val eventModelMapper: (FileSystemEvent) -> FileSystemRecordModel = { event ->
-        val pi = CleanerClient.service?.getPackageInfo(
-            event.packageName, PackageManager.GET_PERMISSIONS
-        )
+        val pi = try {
+            CleanerClient.service?.getPackageInfo(
+                event.packageName, PackageManager.GET_PERMISSIONS
+            )
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w("CleanerTest", "eventModelMapper: getPackageInfo failed", e)
+            null
+        }
         val readOnlyPaths = ServicePreferences.getPackageReadOnly(
             event.packageName, FileUtils.extractUserIdFromPath(event.path)
         )
