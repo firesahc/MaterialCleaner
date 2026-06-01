@@ -90,10 +90,10 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // Toggle service button — start or stop
         btnToggleServer?.setOnClickListener {
-            if (ServerStateMachine.isServiceOpen) {
-                stopServer()
-            } else {
-                startServer()
+            when {
+                ServerStateMachine.state.value == ServerState.STARTING -> stopServer()
+                ServerStateMachine.isServiceOpen -> stopServer()
+                else -> startServer()
             }
         }
 
