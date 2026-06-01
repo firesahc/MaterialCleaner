@@ -1,6 +1,8 @@
 package me.gm.cleaner.xposed;
 
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.RemoteException;
 import android.text.TextUtils;
 import android.util.Log;
@@ -60,6 +62,12 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
             iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
         } catch (final RemoteException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
+        }
+        // 新 callback 到达 → app 侧存活 → 确保 app 持有最新 Xposed Binder
+        // 异步投递到主线程，避免 Binder 事务嵌套导致的死锁
+        if (sReRegisterCallback != null) {
+            Log.i("MC_REDIRECT", "[MediaProviderHooksService] Re-registering hooks callback after new server binder");
+            new Handler(Looper.getMainLooper()).post(sReRegisterCallback);
         }
     }
 
