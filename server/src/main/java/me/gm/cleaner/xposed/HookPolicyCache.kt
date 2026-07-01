@@ -16,11 +16,12 @@ import java.io.File
  * ## 缓存内容
  * - **ReadOnlyCache**：packageName → Set<path>，来自 read_only.json 快照
  * - **RuleCache**：packageName → MountRules，来自 redirect_policy.json 快照
+ * - **ConfiguredMountPoints**：挂载点列表，来自 configured_mount_points.json 快照（推送到 native）
  *
  * ## 刷新策略
  * - 初始化时从 DataBus 读取最后一次快照
  * - [refreshFromDataBus] 由外部按需调用（监听 signal 后）
- * - Binder 同步（setReadOnlyPaths）仍保留作为 fallback
+ * - Binder 同步（setReadOnlyPaths/setMountPoint）仍保留作为 fallback
  *
  * ## 降级行为
  * - 快照不存在 → 返回 null，由调用方走 Binder fallback
@@ -43,6 +44,10 @@ object HookPolicyCache {
     private var ruleCache: Map<String, MountRules> = emptyMap()
     @Volatile
     private var policyGeneration: Long = 0L
+
+    // ── Configured Mount Points（推送到 native） ──
+    @Volatile
+    private var configuredMountPointsGeneration: Long = 0L
 
     // ── Denylist ──
     @Volatile
@@ -87,6 +92,9 @@ object HookPolicyCache {
         } else {
             Log.w(TAG, "initFromDataBus: no read_only snapshot available")
         }
+
+        // 读取 configured_mount_points.json → 推送到 native
+        loadAndPushConfiguredMountPoints()
     }
 
     /**
@@ -96,15 +104,71 @@ object HookPolicyCache {
     fun isStale(): Boolean {
         val roSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
         val policySignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
-        return roSignalTime > readOnlyGeneration || policySignalTime > policyGeneration
+        val mountSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+        return roSignalTime > readOnlyGeneration
+                || policySignalTime > policyGeneration
+                || mountSignalTime > configuredMountPointsGeneration
     }
 
     /**
-     * 从 DataBus 刷新全部缓存。
+     * 从 DataBus 刷新全部缓存并同步 native 挂载点。
      */
     fun refreshFromDataBus() {
         Log.d(TAG, "refreshFromDataBus")
         initFromDataBus()
+    }
+
+    /**
+     * 尝试从 DataBus 刷新 native 挂载点。
+     * 如果信号指示配置已变更，读取 configured_mount_points.json 并推送到 native。
+     */
+    fun tryRefreshNativeMountPoints() {
+        val mountSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+        if (mountSignalTime <= configuredMountPointsGeneration && configuredMountPointsGeneration > 0) {
+            return  // 未变更
+        }
+        loadAndPushConfiguredMountPoints()
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Configured Mount Points → Native
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * 从 DataBus 读取 configured_mount_points.json，
+     * 解析 points 数组，并通过 [InlineHookConfig.setMountPoint] 推送到 native。
+     * 此路径独立于 Binder setMountPoint，两者可并行工作。
+     */
+    private fun loadAndPushConfiguredMountPoints() {
+        val json = DataBus.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
+        if (json == null) {
+            Log.d(TAG, "loadConfiguredMountPoints: no snapshot available")
+            return
+        }
+
+        try {
+            val root = JSONObject(json)
+            val generation = root.optLong("generation", 0L)
+            if (generation <= configuredMountPointsGeneration && configuredMountPointsGeneration > 0) {
+                Log.d(TAG, "loadConfiguredMountPoints: generation not newer ($generation <= $configuredMountPointsGeneration)")
+                return
+            }
+
+            val pointsArr = root.optJSONArray("points")
+            if (pointsArr == null || pointsArr.length() == 0) {
+                Log.d(TAG, "loadConfiguredMountPoints: empty points array")
+                configuredMountPointsGeneration = generation
+                return
+            }
+
+            val points = Array(pointsArr.length()) { pointsArr.getString(it) }
+            InlineHookConfig.setMountPoint(points)
+            configuredMountPointsGeneration = generation
+
+            Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, generation=$generation")
+        } catch (e: Exception) {
+            Log.e(TAG, "loadConfiguredMountPoints: failed", e)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════

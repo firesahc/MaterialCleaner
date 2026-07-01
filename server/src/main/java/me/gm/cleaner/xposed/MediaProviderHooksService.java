@@ -42,6 +42,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
      * 初始化本地策略缓存。
      * 应在 Xposed 模块加载时调用一次，从 DataBus 加载最后一次快照。
      * 即使快照不可用也不会阻塞——后续查询回退到 Binder。
+     * 同时尝试从 DataBus 加载 configured_mount_points 推送到 native。
      */
     public void initPolicyCache() {
         HookPolicyCache.INSTANCE.initFromDataBus();
@@ -87,6 +88,8 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
                 mReRegistering = false;
             }
         }
+        // 尝试从 DataBus 刷新 native 挂载点（独立于 Binder 同步）
+        HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints();
     }
 
     @Override
