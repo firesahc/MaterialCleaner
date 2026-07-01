@@ -21,6 +21,9 @@ import java.util.regex.Pattern;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
+import me.gm.cleaner.dao.policy.DataBus;
+import org.json.JSONObject;
+
 @RequiresApi(api = Build.VERSION_CODES.Q)
 public class InsertHooker extends XC_MethodHook {
     private final static String DIRECTORY_THUMBNAILS = ".thumbnails";
@@ -143,6 +146,7 @@ public class InsertHooker extends XC_MethodHook {
                 TextUtils.isEmpty(extractPathOwnerPackageName(localMountedPath))) {
             values.put(MediaStore.MediaColumns.DATA, localMountedPath);
             Log.i("MC_REDIRECT", "[InsertHooker] PATH REDIRECTED (local cache): " + originalData + " -> " + localMountedPath);
+            emitRedirectNotice(callingPkg, data, localMountedPath, "INSERT");
             return;
         }
 
@@ -157,6 +161,7 @@ public class InsertHooker extends XC_MethodHook {
                         TextUtils.isEmpty(extractPathOwnerPackageName(mountedPath))) {
                     values.put(MediaStore.MediaColumns.DATA, mountedPath);
                     Log.i("MC_REDIRECT", "[InsertHooker] PATH REDIRECTED: " + originalData + " -> " + mountedPath);
+                    emitRedirectNotice(callingPkg, data, mountedPath, "INSERT");
                 }
             } catch (RemoteException e) {
                 Log.e("MC_REDIRECT", "[InsertHooker] getMountedPath error", e);
@@ -262,6 +267,27 @@ public class InsertHooker extends XC_MethodHook {
                     FileUtils.class, "buildUniqueFile", res, mimeType, displayName);
 
             values.put(MediaStore.MediaColumns.DATA, res.getAbsolutePath());
+        }
+    }
+
+    /**
+     * 向 DataBus 写入重定向提示事件。
+     * 异步写入，不影响主流程。
+     */
+    private static void emitRedirectNotice(String packageName, String originalPath,
+                                           String mountedPath, String type) {
+        try {
+            final var event = new JSONObject();
+            event.put("schemaVersion", 1);
+            event.put("timeMillis", System.currentTimeMillis());
+            event.put("packageName", packageName);
+            event.put("originalPath", originalPath);
+            event.put("mountedPath", mountedPath);
+            event.put("type", type);
+            event.put("reason", "REDIRECTED_TO_INTERNAL");
+            DataBus.INSTANCE.writeEvent(DataBus.EVENT_REDIRECT_NOTICE, event.toString());
+        } catch (Exception e) {
+            Log.e("MC_REDIRECT", "[InsertHooker] DataBus write failed", e);
         }
     }
 }

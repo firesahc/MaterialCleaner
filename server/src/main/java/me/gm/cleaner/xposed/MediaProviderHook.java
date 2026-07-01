@@ -21,6 +21,8 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import me.gm.cleaner.util.SystemPropertiesUtils;
+import me.gm.cleaner.dao.policy.DataBus;
+import org.json.JSONObject;
 
 public class MediaProviderHook {
     static final int TYPE_CONNECTION = 1;
@@ -309,6 +311,7 @@ public class MediaProviderHook {
 
     private void dispatchFileSystemEvent(final String packageName, final String path, final int flags) {
         Log.d("MC_REDIRECT", "[MediaProviderHook] dispatchFileSystemEvent pkg=" + packageName + " path=" + path + " flags=" + flags);
+        // 1. 原有 Binder 回调（保留）
         mService.whileAlive(service -> {
             try {
                 service.onFileSystemEvent(System.currentTimeMillis(), packageName, path, flags);
@@ -316,5 +319,18 @@ public class MediaProviderHook {
                 Log.e("MC_REDIRECT", "[MediaProviderHook] onFileSystemEvent RemoteException", e);
             }
         });
+        // 2. 并行写入 DataBus 事件队列（异步，不影响主流程）
+        try {
+            final var event = new JSONObject();
+            event.put("schemaVersion", 1);
+            event.put("timeMillis", System.currentTimeMillis());
+            event.put("packageName", packageName);
+            event.put("path", path);
+            event.put("flags", flags);
+            event.put("sourceLayer", "FUSE_JAVA_GATE");
+            DataBus.INSTANCE.writeEvent(DataBus.EVENT_FILESYSTEM, event.toString());
+        } catch (Exception e) {
+            Log.e("MC_REDIRECT", "[MediaProviderHook] DataBus write failed", e);
+        }
     }
 }

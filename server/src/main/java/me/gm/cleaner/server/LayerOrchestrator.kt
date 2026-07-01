@@ -7,6 +7,8 @@ import me.gm.cleaner.client.CleanerHooksClient.syncMountPoint
 import me.gm.cleaner.client.CleanerHooksClient.syncReadOnlyPaths
 import me.gm.cleaner.client.CleanerHooksClient.syncRecordExternalAppSpecificStorage
 import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.server.consumer.FileSystemEventConsumer
+import me.gm.cleaner.server.consumer.RedirectNoticeConsumer
 import me.gm.cleaner.server.observer.ObserverManager
 import me.gm.cleaner.server.observer.StorageMountObserver
 
@@ -91,6 +93,11 @@ class LayerOrchestrator(
         // 9. 发布初始策略快照到 DataBus
         SnapshotPublisher.publishAll()
 
+        // 10. 绑定并启动事件消费者（消费 DataBus 中积压的事件）
+        RedirectNoticeConsumer.bind(server)
+        FileSystemEventConsumer.pollAndConsume()
+        RedirectNoticeConsumer.pollAndConsume()
+
         Log.i(TAG, "initialize done")
     }
 
@@ -148,6 +155,10 @@ class LayerOrchestrator(
 
             // 重连后重新发布策略快照（确保 MediaProvider 端可读取最新规则）
             SnapshotPublisher.publishAll()
+
+            // 消费重连期间积压的事件
+            FileSystemEventConsumer.pollAndConsume()
+            RedirectNoticeConsumer.pollAndConsume()
         } else {
             hooksRetryCount++
             Log.w(TAG, "performHooksReconnect: FAILED (attempt $hooksRetryCount)")
