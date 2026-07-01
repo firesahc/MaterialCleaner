@@ -191,6 +191,26 @@ public class CleanerServer extends ContextWrapper {
         broadcastIntentDelayed(callback, 0);
     }
 
+    /**
+     * 控制面方法：显示存储重定向提示。
+     *
+     * 由 [RedirectNoticeConsumer] 在消费 DataBus 积压事件时调用。
+     * 使用 Java 实现避免 Kotlin stub Intent 遮蔽问题（hidden-api 模块）。
+     */
+    public void showRedirectNotice(String packageName, String originalPath,
+                                   String mountedPath, String reason) {
+        final var finalPath = originalPath;
+        broadcastIntent(intent -> {
+            intent.setAction(ServerConstants.ACTION_REDIRECTED_TO_INTERNAL);
+            intent.putExtra(Intent.EXTRA_PACKAGE_NAME,
+                    SystemService.getPackageInfoNoThrow(packageName, 0, 0));
+            intent.putExtra(Intent.EXTRA_TEXT, mountedPath);
+            intent.setType(String.valueOf(reason));
+            intent.putExtra(Intent.EXTRA_STREAM,
+                    FileUtils.INSTANCE.getPathAsUser(finalPath, 0));
+        });
+    }
+
     public void onDestroy() {
         CleanerHooksClient.INSTANCE.onDestroy();
         ObserverManager.INSTANCE.stopAllObservers();

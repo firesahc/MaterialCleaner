@@ -35,6 +35,10 @@ class LayerOrchestrator(
     private var hooksReconnectScheduled = false
     private val hooksRetryDelays = longArrayOf(1000L, 2000L, 5000L, 10000L, 30000L)
 
+    // ── 事件消费者调度 ──
+    private var consumerSchedulerRunning = false
+    private val consumerPollIntervalMs = 2000L
+
     /**
      * 执行服务器启动编排。
      *
@@ -93,10 +97,15 @@ class LayerOrchestrator(
         // 9. 发布初始策略快照到 DataBus
         SnapshotPublisher.publishAll()
 
-        // 10. 绑定并启动事件消费者（消费 DataBus 中积压的事件）
+        // 10. 绑定消费者 + 加载持久化游标 + 启动定时轮询
         RedirectNoticeConsumer.bind(server)
+        FileSystemEventConsumer.loadCursor()
+        RedirectNoticeConsumer.loadCursor()
+        // 立即补偿消费积压事件
         FileSystemEventConsumer.pollAndConsume()
         RedirectNoticeConsumer.pollAndConsume()
+        // 启动定时轮询（每 2s）
+        startConsumerScheduler()
 
         Log.i(TAG, "initialize done")
     }
@@ -156,9 +165,11 @@ class LayerOrchestrator(
             // 重连后重新发布策略快照（确保 MediaProvider 端可读取最新规则）
             SnapshotPublisher.publishAll()
 
-            // 消费重连期间积压的事件
+            // 重连后立即补偿消费积压事件
             FileSystemEventConsumer.pollAndConsume()
             RedirectNoticeConsumer.pollAndConsume()
+            // 确保调度器运行
+            startConsumerScheduler()
         } else {
             hooksRetryCount++
             Log.w(TAG, "performHooksReconnect: FAILED (attempt $hooksRetryCount)")
@@ -169,5 +180,27 @@ class LayerOrchestrator(
                 Log.e(TAG, "performHooksReconnect: max retries (${hooksRetryDelays.size * 2}) exceeded, giving up")
             }
         }
+    }
+
+    // ── 事件消费者调度 ──
+
+    /**
+     * 启动事件消费者定时轮询。
+     * 幂等：已在运行则跳过。
+     */
+    private fun startConsumerScheduler() {
+        if (consumerSchedulerRunning) return
+        consumerSchedulerRunning = true
+        Log.i(TAG, "EventConsumerScheduler started (interval=${consumerPollIntervalMs}ms)")
+        scheduleConsumerPoll()
+    }
+
+    private fun scheduleConsumerPoll() {
+        if (!consumerSchedulerRunning) return
+        server.handler.postDelayed({
+            FileSystemEventConsumer.pollAndConsume()
+            RedirectNoticeConsumer.pollAndConsume()
+            scheduleConsumerPoll()
+        }, consumerPollIntervalMs)
     }
 }
