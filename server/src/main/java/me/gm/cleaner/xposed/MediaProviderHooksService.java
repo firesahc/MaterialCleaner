@@ -38,6 +38,15 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     /** 由 XposedInit 注入的重置并重试注册的回调（用于 setCleanerServerBinder 主动触发） */
     public static volatile Runnable sResetReRegister;
 
+    /**
+     * 初始化本地策略缓存。
+     * 应在 Xposed 模块加载时调用一次，从 DataBus 加载最后一次快照。
+     * 即使快照不可用也不会阻塞——后续查询回退到 Binder。
+     */
+    public void initPolicyCache() {
+        HookPolicyCache.INSTANCE.initFromDataBus();
+    }
+
     public void whileAlive(Consumer<ICleanerServerCallback> c) {
         if (mCleanerServerBinder != null) {
             c.accept(mCleanerServerBinder);
@@ -113,11 +122,19 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         if (packages.isEmpty()) {
             return false;
         }
-        final var readOnlyPaths = mPackageNameToReadOnlyPaths.get(packages.get(0));
+        final var packageName = packages.get(0);
+        final var pathAsUser = getPathAsUser(path, 0);
+
+        // 1. 优先使用本地 HookPolicyCache（来自 DataBus 快照）
+        if (HookPolicyCache.INSTANCE.getReadOnlyGeneration() > 0) {
+            return HookPolicyCache.INSTANCE.isReadOnly(packageName, pathAsUser);
+        }
+
+        // 2. 回退到 Binder 下发的只读路径
+        final var readOnlyPaths = mPackageNameToReadOnlyPaths.get(packageName);
         if (readOnlyPaths == null) {
             return false;
         }
-        final var pathAsUser = getPathAsUser(path, 0);
         final var parent = new File(pathAsUser).getParent();
         return readOnlyPaths.stream().anyMatch(readOnlyPath ->
                 readOnlyPath.equalsIgnoreCase(pathAsUser) || readOnlyPath.equalsIgnoreCase(parent)

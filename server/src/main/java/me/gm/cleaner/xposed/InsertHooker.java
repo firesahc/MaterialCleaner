@@ -136,6 +136,17 @@ public class InsertHooker extends XC_MethodHook {
         /** REDIRECT */
         final var callingPkg = mHook.getCallingPackage(param.thisObject);
         final var originalData = data;
+
+        // 1. 优先尝试本地 RuleCache（避免热路径 Binder 调用）
+        final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(callingPkg, data);
+        if (localMountedPath != null && !data.equals(localMountedPath) &&
+                TextUtils.isEmpty(extractPathOwnerPackageName(localMountedPath))) {
+            values.put(MediaStore.MediaColumns.DATA, localMountedPath);
+            Log.i("MC_REDIRECT", "[InsertHooker] PATH REDIRECTED (local cache): " + originalData + " -> " + localMountedPath);
+            return;
+        }
+
+        // 2. 回退到 Binder 远程查询
         mService.whileAlive(service -> {
             try {
                 final var mountedPath = service.getMountedPath(
