@@ -4,8 +4,8 @@ import android.os.IBinder
 import android.os.RemoteException
 import android.util.Log
 import api.SystemService
-import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.dao.policy.RedirectPolicyBuilder
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
 import me.gm.cleaner.server.ICleanerServerCallback
@@ -134,17 +134,10 @@ object CleanerHooksClient {
 
     @JvmStatic
     fun ICleanerHooksService.syncMountPoint() {
-        val mountPoint = mutableListOf<String>()
         val userIds = SystemService.getUserIdsNoThrow()
-        for (packageName in ServicePreferences.srPackages) {
-            for (userId in userIds) {
-                val rules = MountRules(
-                    ServicePreferences.getPackageSrZipped(packageName, userId)
-                )
-                mountPoint += rules.mountPoint
-            }
-        }
-        setMountPoint(mountPoint)
+        val policy = RedirectPolicyBuilder.build(userIds)
+        val snapshot = RedirectPolicyBuilder.buildConfiguredMountPoints(policy)
+        setMountPoint(snapshot.points)
     }
 
     @JvmStatic

@@ -15,8 +15,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import api.SystemService;
-import me.gm.cleaner.dao.MountRules;
 import me.gm.cleaner.dao.ServicePreferences;
+import me.gm.cleaner.dao.policy.RedirectPolicyBuilder;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
 import me.gm.cleaner.server.observer.FileSystemObserver;
@@ -58,15 +58,16 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
             Log.w("MC_REDIRECT", "[ServerCallback] getCanonicalPath failed", e);
         }
         final var userId = FileUtils.INSTANCE.extractUserIdFromPath(path, 0);
-        final var ruleZipped = ServicePreferences.INSTANCE
-                .getPackageSrZipped(packageName, userId);
-        final var mountedPath = new MountRules(ruleZipped).getMountedPath(path);
+        final var policy = RedirectPolicyBuilder.INSTANCE.build(
+                Collections.singletonList(userId));
+        final var mountedPath = RedirectPolicyBuilder.INSTANCE.getMountedPath(
+                policy, packageName, userId, path);
         Log.i("MC_REDIRECT", "[ServerCallback] getMountedPath pkg=" + packageName
                 + " original=" + path + " mounted=" + mountedPath
-                + " rules=" + ruleZipped.size() + " type=" + type);
+                + " policies=" + policy.getStorageRedirectRules().size() + " type=" + type);
         if (!path.equals(mountedPath) &&
                 FileUtils.INSTANCE.isKnownAppDirPaths(mountedPath, packageName) &&
-                !ServicePreferences.INSTANCE.getDenylist().contains(packageName) &&
+                !policy.getDenylist().contains(packageName) &&
                 !new File(mountedPath).isDirectory()) {
             final var finalPath = path;
             mServer.broadcastIntent(broadcastIntent -> {
@@ -93,11 +94,11 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
             return false;
         }
         final var userId = FileUtils.INSTANCE.extractUserIdFromPath(paths.get(0), 0);
-        final var ruleZipped = ServicePreferences.INSTANCE
-                .getPackageSrZipped(packageName, userId);
-        final var mountRules = new MountRules(ruleZipped);
+        final var policy = RedirectPolicyBuilder.INSTANCE.build(
+                Collections.singletonList(userId));
         for (final var path : paths) {
-            final var mountedPath = mountRules.getMountedPath(path);
+            final var mountedPath = RedirectPolicyBuilder.INSTANCE.getMountedPath(
+                    policy, packageName, userId, path);
             if (!mountedPath.equals(path)) {
                 if (ServicePreferences.INSTANCE.getRecordExternalAppSpecificStorage()) {
                     final var mountedPathToPath = mPackageNameToMountedPathToPath
