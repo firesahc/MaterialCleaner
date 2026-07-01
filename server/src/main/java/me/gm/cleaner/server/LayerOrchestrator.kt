@@ -88,6 +88,9 @@ class LayerOrchestrator(
         // 8. 向所有用户发送 Binder
         server.sendBinderToManger(server.cleanerService)
 
+        // 9. 发布初始策略快照到 DataBus
+        SnapshotPublisher.publishAll()
+
         Log.i(TAG, "initialize done")
     }
 
@@ -142,6 +145,9 @@ class LayerOrchestrator(
                     Log.e(TAG, "performHooksReconnect: config sync failed", e)
                 }
             }
+
+            // 重连后重新发布策略快照（确保 MediaProvider 端可读取最新规则）
+            SnapshotPublisher.publishAll()
         } else {
             hooksRetryCount++
             Log.w(TAG, "performHooksReconnect: FAILED (attempt $hooksRetryCount)")

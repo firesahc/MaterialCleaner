@@ -387,6 +387,8 @@ public class CleanerService extends ICleanerService.Stub {
             Log.w(TAG, "Failed to reload SharedPreferences", e);
         }
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncRecordExternalAppSpecificStorage);
+        // 发布偏好变更快照到 DataBus（偏好变更可能影响策略）
+        SnapshotPublisher.INSTANCE.publishRedirectPolicy();
     }
 
     @Override
@@ -395,6 +397,9 @@ public class CleanerService extends ICleanerService.Stub {
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncMountPoint);
+        // 发布规则变更快照到 DataBus（不影响现有 Binder 同步）
+        SnapshotPublisher.INSTANCE.publishRedirectPolicy();
+        SnapshotPublisher.INSTANCE.publishConfiguredMountPoints();
     }
 
     @Override
@@ -402,6 +407,8 @@ public class CleanerService extends ICleanerService.Stub {
         enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 14);
         ServicePreferences.INSTANCE.invalidateReadOnlyCache();
         CleanerHooksClient.whileAlive(CleanerHooksClient::syncReadOnlyPaths);
+        // 发布只读变更快照到 DataBus
+        SnapshotPublisher.INSTANCE.publishReadOnly();
     }
 
     @Override
