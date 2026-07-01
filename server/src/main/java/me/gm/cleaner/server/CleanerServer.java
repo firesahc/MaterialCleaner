@@ -43,6 +43,7 @@ public class CleanerServer extends ContextWrapper {
     final PackageReceiver mPackageReceiver;
     final AutoLogging mAutoLogging;
     public final CleanerServerCallback mCleanerServerCallback;
+    public final LayerOrchestrator layerOrchestrator;
 
     private Context createPackageContext(final String packageName) {
         try {
@@ -75,7 +76,7 @@ public class CleanerServer extends ContextWrapper {
         }
     }
 
-    private void sendBinderToManger(final Binder binder) {
+    void sendBinderToManger(final Binder binder) {
         for (final var userId : SystemService.getUserIdsNoThrow()) {
             BinderSender.sendBinderToManger(binder, userId);
         }
@@ -105,6 +106,7 @@ public class CleanerServer extends ContextWrapper {
         mCleanerServerCallback = new CleanerServerCallback(this);
         cleanerService = new CleanerService(this, packageInfo.applicationInfo.uid);
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "Cleaner server v" + BuildConfig.VERSION_CODE + " started");
+        layerOrchestrator = new LayerOrchestrator(this);
     }
 
     @Override
@@ -113,32 +115,7 @@ public class CleanerServer extends ContextWrapper {
     }
 
     public void onStorageManagerServiceReady() {
-        CleanerHooksClient.INSTANCE.onStart(this);
-        ObserverManager.INSTANCE.startAllObservers(this);
-        mPackageReceiver.registerPackageReceiver();
-        // 根据 auto_logging 偏好启动日志文件转储（写入 /data/local/tmp/cleaner_logs/）
-        if (ServicePreferences.INSTANCE.getAutoLogging()) {
-            mAutoLogging.registerBootShutdownReceiver(AutoLogging.MODE_CONTINUOUSLY);
-        }
-        CleanerHooksClient.whileAlive(service -> {
-            try {
-                service.setCleanerServerBinder(mCleanerServerCallback);
-                CleanerHooksClient.syncReadOnlyPaths(service);
-                CleanerHooksClient.syncMountPoint(service);
-                CleanerHooksClient.syncRecordExternalAppSpecificStorage(service);
-            } catch (RemoteException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        final var mountObserver = ObserverManager.INSTANCE.getObserver(StorageMountObserver.class);
-        if (mountObserver != null) {
-            mountObserver.setCleanerServer(this);
-            // 注册 StorageMountObserver 自身（实现 IStorageEventListener）到监听器链
-            // 替代原 StorageEventListenerImpl.start() 中的 registerListener(this)
-            mountObserver.registerListener(mountObserver);
-        }
-        BinderSender.register(cleanerService);
-        sendBinderToManger(cleanerService);
+        layerOrchestrator.initialize();
     }
 
     public void onStorageMounted(final VolumeInfo vol, final boolean isPrimary,

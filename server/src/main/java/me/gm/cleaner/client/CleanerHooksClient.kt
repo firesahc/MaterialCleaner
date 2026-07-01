@@ -9,7 +9,6 @@ import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
 import me.gm.cleaner.server.ICleanerServerCallback
-import me.gm.cleaner.server.observer.ObserverManager
 import java.util.function.Consumer
 
 object CleanerHooksClient {
@@ -38,11 +37,9 @@ object CleanerHooksClient {
         deathRecipient = object : SystemServiceDeathRecipient(binder) {
             override fun binderDied() {
                 super.binderDied()
-                server.handler.post {
-                    ObserverManager.stopAllObservers()
-                    server.waitSystemServices()
-                    server.onStorageManagerServiceReady()
-                }
+                Log.w("MC_REDIRECT", "[CleanerHooksClient] binderDied: notifying LayerOrchestrator")
+                clearDeadConnection()
+                server?.layerOrchestrator?.onHooksBinderDied()
             }
         }
         try {
@@ -54,6 +51,53 @@ object CleanerHooksClient {
 
     @JvmStatic
     fun pingBinder(): Boolean = binder?.pingBinder() == true
+
+    /**
+     * 清除已死亡连接的所有引用。
+     * 在 binderDied 回调中调用，确保后续重连从干净状态开始。
+     */
+    fun clearDeadConnection() {
+        binder = null
+        service = null
+        deathRecipient = null
+    }
+
+    /**
+     * 尝试重新建立 Hooks 服务连接。
+     * 获取新 binder、创建 service stub、设置死亡回调（递归通知 orchestrator）。
+     * @return true 如果成功建立连接，false 如果获取 binder 失败
+     */
+    fun tryReconnect(ctx: CleanerServer): Boolean {
+        Log.i("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: attempting...")
+        val newBinder = CleanerHooksBinderRetriever.get(ctx)
+        if (newBinder == null) {
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: FAILED to get binder")
+            return false
+        }
+        binder = newBinder
+        service = ICleanerHooksService.Stub.asInterface(newBinder)
+
+        // 设置新的死亡回调：递归通知 orchestrator
+        val newDeathRecipient = object : SystemServiceDeathRecipient(newBinder) {
+            override fun binderDied() {
+                super.binderDied()
+                Log.w("MC_REDIRECT", "[CleanerHooksClient] binderDied (reconnected session), re-notifying orchestrator")
+                clearDeadConnection()
+                server?.layerOrchestrator?.onHooksBinderDied()
+            }
+        }
+        deathRecipient = newDeathRecipient
+        try {
+            newBinder.linkToDeath(newDeathRecipient, 0)
+        } catch (e: RemoteException) {
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: linkToDeath failed", e)
+            clearDeadConnection()
+            return false
+        }
+
+        Log.i("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: SUCCESS")
+        return true
+    }
 
     @JvmStatic
     fun whileAlive(c: Consumer<ICleanerHooksService>) {
