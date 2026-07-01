@@ -51,6 +51,9 @@ object HookPolicyCache {
     @Volatile
     private var lastMountSignalTimestamp: Long = 0L
 
+    /** 已推送到 native 的 configured_mount_points generation（用于诊断） */
+    val nativeMountPointsGeneration: Long get() = configuredMountPointsGeneration
+
     // ── Denylist ──
     @Volatile
     private var denylist: Set<String> = emptySet()

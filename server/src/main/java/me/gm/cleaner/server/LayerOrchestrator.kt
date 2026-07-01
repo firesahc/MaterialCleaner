@@ -9,8 +9,12 @@ import me.gm.cleaner.client.CleanerHooksClient.syncRecordExternalAppSpecificStor
 import me.gm.cleaner.dao.ServicePreferences
 import me.gm.cleaner.server.consumer.FileSystemEventConsumer
 import me.gm.cleaner.server.consumer.RedirectNoticeConsumer
+import me.gm.cleaner.server.observer.BaseProcessObserver
 import me.gm.cleaner.server.observer.ObserverManager
 import me.gm.cleaner.server.observer.StorageMountObserver
+import me.gm.cleaner.dao.policy.DataBus
+import me.gm.cleaner.xposed.HookPolicyCache
+import org.json.JSONObject
 
 /**
  * 三层编排器。
@@ -202,5 +206,75 @@ class LayerOrchestrator(
             RedirectNoticeConsumer.pollAndConsume()
             scheduleConsumerPoll()
         }, consumerPollIntervalMs)
+    }
+
+    // ── 状态诊断 ──
+
+    /**
+     * 采集五层运行状态，返回 JSON 字符串。
+     * 供 App UI 通过 AIDL 查询——替代混合的 pidFlags 和 serverException。
+     */
+    fun collectStatusJson(): String {
+        val root = JSONObject()
+
+        // VFS Layer
+        val vfsObj = JSONObject()
+        val procObs = ObserverManager.fastGetObserver(BaseProcessObserver::class.java)
+        if (procObs != null) {
+            vfsObj.put("state", "HEALTHY")
+            vfsObj.put("started", true)
+            vfsObj.put("mountedPackages", procObs.getMountedPackages().size)
+            vfsObj.put("recordedPids", procObs.getAllStartUpAwarePids().size)
+            vfsObj.put("mountFailedPids", procObs.getMountFailedPids().size)
+        } else {
+            vfsObj.put("state", "UNAVAILABLE")
+            vfsObj.put("started", false)
+        }
+        root.put("vfs", vfsObj)
+
+        // MediaProvider Java Hook Layer
+        val hookObj = JSONObject()
+        val hooksConnected = CleanerHooksClient.pingBinder()
+        hookObj.put("state", if (hooksConnected) "HEALTHY" else "UNAVAILABLE")
+        hookObj.put("binderConnected", hooksConnected)
+        root.put("mediaProviderJavaHook", hookObj)
+
+        // FUSE Native Hook Layer
+        val nativeObj = JSONObject()
+        val nativeGen = HookPolicyCache.nativeMountPointsGeneration
+        nativeObj.put("state", if (nativeGen > 0) "HEALTHY" else "STALE")
+        nativeObj.put("configuredMountPointsGeneration", nativeGen)
+        root.put("fuseNativeHook", nativeObj)
+
+        // DataBus Layer
+        val busObj = JSONObject()
+        val busInit = DataBus.ensureInitialized()
+        val hasPolicy = DataBus.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY) != null
+        val hasMountPoints = DataBus.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS) != null
+        val busHealthy = busInit && hasPolicy && hasMountPoints
+        busObj.put("state", if (busHealthy) "HEALTHY" else if (busInit) "DEGRADED" else "UNAVAILABLE")
+        busObj.put("busRootExists", busInit)
+        busObj.put("snapshotRedirectPolicy", if (hasPolicy) "exists" else "missing")
+        busObj.put("snapshotConfiguredMountPoints", if (hasMountPoints) "exists" else "missing")
+        root.put("dataBus", busObj)
+
+        // ControlPlane
+        val ctrlObj = JSONObject()
+        ctrlObj.put("state", if (hooksConnected) "HEALTHY" else "DEGRADED")
+        ctrlObj.put("appBinderRegistered", server.cleanerService != null)
+        ctrlObj.put("hooksBridgeConnected", hooksConnected)
+        root.put("controlPlane", ctrlObj)
+
+        // Overall health
+        val overallHealthy = vfsObj.optString("state") == "HEALTHY"
+                && hooksConnected && busInit
+        val overallDegraded = vfsObj.optString("state") == "HEALTHY" && busInit
+        root.put("health", when {
+            overallHealthy -> "HEALTHY"
+            overallDegraded -> "DEGRADED"
+            else -> "CRITICAL"
+        })
+
+        return root.toString(2)
     }
 }

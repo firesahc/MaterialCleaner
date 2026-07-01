@@ -74,4 +74,7 @@ interface ICleanerService {
     boolean copy(String from, String to) = 28;
 
     void exit() = 29;
+
+    // status
+    String getOrchestratedStatusJson() = 30;
 }

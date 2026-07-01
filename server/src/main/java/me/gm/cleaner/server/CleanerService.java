@@ -581,4 +581,10 @@ public class CleanerService extends ICleanerService.Stub {
         mServer.onDestroy();
         System.exit(0);
     }
+
+    @Override
+    public String getOrchestratedStatusJson() {
+        enforceManager(BuildConfig.DEBUG ? "getOrchestratedStatusJson" : 30);
+        return mServer.layerOrchestrator.collectStatusJson();
+    }
 }
