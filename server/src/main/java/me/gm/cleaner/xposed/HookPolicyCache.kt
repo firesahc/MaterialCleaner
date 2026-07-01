@@ -48,6 +48,8 @@ object HookPolicyCache {
     // ── Configured Mount Points（推送到 native） ──
     @Volatile
     private var configuredMountPointsGeneration: Long = 0L
+    @Volatile
+    private var lastMountSignalTimestamp: Long = 0L
 
     // ── Denylist ──
     @Volatile
@@ -99,7 +101,8 @@ object HookPolicyCache {
 
     /**
      * 检查快照是否比当前缓存更新。
-     * 调用方可在后续版本中监听 signal 后调用此方法判断是否需要刷新。
+     * signal timestamp 表示通知发生时间，snapshot generation 表示策略代数。
+     * 两者独立追踪，不混用。
      */
     fun isStale(): Boolean {
         val roSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
@@ -107,7 +110,7 @@ object HookPolicyCache {
         val mountSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
         return roSignalTime > readOnlyGeneration
                 || policySignalTime > policyGeneration
-                || mountSignalTime > configuredMountPointsGeneration
+                || mountSignalTime > lastMountSignalTimestamp
     }
 
     /**
@@ -120,13 +123,15 @@ object HookPolicyCache {
 
     /**
      * 尝试从 DataBus 刷新 native 挂载点。
-     * 如果信号指示配置已变更，读取 configured_mount_points.json 并推送到 native。
+     * 先比较 signal timestamp（上次通知时间），如果未变化则跳过；
+     * 如果变化则读取 snapshot，内部再比较 snapshot generation（策略代数）。
      */
     fun tryRefreshNativeMountPoints() {
         val mountSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
-        if (mountSignalTime <= configuredMountPointsGeneration && configuredMountPointsGeneration > 0) {
-            return  // 未变更
+        if (mountSignalTime <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0) {
+            return  // signal 未变更
         }
+        lastMountSignalTimestamp = mountSignalTime
         loadAndPushConfiguredMountPoints()
     }
 
@@ -156,7 +161,9 @@ object HookPolicyCache {
 
             val pointsArr = root.optJSONArray("points")
             if (pointsArr == null || pointsArr.length() == 0) {
-                Log.d(TAG, "loadConfiguredMountPoints: empty points array")
+                Log.i(TAG, "loadConfiguredMountPoints: empty points, clearing native mountPoint, generation=$generation")
+                // 空数组必须显式推送到 native——清除旧 mountPoint
+                InlineHookConfig.setMountPoint(emptyArray())
                 configuredMountPointsGeneration = generation
                 return
             }

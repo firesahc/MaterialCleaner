@@ -39,13 +39,13 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     public static volatile Runnable sResetReRegister;
 
     /**
-     * 初始化本地策略缓存。
-     * 应在 Xposed 模块加载时调用一次，从 DataBus 加载最后一次快照。
-     * 即使快照不可用也不会阻塞——后续查询回退到 Binder。
-     * 同时尝试从 DataBus 加载 configured_mount_points 推送到 native。
+     * 初始化本地策略缓存 + 启动定时刷新调度器。
+     * 应在 Xposed 模块加载时调用一次。
      */
     public void initPolicyCache() {
         HookPolicyCache.INSTANCE.initFromDataBus();
+        // 启动定时刷新调度器（每 5s 检查信号并刷新 native 挂载点）
+        HookPolicyRefreshScheduler.INSTANCE.start();
     }
 
     public void whileAlive(Consumer<ICleanerServerCallback> c) {

@@ -139,6 +139,8 @@ object DataBus {
                 tmpFile.copyTo(targetFile, overwrite = true)
                 tmpFile.delete()
             }
+            // 确保 MediaProvider 进程可读取
+            targetFile.setReadable(true, false)
             Log.d(TAG, "Snapshot written: $name (${content.length} bytes)")
             true
         } catch (e: Exception) {
