@@ -3,5 +3,18 @@ import org.apache.tools.ant.DirectoryScanner
 DirectoryScanner.removeDefaultExclude('**/.gitattributes')
 
 rootProject.name = "Cleaner"
+
+// ── 当前模块（计划 1-10 完成后）──
 include ':hidden-api'
 include ':app', ':server', ':shared', ':aidl'
+
+// ── 计划 11 目标模块结构（渐进迁移中）──
+// :core:ipc-contract          ← :aidl 迁移目标
+// :core:config-store          ← :shared 中 ServicePreferences/SecurityHelper
+// :core:storage-redirect-domain ← :shared 中 policy/ 模型
+// :core:storage-redirect-databus ← :shared 中 DataBus
+// :platform:hidden-api        ← :hidden-api 重命名
+// :runtime:cleaner-server     ← :server 中 server/observer/consumer/orchestrator
+// :runtime:media-provider-hook ← :server 中 xposed/
+// :native-code:mount-runtime  ← C++ Mount/ProcInfo
+// :native-code:fuse-hook      ← C++ inline/bpf_hook/xhook
