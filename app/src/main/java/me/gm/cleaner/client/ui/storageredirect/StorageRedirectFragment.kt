@@ -37,7 +37,7 @@ import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.StorageRedirectFragmentBinding
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.Website

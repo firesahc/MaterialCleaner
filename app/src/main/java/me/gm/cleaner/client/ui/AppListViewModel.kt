@@ -12,7 +12,7 @@ import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ServerStateMachine
 import me.gm.cleaner.client.StartSource
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.starter.Starter
 
 class AppListViewModel(application: Application) : AppListViewModelBase(application) {

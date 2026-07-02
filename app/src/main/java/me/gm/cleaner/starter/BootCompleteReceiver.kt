@@ -13,7 +13,7 @@ import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.ServerStateMachine
 import me.gm.cleaner.client.StartSource
 import me.gm.cleaner.dao.RootPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.util.FileUtils.toUserId
 
 class BootCompleteReceiver : BroadcastReceiver() {

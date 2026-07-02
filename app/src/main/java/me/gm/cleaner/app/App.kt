@@ -8,7 +8,7 @@ import me.gm.cleaner.client.ServerStateMachine
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 class App : Application() {

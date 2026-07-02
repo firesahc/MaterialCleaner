@@ -27,7 +27,7 @@ import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.settings.PathListPreference
 import me.gm.cleaner.settings.PathListPreferenceFragmentCompat
 import me.gm.cleaner.util.FileUtils

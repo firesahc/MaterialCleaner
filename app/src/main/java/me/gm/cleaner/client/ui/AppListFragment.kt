@@ -37,7 +37,7 @@ import me.gm.cleaner.client.ServerState
 import me.gm.cleaner.client.StartSource
 import me.gm.cleaner.client.StopSource
 import me.gm.cleaner.client.XposedConnectionState
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.fitsSystemWindowInsets
 

@@ -11,9 +11,9 @@ import api.SystemService
 import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 import me.gm.cleaner.dao.MountRules
-import me.gm.cleaner.dao.ServicePreferences
-import me.gm.cleaner.dao.ServicePreferences.getPackageSr
-import me.gm.cleaner.dao.ServicePreferences.getPackageSrZipped
+import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences.getPackageSr
+import me.gm.cleaner.core.config.ServicePreferences.getPackageSrZipped
 import me.gm.cleaner.util.FileUtils
 import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.util.SystemPropertiesUtils

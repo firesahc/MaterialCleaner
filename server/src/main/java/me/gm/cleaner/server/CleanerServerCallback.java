@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import api.SystemService;
-import me.gm.cleaner.dao.ServicePreferences;
+import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.dao.policy.RedirectPolicyBuilder;
 import me.gm.cleaner.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.server.observer.BaseProcessObserver;

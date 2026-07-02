@@ -27,7 +27,7 @@ import java.util.function.Consumer;
 import api.SystemService;
 import me.gm.cleaner.client.CleanerHooksClient;
 import me.gm.cleaner.dao.SecurityHelper;
-import me.gm.cleaner.dao.ServicePreferences;
+import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.server.observer.BaseProcessObserver;
 import me.gm.cleaner.server.observer.ObserverManager;
 import me.gm.cleaner.server.observer.StorageEventListenerDelegate;

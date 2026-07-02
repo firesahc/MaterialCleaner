@@ -6,7 +6,7 @@ import me.gm.cleaner.client.CleanerHooksClient
 import me.gm.cleaner.client.CleanerHooksClient.syncMountPoint
 import me.gm.cleaner.client.CleanerHooksClient.syncReadOnlyPaths
 import me.gm.cleaner.client.CleanerHooksClient.syncRecordExternalAppSpecificStorage
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.server.consumer.FileSystemEventConsumer
 import me.gm.cleaner.server.consumer.RedirectNoticeConsumer
 import me.gm.cleaner.server.observer.BaseProcessObserver

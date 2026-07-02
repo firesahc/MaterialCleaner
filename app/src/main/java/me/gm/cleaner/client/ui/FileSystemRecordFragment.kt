@@ -22,7 +22,7 @@ import androidx.viewpager2.widget.ViewPager2
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.FileSystemRecordViewModel.Companion.LOAD_SIZE
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.FilesystemRecordFragmentBinding
 import me.gm.cleaner.util.buildStyledTitle
 import me.gm.cleaner.util.colorAccent

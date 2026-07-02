@@ -24,7 +24,7 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.RootPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.PromptDialogBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.util.FileUtils

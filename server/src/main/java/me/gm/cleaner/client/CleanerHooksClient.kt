@@ -4,7 +4,7 @@ import android.os.IBinder
 import android.os.RemoteException
 import android.util.Log
 import api.SystemService
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.dao.policy.RedirectPolicyBuilder
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService

@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.model.PackageStatus
 
 class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default) {

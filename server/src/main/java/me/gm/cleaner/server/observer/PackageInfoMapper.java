@@ -14,7 +14,7 @@ import java.util.Map;
 
 import api.SystemService;
 import me.gm.cleaner.AndroidFilesystemConfig;
-import me.gm.cleaner.dao.ServicePreferences;
+import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.util.FileUtils;
 
 public class PackageInfoMapper {

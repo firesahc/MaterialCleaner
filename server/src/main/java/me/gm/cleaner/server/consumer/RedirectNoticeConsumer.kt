@@ -1,7 +1,7 @@
 package me.gm.cleaner.server.consumer
 
 import android.util.Log
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.dao.policy.DataBus
 import me.gm.cleaner.server.CleanerServer
 import org.json.JSONObject

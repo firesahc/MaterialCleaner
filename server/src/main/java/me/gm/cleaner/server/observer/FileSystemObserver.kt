@@ -10,7 +10,7 @@ import me.gm.cleaner.dao.FileSystemRecord.Companion.create
 import me.gm.cleaner.dao.FileSystemRecordDao
 import me.gm.cleaner.dao.FileSystemRecordDatabase
 import me.gm.cleaner.dao.MIGRATION_1_2
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.server.CleanerServer
 import me.gm.cleaner.server.observer.PruneMethod.Companion.DELETE_ALL
 import me.gm.cleaner.server.observer.PruneMethod.Companion.DELETE_APP_SPECIFIC

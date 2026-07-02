@@ -23,7 +23,7 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.FileUtils.toUserId

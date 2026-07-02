@@ -3,7 +3,7 @@ package me.gm.cleaner.xposed
 import android.text.TextUtils
 import android.util.Log
 import me.gm.cleaner.dao.MountRules
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.dao.policy.DataBus
 import org.json.JSONObject
 import java.io.File

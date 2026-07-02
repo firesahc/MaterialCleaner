@@ -1,8 +1,6 @@
 plugins {
     id 'com.android.library'
     id 'kotlin-android'
-    id 'com.google.devtools.ksp'
-    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -16,24 +14,15 @@ android {
         sourceCompatibility rootProject.ext.javaVersion
         targetCompatibility rootProject.ext.javaVersion
     }
-    namespace 'me.gm.cleaner.server'
-    buildFeatures {
-        buildConfig true
-    }
+    namespace 'me.gm.cleaner.core.config'
+    buildFeatures { buildConfig true }
 }
 
 dependencies {
-    implementation project(':aidl')
-    implementation project(':core:config-store')
-    implementation project(':hidden-api')
     implementation project(':shared')
-    compileOnly files('libs/api-82.jar')
-
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
-    def roomVersion = '2.6.1'
-    implementation "androidx.room:room-runtime:$roomVersion"
-    implementation "androidx.room:room-ktx:$roomVersion"
-    ksp "androidx.room:room-compiler:$roomVersion"
-    implementation "com.google.guava:guava:$rootProject.guavaVersion"
+    implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"
+    implementation "androidx.preference:preference-ktx:$rootProject.preferenceVersion"
+    implementation "androidx.security:security-crypto-ktx:$rootProject.securityCryptoVersion"
 }

@@ -3,7 +3,7 @@ package me.gm.cleaner.server.observer
 import android.app.ActivityManager
 import androidx.annotation.CallSuper
 import api.SystemService
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.util.FileUtils.toUserId
 import java.util.concurrent.CopyOnWriteArraySet
 

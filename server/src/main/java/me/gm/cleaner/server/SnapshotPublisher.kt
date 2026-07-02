@@ -2,7 +2,7 @@ package me.gm.cleaner.server
 
 import android.util.Log
 import api.SystemService
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.dao.policy.ConfiguredMountPointsSnapshot
 import me.gm.cleaner.dao.policy.DataBus
 import me.gm.cleaner.dao.policy.RedirectPolicyBuilder

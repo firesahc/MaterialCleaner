@@ -19,7 +19,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getSharedProcessPackages
 import me.gm.cleaner.client.getSharedUserIdPackages
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.ApplistItemBinding
 import me.gm.cleaner.util.buildStyledTitle
 

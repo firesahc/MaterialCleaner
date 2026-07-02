@@ -43,7 +43,7 @@ import kotlin.io.path.PathsKt;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
 import me.gm.cleaner.client.CleanerHooksClient;
-import me.gm.cleaner.dao.ServicePreferences;
+import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
 import me.gm.cleaner.model.FileSystemEvent;

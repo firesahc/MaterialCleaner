@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.model.BulkCursor
 import me.gm.cleaner.model.FileSystemEvent
 import me.gm.cleaner.server.IFileChangeObserver

@@ -8,7 +8,7 @@ import androidx.lifecycle.MutableLiveData
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.delay
 import me.gm.cleaner.BuildConfig
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.server.ICleanerService
 
 object CleanerClient {

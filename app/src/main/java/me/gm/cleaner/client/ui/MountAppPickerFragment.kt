@@ -17,7 +17,7 @@ import com.google.android.material.appbar.AppBarLayout
 import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseFragment
 import me.gm.cleaner.app.ConfirmationDialog
-import me.gm.cleaner.dao.ServicePreferences
+import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.MountAppPickerFragmentBinding
 import me.gm.cleaner.util.buildStyledTitle
 import me.gm.cleaner.util.colorAccent
