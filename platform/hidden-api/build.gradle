@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.library'
     id 'kotlin-android'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -14,4 +15,17 @@ android {
         targetCompatibility rootProject.ext.javaVersion
     }
     namespace 'me.gm.cleaner.platform.hiddenapi'
+    sourceSets {
+        main {
+            java {
+                srcDirs = ['src/main/java/stub', 'src/main/java/bridge', 'src/main/java/api']
+            }
+        }
+    }
+}
+
+dependencies {
+    compileOnly project(':aidl')
+    implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
+    implementation "androidx.core:core-ktx:$rootProject.coreVersion"
 }
