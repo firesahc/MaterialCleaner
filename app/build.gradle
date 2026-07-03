@@ -86,31 +86,41 @@ android {
 }
 
 // ── Xposed 模块 assets/main.jar 自动构建 ──────────────────────────
-// 将 server 模块的 classes.jar 通过 d8 转为 DEX，打包为 main.jar
+// 将 MediaProvider Hook runtime 及必要依赖通过 d8 转为 DEX，打包为 main.jar
 // 放入 app/src/main/assets/ 由 mergeDebugAssets 自动打包进 APK
 // ─────────────────────────────────────────────────────────────────
 def buildMainJarTask = tasks.register('buildXposedMainJar') {
     description = '构建 Xposed 模块 main.jar（d8 + zip）'
     group = 'Cleaner'
 
-    // 依赖 server 模块编译完成
-    dependsOn ':server:compileDebugKotlin'
-    dependsOn ':server:compileDebugJavaWithJavac'
-    dependsOn ':server:syncDebugLibJars'
+    // 依赖 Hook runtime 及 main.jar 必要依赖编译完成
+    dependsOn ':runtime:media-provider-hook:syncDebugLibJars'
+    dependsOn ':core:ipc-contract:syncDebugLibJars'
+    dependsOn ':core:storage-redirect-domain:syncDebugLibJars'
+    dependsOn ':core:storage-redirect-databus:syncDebugLibJars'
+    dependsOn ':platform:hidden-api:syncDebugLibJars'
 
-    // 输入：server 模块的 classes.jar
-    def serverJar = project(':server').buildDir.path +
-            '/intermediates/aar_main_jar/debug/classes.jar'
-    inputs.file serverJar
+    // 输入：Hook runtime 及必要依赖 classes.jar
+    def mainJarInputs = [
+            project(':runtime:media-provider-hook'),
+            project(':core:ipc-contract'),
+            project(':core:storage-redirect-domain'),
+            project(':core:storage-redirect-databus'),
+            project(':platform:hidden-api'),
+    ].collect { module ->
+        module.buildDir.path + '/intermediates/aar_main_jar/debug/classes.jar'
+    }
+    inputs.files mainJarInputs
 
     // 输出：main.jar
     def outputJar = "${projectDir}/src/main/assets/main.jar"
     outputs.file outputJar
 
     doLast {
-        def serverJarFile = file(serverJar)
-        if (!serverJarFile.exists()) {
-            throw new GradleException("server classes.jar 未找到: ${serverJar}")
+        def mainJarInputFiles = mainJarInputs.collect { file(it) }
+        def missingInput = mainJarInputFiles.find { !it.exists() }
+        if (missingInput != null) {
+            throw new GradleException("main.jar 输入 classes.jar 未找到: ${missingInput.path}")
         }
 
         // 定位 d8 工具
@@ -135,7 +145,7 @@ def buildMainJarTask = tasks.register('buildXposedMainJar') {
                     '--lib', androidJar,
                     '--min-api', '26',
                     '--output', dexZip.path,
-                    serverJarFile.path
+                    *mainJarInputFiles.collect { it.path }
         }
 
         if (!dexZip.exists()) {
@@ -173,9 +183,10 @@ tasks.whenTaskAdded { task ->
 }
 
 dependencies {
-    implementation project(':aidl')
+    implementation project(':core:ipc-contract')
     implementation project(':core:config-store')
-    implementation project(':server')
+    implementation project(':core:storage-redirect-domain')
+    runtimeOnly project(':runtime:cleaner-server')
     implementation project(':shared')
     compileOnly files('libs/api-82.jar')
 

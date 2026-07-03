@@ -8,14 +8,21 @@ android {
     defaultConfig {
         minSdk rootProject.ext.minSdk
         targetSdk rootProject.ext.targetSdk
+        buildConfigField 'int', 'VERSION_CODE', "${rootProject.ext.versionCode}"
     }
     compileOptions {
         sourceCompatibility rootProject.ext.javaVersion
         targetCompatibility rootProject.ext.javaVersion
     }
     namespace 'me.gm.cleaner.runtime.mediaprovider.hook'
+    buildFeatures { buildConfig true }
 }
 
 dependencies {
-    compileOnly files('libs/api-82.jar')
+    implementation project(':core:ipc-contract')
+    implementation project(':core:storage-redirect-domain')
+    implementation project(':core:storage-redirect-databus')
+    implementation project(':platform:hidden-api')
+    compileOnly files('../../app/libs/api-82.jar')
+    implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
 }

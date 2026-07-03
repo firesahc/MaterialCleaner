@@ -21,7 +21,7 @@
 
 #define PACKAGE_NAME "me.gm.cleaner"
 #define SERVER_NAME "cleaner_server"
-#define SERVER_CLASS_PATH "me.gm.cleaner.server.CleanerServerLoader"
+#define SERVER_CLASS_PATH "me.gm.cleaner.runtime.server.CleanerServerLoader"
 #define FAILURE_PREFIX "Failure:"
 
 static void run_server(const char *dex_path, const char *main_class, const char *process_name) {

@@ -5,8 +5,9 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.util.Log
-import me.gm.cleaner.dao.SecurityHelper.read
-import me.gm.cleaner.dao.SecurityHelper.write
+import me.gm.cleaner.core.config.SecurityHelper
+import me.gm.cleaner.core.config.SecurityHelper.read
+import me.gm.cleaner.core.config.SecurityHelper.write
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File

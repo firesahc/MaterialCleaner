@@ -22,8 +22,8 @@ import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.model.BulkCursor
 import me.gm.cleaner.model.FileSystemEvent
+import me.gm.cleaner.model.FileSystemRecordContract
 import me.gm.cleaner.server.IFileChangeObserver
-import me.gm.cleaner.server.observer.FileSystemObserver
 import me.gm.cleaner.util.FileUtils
 import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
@@ -211,7 +211,7 @@ class FileSystemRecordViewModel(application: Application) :
 
             application
                 .createDeviceProtectedStorageContext()
-                .getDatabasePath(FileSystemObserver.DATABASE_NAME)
+                .getDatabasePath(FileSystemRecordContract.DATABASE_NAME)
                 .length() > 1000000000 /* 1GB */ ->
                 _fileSystemRecordLiveData.postValue(FileSystemRecordState.DbTooLarge)
 

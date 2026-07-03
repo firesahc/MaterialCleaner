@@ -7,7 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import me.gm.cleaner.BuildConfig
-import me.gm.cleaner.dao.SecurityHelper
+import me.gm.cleaner.core.config.SecurityHelper
 
 class BinderProvider : ContentProvider() {
 

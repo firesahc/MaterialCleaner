@@ -35,8 +35,8 @@ import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Co
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getPathWithEvent
 import me.gm.cleaner.client.getSharedUserIdPackages
+import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountButtonsWizardBinding
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountRuleItemBinding

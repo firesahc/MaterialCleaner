@@ -21,8 +21,8 @@ import me.gm.cleaner.R
 import me.gm.cleaner.browser.filepicker.FilePickerDialog
 import me.gm.cleaner.client.ui.storageredirect.MimeUtils
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
+import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.PromptDialogBinding

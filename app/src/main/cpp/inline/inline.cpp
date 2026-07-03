@@ -26,7 +26,7 @@ jint JNI_OnLoad(JavaVM *jvm, void *v __unused) {
     if (jvm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
     }
-    jclass clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/xposed/InlineHookConfig")); // "me/gm/cleaner/xposed/InlineHookConfig"
+    jclass clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/runtime/mediaprovider/hook/InlineHookConfig")); // "me/gm/cleaner/runtime/mediaprovider/hook/InlineHookConfig"
     if (clazz == nullptr) {
         return JNI_ERR;
     }

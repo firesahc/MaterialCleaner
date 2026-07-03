@@ -25,8 +25,8 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getSharedProcessPackages
 import me.gm.cleaner.client.getSharedUserIdPackages
-import me.gm.cleaner.dao.MountRules
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.OnlineAppCategory

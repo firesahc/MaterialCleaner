@@ -1,7 +1,6 @@
 plugins {
     id 'com.android.library'
     id 'kotlin-android'
-    id 'com.google.devtools.ksp'
     id 'org.jetbrains.kotlin.android'
 }
 
@@ -10,30 +9,16 @@ android {
     defaultConfig {
         minSdk rootProject.ext.minSdk
         targetSdk rootProject.ext.targetSdk
-        buildConfigField 'int', 'VERSION_CODE', "${rootProject.ext.versionCode}"
     }
     compileOptions {
         sourceCompatibility rootProject.ext.javaVersion
         targetCompatibility rootProject.ext.javaVersion
     }
-    namespace 'me.gm.cleaner.server'
+    namespace 'me.gm.cleaner.server.compat'
     buildFeatures {
-        buildConfig true
+        buildConfig false
     }
 }
 
 dependencies {
-    implementation project(':aidl')
-    implementation project(':core:config-store')
-    implementation project(':hidden-api')
-    implementation project(':shared')
-    compileOnly files('libs/api-82.jar')
-
-    implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
-    implementation "androidx.core:core-ktx:$rootProject.coreVersion"
-    def roomVersion = '2.6.1'
-    implementation "androidx.room:room-runtime:$roomVersion"
-    implementation "androidx.room:room-ktx:$roomVersion"
-    ksp "androidx.room:room-compiler:$roomVersion"
-    implementation "com.google.guava:guava:$rootProject.guavaVersion"
 }
