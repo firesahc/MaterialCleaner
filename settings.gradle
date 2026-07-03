@@ -4,9 +4,8 @@ DirectoryScanner.removeDefaultExclude('**/.gitattributes')
 
 rootProject.name = "Cleaner"
 
-// ── 当前模块（计划 1-10 完成后）──
-include ':hidden-api'
-include ':app', ':server', ':shared', ':aidl'
+// ── 当前兼容模块 ──
+include ':app', ':shared'
 
 // ── 计划 11 新模块（渐进迁移中）──
 include ':core:ipc-contract'

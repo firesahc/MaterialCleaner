@@ -23,7 +23,7 @@ android {
 }
 
 dependencies {
-    implementation project(':aidl')
+    implementation project(':core:ipc-contract')
 
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
