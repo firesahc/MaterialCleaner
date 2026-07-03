@@ -135,36 +135,38 @@ def buildMainJarTask = tasks.register('buildXposedMainJar') {
 
         // 临时目录
         def tmpDir = layout.buildDirectory.dir('tmp/mainjar').get().asFile
+        delete tmpDir
         tmpDir.mkdirs()
-        def dexZip = new File(tmpDir, 'classes.zip')
+        def dexDir = new File(tmpDir, 'dex')
+        dexDir.mkdirs()
         def androidJar = "${android.sdkDirectory}/platforms/android-${android.compileSdk}/android.jar"
 
-        // Step 1: d8 将 classes.jar 转为 DEX（输出为 zip）
+        // Step 1: d8 将 classes.jar 转为 DEX
         exec {
             commandLine d8.path,
                     '--lib', androidJar,
                     '--min-api', '26',
-                    '--output', dexZip.path,
+                    '--output', dexDir.path,
                     *mainJarInputFiles.collect { it.path }
         }
 
-        if (!dexZip.exists()) {
-            throw new GradleException("d8 转换失败，classes.zip 未生成")
+        def dexFile = new File(dexDir, 'classes.dex')
+        if (!dexFile.exists()) {
+            throw new GradleException("d8 转换失败，classes.dex 未生成")
         }
 
-        // Step 2: 从 zip 中提取 classes.dex 并打包为 main.jar
+        // Step 2: 将 classes.dex 打包为 main.jar
         def outputFile = file(outputJar)
         def parent = outputFile.parentFile
         parent.mkdirs()
+        outputFile.delete()
 
-        fileTree(tmpDir).include('**/*.dex').each { dexFile ->
-            outputFile.withOutputStream { out ->
-                def zipOut = new java.util.zip.ZipOutputStream(out)
-                zipOut.putNextEntry(new java.util.zip.ZipEntry('classes.dex'))
-                zipOut << dexFile.bytes
-                zipOut.closeEntry()
-                zipOut.close()
-            }
+        outputFile.withOutputStream { out ->
+            def zipOut = new java.util.zip.ZipOutputStream(out)
+            zipOut.putNextEntry(new java.util.zip.ZipEntry('classes.dex'))
+            zipOut << dexFile.bytes
+            zipOut.closeEntry()
+            zipOut.close()
         }
 
         if (outputFile.exists()) {
