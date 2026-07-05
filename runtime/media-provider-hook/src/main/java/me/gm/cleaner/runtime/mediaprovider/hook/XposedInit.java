@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.pm.ProviderInfo;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.util.Log;
 
@@ -25,8 +24,8 @@ public class XposedInit implements IXposedHookLoadPackage {
                     "com.android.providers.media.MediaProvider", lpparam.classLoader
             );
             Log.i("MC_REDIRECT", "[XposedInit] MediaProvider class found, registering hooks...");
-            registerHooksCallback();
             setupReRegisterOnDeath();
+            MediaProviderHooksService.requestReRegister("initial MediaProvider load");
             new MediaProviderHook(mediaProviderHooksService, lpparam.classLoader, mediaProviderClass);
             Log.i("MC_REDIRECT", "[XposedInit] MediaProviderHook created successfully");
         } catch (XposedHelpers.ClassNotFoundError e) {
@@ -34,10 +33,11 @@ public class XposedInit implements IXposedHookLoadPackage {
         }
     }
 
-    private void registerHooksCallback() {
+    private boolean registerHooksCallback() {
         if (mContext != null) {
-            HookBridgeRegistrar.registerHooksCallback(mContext, mediaProviderHooksService);
+            return HookBridgeRegistrar.registerHooksCallback(mContext, mediaProviderHooksService);
         }
+        return false;
     }
 
     // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）
@@ -48,22 +48,20 @@ public class XposedInit implements IXposedHookLoadPackage {
             @Override
             public void run() {
                 attempts[0]++;
-                try {
-                    Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
-                    registerHooksCallback();
+                Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                if (registerHooksCallback()) {
                     Log.i("MC_REDIRECT", "[XposedInit] Re-registration call completed");
                     attempts[0] = 0;
-                } catch (Exception e) {
-                    Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed (attempt " + attempts[0] + ")", e);
-                    if (attempts[0] < 10) {
-                        long delay = Math.min(1000L << (attempts[0] - 1), 30000L);
-                        handler.postDelayed(this, delay);
-                    }
+                    return;
+                }
+                Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed (attempt " + attempts[0] + ")");
+                if (attempts[0] < 10) {
+                    long delay = Math.min(1000L << (attempts[0] - 1), 30000L);
+                    handler.postDelayed(this, delay);
                 }
             }
         };
-        MediaProviderHooksService.sReRegisterCallback = retryTask;
-        MediaProviderHooksService.sResetReRegister = () -> {
+        MediaProviderHooksService.sReRegisterCallback = () -> {
             handler.removeCallbacks(retryTask);
             attempts[0] = 0;
             retryTask.run();

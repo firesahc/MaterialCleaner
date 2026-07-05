@@ -13,13 +13,15 @@ final class HookBridgeRegistrar {
     private HookBridgeRegistrar() {
     }
 
-    static void registerHooksCallback(Context context, IBinder binder) {
+    static boolean registerHooksCallback(Context context, IBinder binder) {
         try {
             final Bundle extras = new Bundle();
             extras.putBinder("binder", binder);
             context.getContentResolver().call(HOOKS_URI, "register_hooks_callback", null, extras);
+            return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to register hooks callback", e);
+            return false;
         }
     }
 }

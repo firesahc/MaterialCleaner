@@ -1,7 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
 import android.util.Log
-import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import java.util.Timer
 import java.util.TimerTask
 
@@ -15,7 +14,7 @@ import java.util.TimerTask
  *
  * ## 设计
  * - Timer 守护线程每 [POLL_INTERVAL_MS] 检查一次
- * - 仅检查 configured_mount_points_changed signal（最低开销）
+ * - 检查策略、只读、configured_mount_points signal
  * - 与 Binder setMountPoint 并行工作（独立 fallback）
  * - 不在 MediaProvider 中创建独立 native 线程或 inotify watcher
  */
@@ -44,11 +43,8 @@ object HookPolicyRefreshScheduler {
     }
 
     private fun pollAndRefresh() {
-        val mountSignalTime = DataBus.getSignalTimestamp(
-            DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED
-        )
-        if (mountSignalTime > 0) {
-            HookPolicyCache.tryRefreshNativeMountPoints()
+        if (HookPolicyCache.isStale()) {
+            HookPolicyCache.refreshChangedSnapshotsFromDataBus()
         }
     }
 }

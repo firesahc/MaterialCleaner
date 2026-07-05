@@ -26,7 +26,7 @@ import org.json.JSONObject;
  * - isDirAccessAllowedForFuse / isDirectoryCreationOrDeletionAllowedForFuse
  * - isUidAllowedAccessToDataOrObbPathForFuse
  *
- * 同时负责文件事件分发（Binder + DataBus 双通道）。
+ * 同时负责文件事件分发（仅 DataBus 通道，Binder 通道已移除）。
  *
  * 不负责：xhook 安装、containsMount、fuse_bpf_install、native mountPoint。
  */
@@ -231,15 +231,12 @@ public class FuseJavaGate {
 
     void dispatchFileSystemEvent(final String packageName, final String path, final int flags) {
         Log.d("MC_REDIRECT", "[FuseJavaGate] dispatchFileSystemEvent pkg=" + packageName + " path=" + path + " flags=" + flags);
-        // 1. Binder 回调（保留）
-        mService.whileAlive(service -> {
-            try {
-                service.onFileSystemEvent(System.currentTimeMillis(), packageName, path, flags);
-            } catch (RemoteException e) {
-                Log.e("MC_REDIRECT", "[FuseJavaGate] onFileSystemEvent RemoteException", e);
-            }
-        });
-        // 2. DataBus 事件队列（异步，不影响主流程）
+        // 通过 DataBus 事件队列分发（异步，不影响主流程）。
+        // 仅使用 DataBus 路径——不再通过 Binder 同步调用 onFileSystemEvent。
+        // FileSystemEventConsumer 通过定时轮询 DataBus 消费事件。
+        // 这消除了文件事件热路径对 Server Binder 的强依赖：
+        // - Server 不可用时事件不丢失（积压在 DataBus 中）
+        // - Server 恢复后通过消费者游标续消费
         try {
             final var event = new JSONObject();
             event.put("schemaVersion", 1);
@@ -249,6 +246,8 @@ public class FuseJavaGate {
             event.put("flags", flags);
             event.put("sourceLayer", "FUSE_JAVA_GATE");
             DataBus.INSTANCE.writeEvent(DataBus.EVENT_FILESYSTEM, event.toString());
+            // 数据面契约 6.4: 写事件后发 signal，消除消费者端 2s 轮询延迟
+            DataBus.INSTANCE.signal(DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED);
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[FuseJavaGate] DataBus write failed", e);
         }

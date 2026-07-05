@@ -37,7 +37,10 @@ public class MediaProviderHook {
         // 1. 装配数据库适配器（注册 scan + insert Hook）
         mDatabaseAdapter = new MediaDatabaseAdapter(this, mService, mClassLoader, mMediaProviderClass);
 
-        // 2. 判断 FUSE 是否可用
+        // 2. 判断 FUSE 是否可用。
+        // 注意：理想架构要求从 DataBus PlatformCapabilities snapshot 读取 FUSE 可用性，
+        // 但构造时 HookPolicyCache 尚未初始化（bootstrapping 约束），因此回退到读系统属性。
+        // 一旦 HookPolicyCache 通过 initFromDataBus() 加载能力，FUSE 状态以 DataBus 快照为准。
         final boolean isFuseAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 || HookSystemProperties.getBoolean("persist.sys.fuse", false);
         Log.i("MC_REDIRECT", "[MediaProviderHook] isFuseAvailable=" + isFuseAvailable

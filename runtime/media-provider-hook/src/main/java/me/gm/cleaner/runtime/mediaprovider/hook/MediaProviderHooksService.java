@@ -7,10 +7,6 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import java.io.File;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -19,23 +15,14 @@ import me.gm.cleaner.server.ICleanerServerCallback;
 import me.gm.cleaner.server.IMediaProviderHooksService;
 
 public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
-    private final Map<String, List<String>> mPackageNameToReadOnlyPaths = new ConcurrentHashMap<>();
     private volatile ICleanerServerCallback mCleanerServerBinder = null;
-    private volatile boolean mReRegistering = false;
     private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
         mCleanerServerBinder = null;
-        // Server died → 尝试重新注册 hooks callback（应对 app 进程重启场景）
-        if (sReRegisterCallback != null) {
-            Log.i("MC_REDIRECT", "[MediaProviderHooksService] Server died, re-registering with app process...");
-            sReRegisterCallback.run();
-        }
+        requestReRegister("server callback died");
     };
 
     /** 当 Server 回调丢失时由 XposedInit 注入的重新注册回调 */
     public static volatile Runnable sReRegisterCallback;
-
-    /** 由 XposedInit 注入的重置并重试注册的回调（用于 setCleanerServerBinder 主动触发） */
-    public static volatile Runnable sResetReRegister;
 
     /**
      * 初始化本地策略缓存 + 启动定时刷新调度器。
@@ -52,11 +39,28 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
             c.accept(mCleanerServerBinder);
         } else {
             Log.w("MC_REDIRECT", "[MediaProviderHooksService] whileAlive: mCleanerServerBinder is NULL! Callback dropped.");
-            // 尝试重新注册（最多触发一次，由 server died 后的首次调用触发）
-            if (sReRegisterCallback != null) {
-                Log.i("MC_REDIRECT", "[MediaProviderHooksService] whileAlive: attempting re-registration...");
-                sReRegisterCallback.run();
-            }
+            requestReRegister("server callback missing while dispatching event");
+        }
+    }
+
+    public static void requestReRegister(@NonNull String reason) {
+        final var callback = sReRegisterCallback;
+        if (callback == null) {
+            Log.w("MC_REDIRECT", "[MediaProviderHooksService] Re-register requested before callback is ready: " + reason);
+            return;
+        }
+        Log.i("MC_REDIRECT", "[MediaProviderHooksService] Re-registering hooks callback: " + reason);
+        callback.run();
+    }
+
+    private void unlinkCleanerServerDeathRecipient(ICleanerServerCallback callback) {
+        if (callback == null) {
+            return;
+        }
+        try {
+            callback.asBinder().unlinkToDeath(mCleanerServerDeathRecipient, 0);
+        } catch (RuntimeException e) {
+            Log.w("MC_REDIRECT", "[MediaProviderHooksService] unlinkToDeath failed", e);
         }
     }
 
@@ -69,33 +73,27 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     public void setCleanerServerBinder(ICleanerServerCallback iinterface) {
         Log.i("MC_REDIRECT", "[MediaProviderHooksService] setCleanerServerBinder called, binder=" + (iinterface != null));
         // 先取消旧 DeathRecipient，防止多次 link 导致重复触发
-        if (mCleanerServerBinder != null) {
-            mCleanerServerBinder.asBinder().unlinkToDeath(mCleanerServerDeathRecipient, 0);
-        }
+        unlinkCleanerServerDeathRecipient(mCleanerServerBinder);
         mCleanerServerBinder = iinterface;
+        if (iinterface == null) {
+            HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints();
+            return;
+        }
         try {
             iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
         } catch (final RemoteException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
-        }
-        // 新 server callback 到达 → app 侧存活 → 确保 app 持有最新 Xposed Binder
-        if (sResetReRegister != null && sReRegisterCallback != null && !mReRegistering) {
-            mReRegistering = true;
-            try {
-                sResetReRegister.run();
-            } finally {
-                mReRegistering = false;
-            }
+            mCleanerServerBinder = null;
+            requestReRegister("server callback linkToDeath failed");
+            return;
+        } catch (final RuntimeException e) {
+            Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
+            mCleanerServerBinder = null;
+            requestReRegister("server callback linkToDeath failed");
+            return;
         }
         // 尝试从 DataBus 刷新 native 挂载点（独立于 Binder 同步）
-        HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints();
-    }
-
-    @Override
-    public void setReadOnlyPaths(@NonNull Map<String, List> packageNameToReadOnlyPaths) {
-        mPackageNameToReadOnlyPaths.clear();
-        mPackageNameToReadOnlyPaths.putAll(
-                (Map<String, List<String>>) (Object) packageNameToReadOnlyPaths);
+        HookPolicyCache.INSTANCE.refreshFromDataBus();
     }
 
     private static final Pattern PATHS_HAVE_USER_ID = Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?");
@@ -127,29 +125,21 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         final var packageName = packages.get(0);
         final var pathAsUser = getPathAsUser(path, 0);
 
-        // 1. 优先使用本地 HookPolicyCache（来自 DataBus 快照）
+        // 使用 HookPolicyCache（来自 DataBus 快照）
+        // DataBus 是只读策略的唯一分发通道；Binder fallback 路径已移除。
         if (HookPolicyCache.INSTANCE.getReadOnlyGeneration() > 0) {
             return HookPolicyCache.INSTANCE.isReadOnly(packageName, pathAsUser);
         }
-
-        // 2. 回退到 Binder 下发的只读路径
-        final var readOnlyPaths = mPackageNameToReadOnlyPaths.get(packageName);
-        if (readOnlyPaths == null) {
-            return false;
-        }
-        final var parent = new File(pathAsUser).getParent();
-        return readOnlyPaths.stream().anyMatch(readOnlyPath ->
-                readOnlyPath.equalsIgnoreCase(pathAsUser) || readOnlyPath.equalsIgnoreCase(parent)
-        );
+        return false;
     }
 
     @Override
-    public void setMountPoint(List<String> value) {
-        InlineHookConfig.INSTANCE.setMountPoint(value.stream().toArray(String[]::new));
+    public void refreshPolicyFromDataBus() {
+        HookPolicyCache.INSTANCE.refreshFromDataBus();
     }
 
     @Override
-    public void setRecordExternalAppSpecificStorage(boolean value) {
-        InlineHookConfig.INSTANCE.setRecordExternalAppSpecificStorage(value);
+    public long getNativeMountPointsGeneration() {
+        return HookPolicyCache.INSTANCE.getNativeMountPointsGeneration();
     }
 }

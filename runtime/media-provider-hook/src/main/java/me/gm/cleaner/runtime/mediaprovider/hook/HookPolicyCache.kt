@@ -37,12 +37,16 @@ object HookPolicyCache {
     private var readOnlyCache: Map<String, Set<String>> = emptyMap()
     @Volatile
     private var readOnlyGeneration: Long = 0L
+    @Volatile
+    private var lastReadOnlySignalTimestamp: Long = 0L
 
     // ── Rule 缓存 ──
     @Volatile
     private var ruleCache: Map<String, MountRules> = emptyMap()
     @Volatile
     private var policyGeneration: Long = 0L
+    @Volatile
+    private var lastPolicySignalTimestamp: Long = 0L
 
     // ── Configured Mount Points（推送到 native） ──
     @Volatile
@@ -56,6 +60,23 @@ object HookPolicyCache {
     // ── Denylist ──
     @Volatile
     private var denylist: Set<String> = emptySet()
+
+    // ── PlatformCapabilities 缓存 ──
+    @Volatile
+    private var capabilitiesGeneration: Long = 0L
+    @Volatile
+    private var lastCapabilitiesSignalTimestamp: Long = 0L
+    @Volatile
+    private var cachedSdkVersionInt: Int = 0
+    @Volatile
+    private var cachedIsFuseBpfEnabled: Boolean = false
+    @Volatile
+    private var cachedFuseAvailable: Boolean = false
+
+    /** 缓存的 FUSE BPF 状态，供 MediaProvider Hook 使用 */
+    val isFuseBpfEnabledFromCache: Boolean get() = cachedIsFuseBpfEnabled
+    /** 缓存的 FUSE 可用性，供 MediaProvider Hook 使用 */
+    val fuseAvailableFromCache: Boolean get() = cachedFuseAvailable
 
     // ── 偏好标记 ──
     @Volatile
@@ -74,6 +95,7 @@ object HookPolicyCache {
         if (policyJson != null) {
             try {
                 parseRedirectPolicy(policyJson)
+                lastPolicySignalTimestamp = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
                 Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
                         "packages=${ruleCache.size}")
             } catch (e: Exception) {
@@ -88,6 +110,7 @@ object HookPolicyCache {
         if (roJson != null) {
             try {
                 parseReadOnly(roJson)
+                lastReadOnlySignalTimestamp = DataBus.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
                 Log.i(TAG, "initFromDataBus: loaded read_only, generation=$readOnlyGeneration, " +
                         "packages=${readOnlyCache.size}")
             } catch (e: Exception) {
@@ -98,7 +121,12 @@ object HookPolicyCache {
         }
 
         // 读取 configured_mount_points.json → 推送到 native
-        loadAndPushConfiguredMountPoints()
+        if (loadAndPushConfiguredMountPoints()) {
+            lastMountSignalTimestamp = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+        }
+
+        // 读取 platform_capabilities.json → 缓存关键能力
+        loadPlatformCapabilities()
     }
 
     /**
@@ -110,9 +138,41 @@ object HookPolicyCache {
         val roSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
         val policySignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
         val mountSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
-        return roSignalTime > readOnlyGeneration
-                || policySignalTime > policyGeneration
+        val capsSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+        return roSignalTime > lastReadOnlySignalTimestamp
+                || policySignalTime > lastPolicySignalTimestamp
                 || mountSignalTime > lastMountSignalTimestamp
+                || capsSignalTime > lastCapabilitiesSignalTimestamp
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // PlatformCapabilities
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * 从 DataBus 加载 platform_capabilities.json 并缓存关键能力字段。
+     */
+    private fun loadPlatformCapabilities() {
+        val json = DataBus.readSnapshot(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES)
+        if (json == null) {
+            Log.d(TAG, "loadPlatformCapabilities: no snapshot available")
+            return
+        }
+        try {
+            val root = JSONObject(json)
+            val generation = root.optLong("generation", 0L)
+            if (generation <= capabilitiesGeneration && capabilitiesGeneration > 0) {
+                return  // 未更新
+            }
+            cachedSdkVersionInt = root.optInt("sdkVersionInt", 0)
+            cachedIsFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false)
+            cachedFuseAvailable = root.optBoolean("fuseAvailable", false)
+            capabilitiesGeneration = generation
+            Log.i(TAG, "loadPlatformCapabilities: sdk=$cachedSdkVersionInt, " +
+                    "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable")
+        } catch (e: Exception) {
+            Log.e(TAG, "loadPlatformCapabilities: failed", e)
+        }
     }
 
     /**
@@ -121,6 +181,49 @@ object HookPolicyCache {
     fun refreshFromDataBus() {
         Log.d(TAG, "refreshFromDataBus")
         initFromDataBus()
+    }
+
+    /**
+     * 只刷新发生变更的快照。
+     *
+     * signal timestamp 只用于判断“是否有新通知”，snapshot generation 才表示策略代数。
+     * 两者不能混用，否则时间戳会长期大于 generation，导致状态判断失真。
+     */
+    fun refreshChangedSnapshotsFromDataBus() {
+        val policySignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
+        if (policySignalTime > lastPolicySignalTimestamp) {
+            val policyJson = DataBus.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
+            if (policyJson != null) {
+                try {
+                    parseRedirectPolicy(policyJson)
+                    lastPolicySignalTimestamp = policySignalTime
+                } catch (e: Exception) {
+                    Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
+                }
+            }
+        }
+
+        val roSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
+        if (roSignalTime > lastReadOnlySignalTimestamp) {
+            val roJson = DataBus.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
+            if (roJson != null) {
+                try {
+                    parseReadOnly(roJson)
+                    lastReadOnlySignalTimestamp = roSignalTime
+                } catch (e: Exception) {
+                    Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
+                }
+            }
+        }
+
+        tryRefreshNativeMountPoints()
+
+        // platform_capabilities 变更（极少发生，但仍支持运行时重检测）
+        val capsSignalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+        if (capsSignalTime > lastCapabilitiesSignalTimestamp) {
+            loadPlatformCapabilities()
+            lastCapabilitiesSignalTimestamp = capsSignalTime
+        }
     }
 
     /**
@@ -133,8 +236,9 @@ object HookPolicyCache {
         if (mountSignalTime <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0) {
             return  // signal 未变更
         }
-        lastMountSignalTimestamp = mountSignalTime
-        loadAndPushConfiguredMountPoints()
+        if (loadAndPushConfiguredMountPoints()) {
+            lastMountSignalTimestamp = mountSignalTime
+        }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -146,11 +250,11 @@ object HookPolicyCache {
      * 解析 points 数组，并通过 [InlineHookConfig.setMountPoint] 推送到 native。
      * 此路径独立于 Binder setMountPoint，两者可并行工作。
      */
-    private fun loadAndPushConfiguredMountPoints() {
+    private fun loadAndPushConfiguredMountPoints(): Boolean {
         val json = DataBus.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
         if (json == null) {
             Log.d(TAG, "loadConfiguredMountPoints: no snapshot available")
-            return
+            return false
         }
 
         try {
@@ -158,25 +262,27 @@ object HookPolicyCache {
             val generation = root.optLong("generation", 0L)
             if (generation <= configuredMountPointsGeneration && configuredMountPointsGeneration > 0) {
                 Log.d(TAG, "loadConfiguredMountPoints: generation not newer ($generation <= $configuredMountPointsGeneration)")
-                return
+                return true
             }
 
             val pointsArr = root.optJSONArray("points")
             if (pointsArr == null || pointsArr.length() == 0) {
                 Log.i(TAG, "loadConfiguredMountPoints: empty points, clearing native mountPoint, generation=$generation")
                 // 空数组必须显式推送到 native——清除旧 mountPoint
-                InlineHookConfig.setMountPoint(emptyArray())
+                FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation)
                 configuredMountPointsGeneration = generation
-                return
+                return true
             }
 
             val points = Array(pointsArr.length()) { pointsArr.getString(it) }
-            InlineHookConfig.setMountPoint(points)
+            FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation)
             configuredMountPointsGeneration = generation
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, generation=$generation")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
+            return false
         }
     }
 
@@ -256,9 +362,11 @@ object HookPolicyCache {
                 val zipped = mutableListOf<Pair<String, String>>()
                 for (i in 0 until rulesArr.length()) {
                     val ruleObj = rulesArr.getJSONObject(i)
-                    val source = ruleObj.getString("source")
-                    val target = ruleObj.getString("target")
-                    zipped.add(source to target)
+                    val source = ruleObj.optString("source", "")
+                    val target = ruleObj.optString("target", "")
+                    if (source.isNotEmpty() && target.isNotEmpty()) {
+                        zipped.add(source to target)
+                    }
                 }
                 newCache[pkg] = MountRules(zipped)
             }
@@ -279,6 +387,7 @@ object HookPolicyCache {
 
         // 解析偏好标记
         recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false)
+        FuseNativePolicyAdapter.applyRecordExternalAppSpecificStorage(recordExternalAppSpecificStorage)
     }
 
     private fun parseReadOnly(json: String) {
