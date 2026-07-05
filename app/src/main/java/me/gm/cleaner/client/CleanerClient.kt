@@ -9,7 +9,32 @@ import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.delay
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.model.LayerStatus
 import me.gm.cleaner.server.ICleanerService
+
+data class OrchestratedLayerStatus(
+    val state: String = "UNAVAILABLE",
+    val lastError: String? = null,
+    val metrics: Map<String, String> = emptyMap(),
+) {
+    val isHealthy: Boolean
+        get() = state == "HEALTHY"
+
+    val isUnavailable: Boolean
+        get() = state == "UNAVAILABLE"
+}
+
+data class OrchestratedRuntimeStatus(
+    val health: String = "CRITICAL",
+    val vfs: OrchestratedLayerStatus = OrchestratedLayerStatus(),
+    val mediaProviderJavaHook: OrchestratedLayerStatus = OrchestratedLayerStatus(),
+    val fuseNativeHook: OrchestratedLayerStatus = OrchestratedLayerStatus(),
+    val dataBus: OrchestratedLayerStatus = OrchestratedLayerStatus(),
+    val controlPlane: OrchestratedLayerStatus = OrchestratedLayerStatus(),
+) {
+    val isHealthy: Boolean
+        get() = health == "HEALTHY"
+}
 
 object CleanerClient {
     private val _serverVersionLiveData: MutableLiveData<Int> = MutableLiveData(-1)
@@ -99,6 +124,23 @@ object CleanerClient {
             emptyList()
         }
 
+    fun getOrchestratedStatus(): OrchestratedRuntimeStatus? {
+        val status = try {
+            service?.orchestratedStatus
+        } catch (e: Exception) {
+            Log.w("MC/Test", "getOrchestratedStatus: failed", e)
+            null
+        } ?: return null
+        return OrchestratedRuntimeStatus(
+            health = status.health ?: "CRITICAL",
+            vfs = status.vfs.toRuntimeLayer(),
+            mediaProviderJavaHook = status.mediaProviderJavaHook.toRuntimeLayer(),
+            fuseNativeHook = status.fuseNativeHook.toRuntimeLayer(),
+            dataBus = status.dataBus.toRuntimeLayer(),
+            controlPlane = status.controlPlane.toRuntimeLayer(),
+        )
+    }
+
     fun exit() {
         runCatching {
             service?.exit()
@@ -127,5 +169,19 @@ object CleanerClient {
             retries++
         }
         return pingBinder()
+    }
+
+    private fun LayerStatus?.toRuntimeLayer(): OrchestratedLayerStatus {
+        if (this == null) return OrchestratedLayerStatus()
+        val keys = metricKeys ?: emptyArray()
+        val values = metricValues ?: emptyArray()
+        val metrics = keys.indices.associate { index ->
+            keys[index] to values.getOrElse(index) { "" }
+        }
+        return OrchestratedLayerStatus(
+            state = state ?: "UNAVAILABLE",
+            lastError = lastError?.takeIf { it.isNotBlank() && it != "null" },
+            metrics = metrics,
+        )
     }
 }

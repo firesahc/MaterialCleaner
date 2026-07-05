@@ -5,6 +5,7 @@ import me.gm.cleaner.browser.IRootWorkerService;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
 import me.gm.cleaner.model.FileSystemEvent;
+import me.gm.cleaner.model.OrchestratedStatus;
 import me.gm.cleaner.model.PackageStatus;
 import me.gm.cleaner.model.ParceledListSlice;
 import me.gm.cleaner.server.IFileChangeObserver;
@@ -76,5 +77,5 @@ interface ICleanerService {
     void exit() = 29;
 
     // status
-    String getOrchestratedStatusJson() = 30;
+    OrchestratedStatus getOrchestratedStatus() = 30;
 }

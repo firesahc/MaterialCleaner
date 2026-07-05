@@ -4,7 +4,6 @@ import android.util.Log
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway
-import me.gm.cleaner.runtime.server.observer.BaseProcessObserver
 import me.gm.cleaner.runtime.server.observer.ObserverManager
 import me.gm.cleaner.runtime.server.observer.StorageMountObserver
 import me.gm.cleaner.runtime.server.consumer.FileSystemEventConsumer
@@ -15,6 +14,8 @@ import me.gm.cleaner.runtime.server.orchestrator.LayerState
 import me.gm.cleaner.runtime.server.orchestrator.OrchestratedStatus
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicLong
+import me.gm.cleaner.model.LayerStatus as IpcLayerStatus
+import me.gm.cleaner.model.OrchestratedStatus as IpcOrchestratedStatus
 
 /**
  * 三层编排器。
@@ -287,36 +288,22 @@ class LayerOrchestrator(
         return root.toString(2)
     }
 
+    fun collectStatusForIpc(): IpcOrchestratedStatus {
+        val status = collectStatus()
+        return IpcOrchestratedStatus(
+            status.health.name,
+            status.vfs.toIpc(),
+            status.mediaProviderJavaHook.toIpc(),
+            status.fuseNativeHook.toIpc(),
+            status.dataBus.toIpc(),
+            status.controlPlane.toIpc(),
+        )
+    }
+
     private fun collectStatus(): OrchestratedStatus {
         val now = System.currentTimeMillis()
         val gen = statusGeneration.incrementAndGet()
-        // VFS Layer
-        val procObs = ObserverManager.fastGetObserver(BaseProcessObserver::class.java)
-        val vfsReport = if (procObs != null) {
-            LayerReport(
-                id = LayerId.VFS,
-                state = LayerState.HEALTHY,
-                generation = gen,
-                lastHeartbeatAt = now,
-                metrics = mapOf(
-                    "started" to "true",
-                    "mountedPackages" to procObs.getMountedPackages().size.toString(),
-                    "recordedPids" to procObs.getAllStartUpAwarePids().size.toString(),
-                    "mountFailedPids" to procObs.getMountFailedPids().size.toString(),
-                    "mountTotalAttempts" to procObs.getTotalMountAttempts().toString(),
-                    "mountFailureCount" to procObs.getMountFailureCount().toString(),
-                ),
-            )
-        } else {
-            LayerReport(
-                id = LayerId.VFS,
-                state = LayerState.UNAVAILABLE,
-                generation = gen,
-                lastErrorAt = now,
-                lastError = "BaseProcessObserver unavailable",
-                metrics = mapOf("started" to "false"),
-            )
-        }
+        val vfsReport = server.vfsLayerController.collectReport(gen, now)
 
         // MediaProvider Java Hook Layer
         val hooksConnected = MediaProviderHookGateway.pingBinder()
@@ -459,5 +446,19 @@ class LayerOrchestrator(
         for ((key, value) in metrics) {
             put(key, value)
         }
+    }
+
+    private fun LayerReport.toIpc(): IpcLayerStatus {
+        return IpcLayerStatus(
+            id.name,
+            state.name,
+            generation,
+            lastStartedAt,
+            lastHeartbeatAt,
+            lastErrorAt,
+            lastError,
+            metrics.keys.toTypedArray(),
+            metrics.values.toTypedArray(),
+        )
     }
 }

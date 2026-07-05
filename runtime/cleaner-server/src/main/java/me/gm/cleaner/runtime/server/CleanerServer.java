@@ -19,7 +19,6 @@ import android.os.ServiceManager;
 import android.os.storage.VolumeInfo;
 import android.util.Log;
 
-import java.io.File;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -31,10 +30,7 @@ import me.gm.cleaner.core.config.SecurityHelper;
 import me.gm.cleaner.runtime.server.BuildConfig;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.core.config.ServicePreferences;
-import me.gm.cleaner.runtime.server.observer.BaseProcessObserver;
 import me.gm.cleaner.runtime.server.observer.ObserverManager;
-import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate;
-import me.gm.cleaner.runtime.server.observer.StorageMountObserver;
 
 public class CleanerServer extends ContextWrapper {
     public final Handler handler = new Handler(Looper.getMainLooper());
@@ -45,6 +41,7 @@ public class CleanerServer extends ContextWrapper {
     final AutoLogging mAutoLogging;
     public final CleanerServerCallback mCleanerServerCallback;
     public final LayerOrchestrator layerOrchestrator;
+    public final VfsLayerController vfsLayerController;
 
     private Context createPackageContext(final String packageName) {
         try {
@@ -107,6 +104,7 @@ public class CleanerServer extends ContextWrapper {
         mCleanerServerCallback = new CleanerServerCallback(this);
         cleanerService = new CleanerService(this, packageInfo.applicationInfo.uid);
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "Cleaner server v" + BuildConfig.VERSION_CODE + " started");
+        vfsLayerController = new VfsLayerController();
         layerOrchestrator = new LayerOrchestrator(this);
     }
 
@@ -121,54 +119,11 @@ public class CleanerServer extends ContextWrapper {
 
     public void onStorageMounted(final VolumeInfo vol, final boolean isPrimary,
                                  final boolean isJustMounted) {
-        // these things should be done as soon as possible
-        if (isPrimary) {
-            RuntimeFileUtils.INSTANCE.setExternalStorageDir(new File(vol.path, String.valueOf(0)));
-        }
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer != null) {
-            final var mountUserId = StorageEventListenerDelegate.getMountUserId(vol);
-            observer.getMountedStorage().add(mountUserId);
-            if (isJustMounted) {
-                if (isPrimary) {
-                    observer.remountAll();
-                } else {
-                    observer.remountAllWithCheck();
-                }
-            } else if (isPrimary) {
-                observer.recordAll();
-            }
-        }
-        // leisurely do remaining things
-        if (isPrimary) {
-            if (observer != null && observer.isFuseBpfEnabled()) {
-                new Thread(() -> {
-                    for (final var userId : SystemService.getUserIdsNoThrow()) {
-                        for (final var packageName : ServicePreferences.INSTANCE.getSrPackages()) {
-                            final var ai = SystemService.getApplicationInfoNoThrow(packageName, 0, userId);
-                            if (ai != null) {
-                                RuntimeFileUtils.INSTANCE.switch_owner(
-                                        RuntimeFileUtils.INSTANCE.getPathAsUser(
-                                                RuntimeFileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
-                                                userId
-                                        ),
-                                        ai.uid,
-                                        true
-                                );
-                            }
-                        }
-                    }
-                }).start();
-            }
-        }
+        vfsLayerController.onStorageMounted(vol, isPrimary, isJustMounted);
     }
 
     public void onStorageUnmounted(final VolumeInfo vol) {
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer != null) {
-            final var mountUserId = StorageEventListenerDelegate.getMountUserId(vol);
-            observer.getMountedStorage().remove(mountUserId);
-        }
+        vfsLayerController.onStorageUnmounted(vol);
     }
 
     private void broadcastIntentDelayed(final Consumer<Intent> callback, long delayMillis) {

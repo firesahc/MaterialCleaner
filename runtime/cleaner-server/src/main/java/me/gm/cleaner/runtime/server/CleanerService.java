@@ -1,12 +1,7 @@
 package me.gm.cleaner.runtime.server;
 
 import static hidden.HiddenApiBridge.PackageInfo_isOverlayPackage;
-import static hidden.HiddenApiBridge.UserHandle_isIsolated;
-import static me.gm.cleaner.model.PackageStatus.GET_FROM_ALL_PROCESS;
-import static me.gm.cleaner.model.PackageStatus.GET_FROM_RECORDS;
-
 import android.annotation.SuppressLint;
-import android.app.ActivityManager.RunningAppProcessInfo;
 import android.app.AppOpsManager;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -20,15 +15,10 @@ import android.os.RemoteException;
 import android.system.Os;
 import android.util.Log;
 
-import com.google.common.collect.ArrayListMultimap;
-
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,7 +29,6 @@ import javax.annotation.Nullable;
 import api.SystemService;
 import hidden.HiddenApiBridge;
 import me.gm.cleaner.runtime.server.BuildConfig;
-import kotlin.collections.ArraysKt;
 import kotlin.io.path.PathsKt;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
@@ -48,6 +37,7 @@ import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
 import me.gm.cleaner.model.FileSystemEvent;
+import me.gm.cleaner.model.OrchestratedStatus;
 import me.gm.cleaner.model.PackageStatus;
 import me.gm.cleaner.model.ParceledListSlice;
 import me.gm.cleaner.core.common.nio.RootFileService;
@@ -56,7 +46,6 @@ import me.gm.cleaner.server.ICleanerService;
 import me.gm.cleaner.server.IFileChangeObserver;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.runtime.server.observer.ActivityManagerLogsObserver;
-import me.gm.cleaner.runtime.server.observer.BaseProcessObserver;
 import me.gm.cleaner.runtime.server.observer.FileSystemObserver;
 import me.gm.cleaner.runtime.server.observer.ObserverManager;
 import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
@@ -199,167 +188,25 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public boolean isFuseBpfEnabled() {
         enforceManager(BuildConfig.DEBUG ? "isFuseBpfEnabled" : 7);
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        return observer != null && observer.isFuseBpfEnabled();
+        return mServer.vfsLayerController.isFuseBpfEnabled();
     }
 
     @Override
     public PackageStatus getPackageStatus(@Nonnull final String packageName, final int flags) {
         enforceManager(BuildConfig.DEBUG ? "getPackageStatus" : 8);
-        final var pids = new ArrayList<Integer>();
-        final var pidFlags = new ArrayList<Integer>();
-        final var userIds = new ArrayList<Integer>();
-
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer == null) {
-            return new PackageStatus();
-        }
-        final var startUpAwarePids = observer.getStartUpAwarePids(packageName);
-        final var mountFailedPids = observer.getMountFailedPids();
-        final var mkdir = observer.getMountedPackages().contains(packageName);
-        final List<RunningAppProcessInfo> processes;
-        switch (flags) {
-            case GET_FROM_ALL_PROCESS:
-                processes = SystemService.getRunningAppProcessesNoThrow();
-                break;
-            case GET_FROM_RECORDS:
-                processes = SystemService.getRunningAppProcessesNoThrow().stream()
-                        .filter(it -> startUpAwarePids.contains(it.pid))
-                        .collect(Collectors.toList());
-                break;
-            default:
-                processes = Collections.emptyList();
-                break;
-        }
-        processes.stream()
-                .filter(procInfo -> !UserHandle_isIsolated(RuntimeFileUtils.INSTANCE.read_uid(procInfo.pid)))
-                .sorted(Comparator.comparingInt(value -> value.pid))
-                .forEach(procInfo ->
-                        Arrays.stream(procInfo.pkgList).filter(packageName::equals).forEach(it -> {
-                            pids.add(procInfo.pid);
-                            final var userId = RuntimeFileUtils.INSTANCE.toUserId(procInfo.uid);
-                            final var targets = ServicePreferences.INSTANCE
-                                    .getPackageSr(packageName, userId).getSecond();
-                            final var mountedIndices = RuntimeFileUtils.INSTANCE.check_mounts(
-                                    procInfo.pid, targets.stream().toArray(String[]::new));
-                            var pidFlag = 0;
-                            if (mountedIndices == null) {
-                                pidFlag |= PackageStatus.PID_FLAG_UNKNOWN;
-                            } else if (Arrays.stream(mountedIndices).anyMatch(i -> i < 0)) {
-                                if (ArraysKt.contains(mountedIndices, -1)) {
-                                    pidFlag |= PackageStatus.PID_FLAG_DELETED;
-                                }
-                                if (ArraysKt.contains(mountedIndices, -2)) {
-                                    pidFlag |= PackageStatus.PID_FLAG_OVERRIDE;
-                                }
-                            } else if (targets.size() == mountedIndices.length) {
-                                pidFlag |= PackageStatus.PID_FLAG_MOUNTED;
-                            }
-                            if (startUpAwarePids.contains(procInfo.pid)) {
-                                pidFlag |= PackageStatus.PID_FLAG_STARTUP_AWARE;
-                            }
-                            if (mountFailedPids.contains(procInfo.pid)) {
-                                pidFlag |= PackageStatus.PID_FLAG_MOUNT_FAILED;
-                            }
-                            if (!mkdir) {
-                                pidFlag |= PackageStatus.PID_FLAG_MKDIR_FAILED;
-                            }
-                            pidFlags.add(pidFlag);
-                            userIds.add(userId);
-                        }));
-
-        final var packageStatus = new PackageStatus();
-        packageStatus.pids = pids.stream().mapToInt(value -> value).toArray();
-        packageStatus.pidFlags = pidFlags.stream().mapToInt(value -> value).toArray();
-        packageStatus.userIds = userIds.stream().mapToInt(value -> value).toArray();
-        return packageStatus;
+        return mServer.vfsLayerController.getPackageStatus(packageName, flags);
     }
 
     @Override
     public Map<String, PackageStatus> getSrPackagesStatus(final int flags) {
         enforceManager(BuildConfig.DEBUG ? "getSrPackagesStatus" : 9);
-        final ArrayListMultimap<String, Integer> pids = ArrayListMultimap.create();
-        final ArrayListMultimap<String, Integer> pidFlags = ArrayListMultimap.create();
-        final ArrayListMultimap<String, Integer> userIds = ArrayListMultimap.create();
-
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer == null) {
-            return Collections.emptyMap();
-        }
-        final var startUpAwarePids = observer.getAllStartUpAwarePids();
-        final var mountFailedPids = observer.getMountFailedPids();
-        final var mountedPackages = observer.getMountedPackages();
-        final List<RunningAppProcessInfo> processes;
-        switch (flags) {
-            case GET_FROM_ALL_PROCESS:
-                processes = SystemService.getRunningAppProcessesNoThrow();
-                break;
-            case GET_FROM_RECORDS:
-                processes = SystemService.getRunningAppProcessesNoThrow().stream()
-                        .filter(it -> startUpAwarePids.contains(it.pid))
-                        .collect(Collectors.toList());
-                break;
-            default:
-                processes = Collections.emptyList();
-                break;
-        }
-        final var srPackages = ServicePreferences.INSTANCE.getSrPackages();
-        processes.stream()
-                .filter(procInfo -> !UserHandle_isIsolated(RuntimeFileUtils.INSTANCE.read_uid(procInfo.pid)))
-                .sorted(Comparator.comparingInt(value -> value.pid))
-                .forEach(procInfo ->
-                        Arrays.stream(procInfo.pkgList).filter(srPackages::contains).forEach(packageName -> {
-                            pids.put(packageName, procInfo.pid);
-                            final var userId = RuntimeFileUtils.INSTANCE.toUserId(procInfo.uid);
-                            final var targets = ServicePreferences.INSTANCE
-                                    .getPackageSr(packageName, userId).getSecond();
-                            final var mountedIndices = RuntimeFileUtils.INSTANCE.check_mounts(
-                                    procInfo.pid, targets.stream().toArray(String[]::new));
-                            var pidFlag = 0;
-                            if (mountedIndices == null) {
-                                pidFlag |= PackageStatus.PID_FLAG_UNKNOWN;
-                            } else if (Arrays.stream(mountedIndices).anyMatch(i -> i < 0)) {
-                                if (ArraysKt.contains(mountedIndices, -1)) {
-                                    pidFlag |= PackageStatus.PID_FLAG_DELETED;
-                                }
-                                if (ArraysKt.contains(mountedIndices, -2)) {
-                                    pidFlag |= PackageStatus.PID_FLAG_OVERRIDE;
-                                }
-                            } else if (targets.size() == mountedIndices.length) {
-                                pidFlag |= PackageStatus.PID_FLAG_MOUNTED;
-                            }
-                            if (startUpAwarePids.contains(procInfo.pid)) {
-                                pidFlag |= PackageStatus.PID_FLAG_STARTUP_AWARE;
-                            }
-                            if (mountFailedPids.contains(procInfo.pid)) {
-                                pidFlag |= PackageStatus.PID_FLAG_MOUNT_FAILED;
-                            }
-                            if (!mountedPackages.contains(packageName)) {
-                                pidFlag |= PackageStatus.PID_FLAG_MKDIR_FAILED;
-                            }
-                            pidFlags.put(packageName, pidFlag);
-                            userIds.put(packageName, userId);
-                        }));
-
-        final var srPackageStatus = new HashMap<String, PackageStatus>();
-        pids.keySet().forEach(packageName -> {
-            final var packageStatus = new PackageStatus();
-            packageStatus.pids = pids.get(packageName).stream().mapToInt(value -> value).toArray();
-            packageStatus.pidFlags = pidFlags.get(packageName).stream().mapToInt(value -> value).toArray();
-            packageStatus.userIds = userIds.get(packageName).stream().mapToInt(value -> value).toArray();
-            srPackageStatus.put(packageName, packageStatus);
-        });
-        return srPackageStatus;
+        return mServer.vfsLayerController.getSrPackagesStatus(flags);
     }
 
     @Override
     public List<String> getMountedDirs() {
         enforceManager(BuildConfig.DEBUG ? "getMountedDirs" : 10);
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer == null) {
-            return Collections.emptyList();
-        }
-        return observer.getMountedDirs();
+        return mServer.vfsLayerController.getMountedDirs();
     }
 
     /**
@@ -416,10 +263,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public void remount(@Nonnull final String[] packageNames) {
         enforceManager(BuildConfig.DEBUG ? "remount" : 15);
-        final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
-        if (observer != null) {
-            observer.remountForPackages(packageNames);
-        }
+        mServer.vfsLayerController.remount(packageNames);
     }
 
     @Override
@@ -585,8 +429,8 @@ public class CleanerService extends ICleanerService.Stub {
     }
 
     @Override
-    public String getOrchestratedStatusJson() {
-        enforceManager(BuildConfig.DEBUG ? "getOrchestratedStatusJson" : 30);
-        return mServer.layerOrchestrator.collectStatusJson();
+    public OrchestratedStatus getOrchestratedStatus() {
+        enforceManager(BuildConfig.DEBUG ? "getOrchestratedStatus" : 30);
+        return mServer.layerOrchestrator.collectStatusForIpc();
     }
 }
