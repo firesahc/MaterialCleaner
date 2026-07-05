@@ -137,12 +137,8 @@ public class CleanerService extends ICleanerService.Stub {
     private int getOpMode(final ApplicationInfo appInfo, final String permissionName)
             throws RemoteException {
         final var opCode = HiddenApiBridge.permissionToOpCode(permissionName);
-        final List<?> opToMode;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            opToMode = SystemService.getUidOps(appInfo.uid, new int[]{opCode});
-        } else {
-            opToMode = SystemService.getOpsForPackage(appInfo.uid, appInfo.packageName, new int[]{opCode});
-        }
+        // minSdk=26 (Android 8.0/O)，getUidOps 在所有支持的设备上始终可用
+        final var opToMode = SystemService.getUidOps(appInfo.uid, new int[]{opCode});
         if (opToMode == null) {
             return AppOpsManager.MODE_ERRORED;
         }
