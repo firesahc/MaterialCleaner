@@ -1,6 +1,6 @@
 package me.gm.cleaner.runtime.server;
 
-import static me.gm.cleaner.AndroidFilesystemConfig.AID_USER_OFFSET;
+import static me.gm.cleaner.core.common.AndroidFilesystemConfig.AID_USER_OFFSET;
 
 import android.content.IContentProvider;
 import android.content.pm.PackageManager;

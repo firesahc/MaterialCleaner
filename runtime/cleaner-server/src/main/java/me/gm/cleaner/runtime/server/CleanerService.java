@@ -43,14 +43,15 @@ import kotlin.collections.ArraysKt;
 import kotlin.io.path.PathsKt;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
+import me.gm.cleaner.core.common.RuntimeFileUtils;
 import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
 import me.gm.cleaner.model.FileSystemEvent;
 import me.gm.cleaner.model.PackageStatus;
 import me.gm.cleaner.model.ParceledListSlice;
-import me.gm.cleaner.nio.RootFileService;
-import me.gm.cleaner.nio.RootWorkerService;
+import me.gm.cleaner.core.common.nio.RootFileService;
+import me.gm.cleaner.core.common.nio.RootWorkerService;
 import me.gm.cleaner.server.ICleanerService;
 import me.gm.cleaner.server.IFileChangeObserver;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
@@ -61,7 +62,6 @@ import me.gm.cleaner.runtime.server.observer.ObserverManager;
 import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
 import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate;
 import me.gm.cleaner.runtime.server.observer.StorageMountObserver;
-import me.gm.cleaner.util.FileUtils;
 
 public class CleanerService extends ICleanerService.Stub {
     private static final String TAG = "CleanerService";
@@ -77,7 +77,7 @@ public class CleanerService extends ICleanerService.Stub {
     private void enforceManager(final Object func) {
         final var callingPid = Binder.getCallingPid();
         final var callingUid = Binder.getCallingUid();
-        if (callingPid == Os.getpid() || FileUtils.INSTANCE.toAppId(callingUid) == mManagerAid) {
+        if (callingPid == Os.getpid() || RuntimeFileUtils.INSTANCE.toAppId(callingUid) == mManagerAid) {
             return;
         }
         throw new SecurityException(String.valueOf(func));
@@ -85,7 +85,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int getServerVersion() {
-        if (FileUtils.INSTANCE.toAppId(Binder.getCallingUid()) != mManagerAid) {
+        if (RuntimeFileUtils.INSTANCE.toAppId(Binder.getCallingUid()) != mManagerAid) {
             return 0;
         }
         return BuildConfig.VERSION_CODE;
@@ -236,15 +236,15 @@ public class CleanerService extends ICleanerService.Stub {
                 break;
         }
         processes.stream()
-                .filter(procInfo -> !UserHandle_isIsolated(FileUtils.INSTANCE.read_uid(procInfo.pid)))
+                .filter(procInfo -> !UserHandle_isIsolated(RuntimeFileUtils.INSTANCE.read_uid(procInfo.pid)))
                 .sorted(Comparator.comparingInt(value -> value.pid))
                 .forEach(procInfo ->
                         Arrays.stream(procInfo.pkgList).filter(packageName::equals).forEach(it -> {
                             pids.add(procInfo.pid);
-                            final var userId = FileUtils.INSTANCE.toUserId(procInfo.uid);
+                            final var userId = RuntimeFileUtils.INSTANCE.toUserId(procInfo.uid);
                             final var targets = ServicePreferences.INSTANCE
                                     .getPackageSr(packageName, userId).getSecond();
-                            final var mountedIndices = FileUtils.INSTANCE.check_mounts(
+                            final var mountedIndices = RuntimeFileUtils.INSTANCE.check_mounts(
                                     procInfo.pid, targets.stream().toArray(String[]::new));
                             var pidFlag = 0;
                             if (mountedIndices == null) {
@@ -309,15 +309,15 @@ public class CleanerService extends ICleanerService.Stub {
         }
         final var srPackages = ServicePreferences.INSTANCE.getSrPackages();
         processes.stream()
-                .filter(procInfo -> !UserHandle_isIsolated(FileUtils.INSTANCE.read_uid(procInfo.pid)))
+                .filter(procInfo -> !UserHandle_isIsolated(RuntimeFileUtils.INSTANCE.read_uid(procInfo.pid)))
                 .sorted(Comparator.comparingInt(value -> value.pid))
                 .forEach(procInfo ->
                         Arrays.stream(procInfo.pkgList).filter(srPackages::contains).forEach(packageName -> {
                             pids.put(packageName, procInfo.pid);
-                            final var userId = FileUtils.INSTANCE.toUserId(procInfo.uid);
+                            final var userId = RuntimeFileUtils.INSTANCE.toUserId(procInfo.uid);
                             final var targets = ServicePreferences.INSTANCE
                                     .getPackageSr(packageName, userId).getSecond();
-                            final var mountedIndices = FileUtils.INSTANCE.check_mounts(
+                            final var mountedIndices = RuntimeFileUtils.INSTANCE.check_mounts(
                                     procInfo.pid, targets.stream().toArray(String[]::new));
                             var pidFlag = 0;
                             if (mountedIndices == null) {
@@ -389,9 +389,10 @@ public class CleanerService extends ICleanerService.Stub {
                        InvocationTargetException e) {
             Log.w(TAG, "Failed to reload SharedPreferences", e);
         }
-        MediaProviderHookGateway.syncRecordExternalAppSpecificStorage();
         // 发布偏好变更快照到 DataBus（偏好变更可能影响策略）
+        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
         SnapshotPublisher.INSTANCE.publishRedirectPolicy();
+        MediaProviderHookGateway.refreshPolicyFromDataBus();
     }
 
     @Override
@@ -399,19 +400,21 @@ public class CleanerService extends ICleanerService.Stub {
         enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 13);
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
-        MediaProviderHookGateway.syncMountPoint();
-        // 发布规则变更快照到 DataBus（不影响现有 Binder 同步）
+        // 发布规则变更快照到 DataBus，控制面只触发 Hook 侧刷新。
+        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
         SnapshotPublisher.INSTANCE.publishRedirectPolicy();
         SnapshotPublisher.INSTANCE.publishConfiguredMountPoints();
+        MediaProviderHookGateway.refreshPolicyFromDataBus();
     }
 
     @Override
     public void notifyReadOnlyChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 14);
         ServicePreferences.INSTANCE.invalidateReadOnlyCache();
-        MediaProviderHookGateway.syncReadOnlyPaths();
         // 发布只读变更快照到 DataBus
+        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
         SnapshotPublisher.INSTANCE.publishReadOnly();
+        MediaProviderHookGateway.refreshPolicyFromDataBus();
     }
 
     @Override
@@ -567,7 +570,7 @@ public class CleanerService extends ICleanerService.Stub {
         enforceManager(BuildConfig.DEBUG ? "move" : 27);
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
-        return FileUtils.INSTANCE.move(srcPath, dstPath);
+        return RuntimeFileUtils.INSTANCE.move(srcPath, dstPath);
     }
 
     @Override
@@ -575,7 +578,7 @@ public class CleanerService extends ICleanerService.Stub {
         enforceManager(BuildConfig.DEBUG ? "copy" : 28);
         final var srcPath = Paths.get(from);
         final var dstPath = Paths.get(to);
-        return FileUtils.INSTANCE.copy(srcPath, dstPath);
+        return RuntimeFileUtils.INSTANCE.copy(srcPath, dstPath);
     }
 
     @Override

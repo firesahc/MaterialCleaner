@@ -6,11 +6,11 @@ import android.util.Log
 import androidx.annotation.IntDef
 import androidx.room.Room
 import api.SystemService
-import me.gm.cleaner.dao.FileSystemRecord.Companion.create
-import me.gm.cleaner.dao.FileSystemRecordDao
-import me.gm.cleaner.dao.FileSystemRecordDatabase
-import me.gm.cleaner.dao.MIGRATION_1_2
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.runtime.server.record.FileSystemRecord.Companion.create
+import me.gm.cleaner.runtime.server.record.FileSystemRecordDao
+import me.gm.cleaner.runtime.server.record.FileSystemRecordDatabase
 import me.gm.cleaner.model.FileSystemRecordContract
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DELETE_ALL
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DELETE_APP_SPECIFIC
@@ -18,7 +18,7 @@ import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DISTINCT
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_QUERIED
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_UNINSTALLED
 import me.gm.cleaner.runtime.server.CleanerServer
-import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.runtime.server.record.MIGRATION_1_2
 import java.io.File
 
 class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
@@ -50,7 +50,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
         at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper.getWritableDatabase(FrameworkSQLiteOpenHelper.java:112)
         at androidx.room.RoomDatabase.inTransaction(RoomDatabase.java:706)
         at androidx.room.RoomDatabase.assertNotSuspendingTransaction(RoomDatabase.java:483)
-        at me.gm.cleaner.dao.FileSystemRecordDao_Impl.insert(FileSystemRecordDao_Impl.java:66)
+        at me.gm.cleaner.runtime.server.record.FileSystemRecordDao_Impl.insert(FileSystemRecordDao_Impl.java:66)
         at me.gm.cleaner.server.observer.FileSystemObserver$1.onEvent(FileSystemObserver.java:32)
         at me.gm.cleaner.server.IFileSystemObserver$Stub.onTransact(IFileSystemObserver.java:67)
         at android.os.Binder.execTransactInternal(Binder.java:1187)
@@ -87,9 +87,9 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
     }
 
     private fun isAppSpecificStorage(packageName: String, path: String): Boolean =
-        FileUtils.startsWith(
-            FileUtils.buildExternalStorageAppDataDirs(packageName),
-            FileUtils.getPathAsUser(path, 0)
+        RuntimeFileUtils.startsWith(
+            RuntimeFileUtils.buildExternalStorageAppDataDirs(packageName),
+            RuntimeFileUtils.getPathAsUser(path, 0)
         )
 
     private fun onVerifiedEvent(
@@ -115,12 +115,12 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
 
     fun onEvent(timeMillis: Long, packageName: String, path: String, flags: Int) {
         if (ServicePreferences.recordSharedStorage) {
-            if (FileUtils.childOf(FileUtils.externalStorageDirParent, path)) {
+            if (RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, path)) {
                 onVerifiedEvent(timeMillis, packageName, path, flags)
             } else {
                 runCatching {
                     val canonicalPath = File(path).canonicalPath
-                    if (FileUtils.childOf(FileUtils.externalStorageDirParent, canonicalPath)
+                    if (RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, canonicalPath)
                     ) {
                         onVerifiedEvent(timeMillis, packageName, canonicalPath, flags)
                     }
@@ -204,3 +204,4 @@ annotation class PruneMethod {
         const val QUERIED: Int = PRUNE_QUERIED
     }
 }
+

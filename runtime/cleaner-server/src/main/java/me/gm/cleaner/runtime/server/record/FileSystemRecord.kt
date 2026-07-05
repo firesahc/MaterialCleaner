@@ -1,4 +1,4 @@
-package me.gm.cleaner.dao
+package me.gm.cleaner.runtime.server.record
 
 import android.database.Cursor
 import androidx.room.ColumnInfo
@@ -94,3 +94,4 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         _db.execSQL("ALTER TABLE FileSystemRecord ADD COLUMN 'is_app_specific_storage' INTEGER NOT NULL DEFAULT 1")
     }
 }
+

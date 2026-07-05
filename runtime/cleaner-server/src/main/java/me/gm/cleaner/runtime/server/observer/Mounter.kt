@@ -10,15 +10,16 @@ import androidx.core.os.postDelayed
 import api.SystemService
 import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
+import me.gm.cleaner.core.common.RuntimeFileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeSystemProperties
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.config.ServicePreferences.getPackageSr
 import me.gm.cleaner.core.config.ServicePreferences.getPackageSrZipped
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
-import me.gm.cleaner.util.FileUtils
-import me.gm.cleaner.util.FileUtils.toUserId
-import me.gm.cleaner.util.SystemPropertiesUtils
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.path.Path
 import kotlin.io.path.readText
 import kotlin.math.min
@@ -37,6 +38,13 @@ class Mounter {
     private val rmdirPackages: MutableSet<String> = mutableSetOf()
     private var rmdirQueueSize: Int = 0
 
+    /** mount 尝试总次数（含重试），用于 collectStatus metrics */
+    val totalAttempts: AtomicInteger = AtomicInteger(0)
+    /** mount 失败总次数（含重试耗尽），用于 collectStatus metrics */
+    val failureCount: AtomicInteger = AtomicInteger(0)
+    /** 每 pid 重试计数，达到 MAX_MOUNT_RETRIES 后放弃 */
+    private val mountRetryCount = mutableMapOf<Int, Int>()
+
     fun mountForAllPackages(): Boolean =
             !isFuseBpfEnabled && ServicePreferences.recordExternalAppSpecificStorage
 
@@ -51,11 +59,11 @@ class Mounter {
     }
 
     internal val isFuseBpfEnabled: Boolean by lazy {
-        var is_enabled = SystemPropertiesUtils.getBoolean("ro.fuse.bpf.is_running")
+        var is_enabled = RuntimeSystemProperties.getBoolean("ro.fuse.bpf.is_running")
         if (is_enabled != null) return@lazy is_enabled
-        is_enabled = SystemPropertiesUtils.getBoolean("persist.sys.fuse.bpf.override")
+        is_enabled = RuntimeSystemProperties.getBoolean("persist.sys.fuse.bpf.override")
         if (is_enabled != null) return@lazy is_enabled
-        is_enabled = SystemPropertiesUtils.getBoolean("ro.fuse.bpf.enabled")
+        is_enabled = RuntimeSystemProperties.getBoolean("ro.fuse.bpf.enabled")
         if (is_enabled != null) return@lazy is_enabled
 
         try {
@@ -71,13 +79,15 @@ class Mounter {
     private fun getMkdirList(rules: MountRules): List<String> = rules.mountPoint + rules.sources
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
-        Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid")
+        totalAttempts.incrementAndGet()
+        Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid " +
+                "attempt=${totalAttempts.get()}")
         val recordExternalAppSpecificStorage =
             ServicePreferences.recordExternalAppSpecificStorage &&
                     !ServicePreferences.denylist.contains(packageName)
 
         if (ServicePreferences.getPackageSrCount(packageName) == 0) {
-            return FileUtils.bind_mount(
+            return RuntimeFileUtils.bind_mount(
                 pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
                 emptyArray(), emptyArray()
@@ -91,13 +101,13 @@ class Mounter {
             rules = MountRules(getPackageSrZipped(packageName, userId))
             val mkdirRecord = mutableSetOf<String>()
             getMkdirList(rules).forEach { record(mkdirRecord, it) }
-            if (FileUtils.auto_prepare_dirs(mkdirRecord.toTypedArray(), uid)) {
+            if (RuntimeFileUtils.auto_prepare_dirs(mkdirRecord.toTypedArray(), uid)) {
                 mkdirRecords.putAll(packageName, mkdirRecord)
             }
         } else {
             rules = MountRules(getPackageSr(packageName, userId))
         }
-        val ret = FileUtils.bind_mount(
+        val ret = RuntimeFileUtils.bind_mount(
             pid, uid,
             !isFuseBpfEnabled && recordExternalAppSpecificStorage, isFuseBpfEnabled,
             rules.sources.toTypedArray(), rules.targets.toTypedArray()
@@ -106,14 +116,41 @@ class Mounter {
                 "sources=${rules.sources} targets=${rules.targets}")
         if (ret) {
             mountFailedPids.remove(pid)
+            mountRetryCount.remove(pid)
         } else {
             mountFailedPids.add(pid)
+            failureCount.incrementAndGet()
+            scheduleMountRetryLocked(packageName, pid, uid)
         }
         return ret
     }
 
+    /**
+     * 调度 mount 失败后的退避重试。
+     *
+     * 延迟策略：2s → 5s → 15s，达到 [MAX_MOUNT_RETRIES] 后放弃。
+     * 使用现有的 Mounter HandlerThread，不增加新线程。
+     */
+    private fun scheduleMountRetryLocked(packageName: String, pid: Int, uid: Int) {
+        val attempt = mountRetryCount.getOrDefault(pid, 0)
+        if (attempt >= MAX_MOUNT_RETRIES) {
+            mountRetryCount.remove(pid)
+            Log.w("MC_REDIRECT", "[Mounter] mount retry exhausted for pid=$pid pkg=$packageName")
+            return
+        }
+        mountRetryCount[pid] = attempt + 1
+        val delay = RETRY_DELAYS_MS[attempt.coerceAtMost(RETRY_DELAYS_MS.size - 1)]
+        Log.i("MC_REDIRECT", "[Mounter] scheduling mount retry #${attempt + 1} for pid=$pid " +
+                "pkg=$packageName in ${delay}ms")
+        handler.postDelayed(delay) {
+            synchronized(lock) {
+                bindMountLocked(packageName, pid, uid)
+            }
+        }
+    }
+
     private fun record(mkdirRecord: MutableSet<String>, dir: String) {
-        if (FileUtils.childOf(FileUtils.externalStorageDirParent, dir)) {
+        if (RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, dir)) {
             mkdirRecord.add(dir)
             val parent = File(dir).parent ?: return
             record(mkdirRecord, parent)
@@ -155,7 +192,7 @@ class Mounter {
                 val rules = MountRules(getPackageSr(packageName, procInfo.uid.toUserId()))
                 val targets = rules.targets
                 val mountedIndices =
-                    FileUtils.check_mounts(procInfo.pid, targets.toTypedArray())
+                    RuntimeFileUtils.check_mounts(procInfo.pid, targets.toTypedArray())
                 if (mountedIndices == null) {
                     // unknown mount status
                 } else if (targets.size == mountedIndices.size && mountedIndices.all { it != -1 }) {
@@ -199,6 +236,7 @@ class Mounter {
     private fun notifyProcessKilledLocked(packageName: String, pid: Int, uid: Int) {
         pidRecords.remove(packageName, pid)
         mountFailedPids.remove(pid)
+        mountRetryCount.remove(pid)
         if (pidRecords.containsKey(packageName)) {
             rmdirPackages.add(packageName)
             ++rmdirQueueSize
@@ -258,7 +296,7 @@ class Mounter {
             .sortedByDescending { it.length }
         mkdirRecords.removeAll(packageName)
         dirs.forEach { dir ->
-            FileUtils.rm_dir(dir)
+            RuntimeFileUtils.rm_dir(dir)
         }
     }
 
@@ -282,6 +320,10 @@ class Mounter {
         mkdirRecords.values().toList()
     }
 
+    fun getTotalAttempts(): Int = totalAttempts.get()
+
+    fun getFailureCount(): Int = failureCount.get()
+
     fun onDestroy() {
         thread.quit()
     }
@@ -289,5 +331,11 @@ class Mounter {
     companion object {
         private const val VALIDATE_PID_DELAY_PER_PACKAGE: Long = 500L
         private const val VALIDATE_PID_DELAY_MAX: Long = 3000L
+
+        /** mount 失败重试最大次数 */
+        private const val MAX_MOUNT_RETRIES = 3
+
+        /** mount 失败重试延迟序列（毫秒）：2s → 5s → 15s */
+        private val RETRY_DELAYS_MS = longArrayOf(2000, 5000, 15000)
     }
 }

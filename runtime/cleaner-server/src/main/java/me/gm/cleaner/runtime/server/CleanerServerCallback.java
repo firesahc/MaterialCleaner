@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import api.SystemService;
+import me.gm.cleaner.core.common.RuntimeFileUtils;
 import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicyDeriver;
 import me.gm.cleaner.runtime.server.observer.ActivityManagerLogsObserver;
@@ -22,7 +23,6 @@ import me.gm.cleaner.runtime.server.observer.BaseProcessObserver;
 import me.gm.cleaner.runtime.server.observer.FileSystemObserver;
 import me.gm.cleaner.runtime.server.observer.ObserverManager;
 import me.gm.cleaner.server.ICleanerServerCallback;
-import me.gm.cleaner.util.FileUtils;
 
 public class CleanerServerCallback extends ICleanerServerCallback.Stub {
     private final CleanerServer mServer;
@@ -50,6 +50,25 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         ob.onEvent(timeMillis, packageName, path, flags);
     }
 
+    // ── 通知助手（隔离路径计算与 UI 广播的副作用） ──
+
+    /**
+     * 根据当前偏好设置决定是否发送 ACTION_MEDIA_NOT_FOUND 广播。
+     * 架构第十章：将 UI 广播从路径计算方法中分离到此通知层。
+     * 路径计算方法不得直接产生 UI 副作用，应委托本方法处理。
+     */
+    private void notifyMediaNotFound(final String packageName, final String path) {
+        mServer.broadcastIntent(broadcastIntent -> {
+            broadcastIntent
+                    .setAction(ServerConstants.ACTION_MEDIA_NOT_FOUND)
+                    .putExtra(Intent.EXTRA_PACKAGE_NAME,
+                            SystemService.getPackageInfoNoThrow(packageName, 0, 0))
+                    .putExtra(Intent.EXTRA_TEXT, path)
+                    .putExtra(Intent.EXTRA_STREAM,
+                            RuntimeFileUtils.INSTANCE.getPathAsUser(path, 0));
+        });
+    }
+
     // For insert
     @Override
     public String getMountedPath(final String packageName, String path, final int type) {
@@ -58,7 +77,7 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         } catch (final IOException e) {
             Log.w("MC_REDIRECT", "[ServerCallback] getCanonicalPath failed", e);
         }
-        final var userId = FileUtils.INSTANCE.extractUserIdFromPath(path, 0);
+        final var userId = RuntimeFileUtils.INSTANCE.extractUserIdFromPath(path, 0);
         final var policy = RuntimeRedirectPolicyFactory.INSTANCE.build(
                 Collections.singletonList(userId));
         final var mountedPath = RedirectPolicyDeriver.INSTANCE.getMountedPath(
@@ -66,22 +85,9 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         Log.i("MC_REDIRECT", "[ServerCallback] getMountedPath pkg=" + packageName
                 + " original=" + path + " mounted=" + mountedPath
                 + " policies=" + policy.getStorageRedirectRules().size() + " type=" + type);
-        if (!path.equals(mountedPath) &&
-                FileUtils.INSTANCE.isKnownAppDirPaths(mountedPath, packageName) &&
-                !policy.getDenylist().contains(packageName) &&
-                !new File(mountedPath).isDirectory()) {
-            final var finalPath = path;
-            mServer.broadcastIntent(broadcastIntent -> {
-                broadcastIntent
-                        .setAction(ServerConstants.ACTION_REDIRECTED_TO_INTERNAL)
-                        .putExtra(Intent.EXTRA_PACKAGE_NAME,
-                                SystemService.getPackageInfoNoThrow(packageName, 0, 0))
-                        .putExtra(Intent.EXTRA_TEXT, mountedPath)
-                        .setType(String.valueOf(type));
-                broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                        FileUtils.INSTANCE.getPathAsUser(finalPath, 0));
-            });
-        }
+        // 注意：UI 广播已从本方法移除。
+        // InsertHooker 侧通过 DataBus redirect_notice 事件通知 UI，
+        // 由 RedirectNoticeConsumer 消费后触发 showRedirectNotice。
         return mountedPath;
     }
 
@@ -94,7 +100,7 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         if (ServicePreferences.INSTANCE.getDenylist().contains(packageName)) {
             return false;
         }
-        final var userId = FileUtils.INSTANCE.extractUserIdFromPath(paths.get(0), 0);
+        final var userId = RuntimeFileUtils.INSTANCE.extractUserIdFromPath(paths.get(0), 0);
         final var policy = RuntimeRedirectPolicyFactory.INSTANCE.build(
                 Collections.singletonList(userId));
         for (final var path : paths) {
@@ -108,16 +114,7 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
                     mountedPathToPath.put(mountedPath, path);
                     new File(mountedPath).mkdirs();
                 } else if (ServicePreferences.INSTANCE.getAggressivelyPromptForReadingMediaFiles()) {
-                    mServer.broadcastIntent(broadcastIntent -> {
-                        broadcastIntent
-                                .setAction(ServerConstants.ACTION_MEDIA_NOT_FOUND)
-                                .putExtra(Intent.EXTRA_PACKAGE_NAME,
-                                        SystemService.getPackageInfoNoThrow(packageName, 0, 0))
-                                .putExtra(Intent.EXTRA_TEXT, path)
-                                .setType(Intent.EXTRA_SUBJECT);
-                        broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                                FileUtils.INSTANCE.getPathAsUser(path, 0));
-                    });
+                    notifyMediaNotFound(packageName, path);
                     return false;
                 } else {
                     return false;
@@ -137,20 +134,12 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
         if (path == null) {
             return false;
         }
-        if (FileUtils.INSTANCE.startsWith(FileUtils.INSTANCE.getAndroidDataDir(), path) &&
-                !FileUtils.INSTANCE.isKnownAppDirPaths(path, packageName)) {
+        if (RuntimeFileUtils.INSTANCE.startsWith(RuntimeFileUtils.INSTANCE.getAndroidDataDir(), path) &&
+                !RuntimeFileUtils.INSTANCE.isKnownAppDirPaths(path, packageName)) {
             return false;
         }
         if (!ServicePreferences.INSTANCE.getDenylist().contains(packageName)) {
-            mServer.broadcastIntent(broadcastIntent -> {
-                broadcastIntent
-                        .setAction(ServerConstants.ACTION_MEDIA_NOT_FOUND)
-                        .putExtra(Intent.EXTRA_PACKAGE_NAME,
-                                SystemService.getPackageInfoNoThrow(packageName, 0, 0))
-                        .putExtra(Intent.EXTRA_TEXT, path);
-                broadcastIntent.putExtra(Intent.EXTRA_STREAM,
-                        FileUtils.INSTANCE.getPathAsUser(path, 0));
-            });
+            notifyMediaNotFound(packageName, path);
         }
         return true;
     }
@@ -186,7 +175,7 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
             return;
         }
         final var parent = new File(dir).getParent();
-        if (FileUtils.INSTANCE.rm_dir(dir) == 0) {
+        if (RuntimeFileUtils.INSTANCE.rm_dir(dir) == 0) {
             rmdirRecursively(parent, exceptions);
         }
     }

@@ -1,6 +1,6 @@
 package me.gm.cleaner.runtime.server.observer;
 
-import static me.gm.cleaner.AndroidFilesystemConfig.AID_APP_START;
+import static me.gm.cleaner.core.common.AndroidFilesystemConfig.AID_APP_START;
 
 import android.content.pm.ComponentInfo;
 import android.content.pm.PackageManager;
@@ -13,9 +13,9 @@ import java.util.List;
 import java.util.Map;
 
 import api.SystemService;
-import me.gm.cleaner.AndroidFilesystemConfig;
+import me.gm.cleaner.core.common.AndroidFilesystemConfig;
+import me.gm.cleaner.core.common.RuntimeFileUtils;
 import me.gm.cleaner.core.config.ServicePreferences;
-import me.gm.cleaner.util.FileUtils;
 
 public class PackageInfoMapper {
     private static volatile SparseArray<String> sUidToSrPackageNames;
@@ -54,7 +54,7 @@ public class PackageInfoMapper {
                         final var uid = pi.applicationInfo.uid;
                         final var packageName = pi.packageName;
                         final var processNames = getProcessNames(packageName, userId);
-                        if (FileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
+                        if (RuntimeFileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
                             // As for user apps, we use uid to figure out its packageName.
                             // But if the app enabled sharedUserId, we use processName.
                             if (TextUtils.isEmpty(pi.sharedUserId)) {
@@ -98,7 +98,7 @@ public class PackageInfoMapper {
 
     public static String getSrPackageName(int uid, String processName) {
         ensurePackageInfoMaps();
-        if (FileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
+        if (RuntimeFileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
             final var processNameToPackageName = sSharedUserIdEnabledUidToProcessNamesToPackageName.get(uid);
             if (processNameToPackageName == null) {
                 // user app
@@ -128,7 +128,7 @@ public class PackageInfoMapper {
         ensurePackageInfoMaps();
         final var srPackageName = getSrPackageName(uid, processName);
         if (srPackageName != null) return srPackageName;
-        if (FileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
+        if (RuntimeFileUtils.INSTANCE.toAppId(uid) >= AID_APP_START) {
             final var processNameToPackageName = sSharedUserIdEnabledUidToProcessNamesToPackageName.get(uid);
             if (processNameToPackageName == null) {
                 // user app

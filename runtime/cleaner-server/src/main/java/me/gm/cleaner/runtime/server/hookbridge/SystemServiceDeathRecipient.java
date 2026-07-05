@@ -1,4 +1,4 @@
-package me.gm.cleaner.client;
+package me.gm.cleaner.runtime.server.hookbridge;
 
 import android.os.IBinder;
 import android.os.ServiceManager;
@@ -36,6 +36,11 @@ public class SystemServiceDeathRecipient implements IBinder.DeathRecipient {
         } catch (Throwable e) {
             Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "Failed to clear ServiceManager cache", e);
         }
-        binder.unlinkToDeath(this, 0);
+        try {
+            binder.unlinkToDeath(this, 0);
+        } catch (RuntimeException e) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "Failed to unlink death recipient", e);
+        }
     }
 }
+

@@ -4,7 +4,7 @@ import android.app.ActivityManager
 import androidx.annotation.CallSuper
 import api.SystemService
 import me.gm.cleaner.core.config.ServicePreferences
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import java.util.concurrent.CopyOnWriteArraySet
 
 abstract class BaseProcessObserver : BaseObserver() {
@@ -62,6 +62,10 @@ abstract class BaseProcessObserver : BaseObserver() {
     fun getMountFailedPids(): Set<Int> = mounter.getMountFailedPids()
 
     fun getMountedPackages(): Set<String> = mounter.getMountedPackages()
+
+    fun getTotalMountAttempts(): Int = mounter.getTotalAttempts()
+
+    fun getMountFailureCount(): Int = mounter.getFailureCount()
 
     fun getMountedDirs(): List<String> = mounter.getMountedDirs()
 

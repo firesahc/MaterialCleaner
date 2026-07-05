@@ -25,6 +25,8 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 import api.SystemService;
+import me.gm.cleaner.core.common.RuntimeFileUtils;
+import me.gm.cleaner.core.common.RuntimeLibUtils;
 import me.gm.cleaner.core.config.SecurityHelper;
 import me.gm.cleaner.runtime.server.BuildConfig;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
@@ -33,8 +35,6 @@ import me.gm.cleaner.runtime.server.observer.BaseProcessObserver;
 import me.gm.cleaner.runtime.server.observer.ObserverManager;
 import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate;
 import me.gm.cleaner.runtime.server.observer.StorageMountObserver;
-import me.gm.cleaner.util.FileUtils;
-import me.gm.cleaner.util.LibUtils;
 
 public class CleanerServer extends ContextWrapper {
     public final Handler handler = new Handler(Looper.getMainLooper());
@@ -92,7 +92,7 @@ public class CleanerServer extends ContextWrapper {
             throw new RuntimeException("Failed to getPackageInfo");
         }
         attachBaseContext(createPackageContext(ServerConstants.APPLICATION_ID));
-        LibUtils.loadLibrary(LibUtils.getLibSourceDir(packageInfo.applicationInfo), "cleaner");
+        RuntimeLibUtils.loadLibrary(RuntimeLibUtils.getLibSourceDir(packageInfo.applicationInfo), "cleaner");
         SecurityHelper.INSTANCE.warmUpJcaProviders();
         final var dpsContext = new ContextWrapper(createDeviceProtectedStorageContext()) {
             @Override
@@ -123,7 +123,7 @@ public class CleanerServer extends ContextWrapper {
                                  final boolean isJustMounted) {
         // these things should be done as soon as possible
         if (isPrimary) {
-            FileUtils.INSTANCE.setExternalStorageDir(new File(vol.path, String.valueOf(0)));
+            RuntimeFileUtils.INSTANCE.setExternalStorageDir(new File(vol.path, String.valueOf(0)));
         }
         final var observer = ObserverManager.INSTANCE.getObserver(BaseProcessObserver.class);
         if (observer != null) {
@@ -147,9 +147,9 @@ public class CleanerServer extends ContextWrapper {
                         for (final var packageName : ServicePreferences.INSTANCE.getSrPackages()) {
                             final var ai = SystemService.getApplicationInfoNoThrow(packageName, 0, userId);
                             if (ai != null) {
-                                FileUtils.INSTANCE.switch_owner(
-                                        FileUtils.INSTANCE.getPathAsUser(
-                                                FileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
+                                RuntimeFileUtils.INSTANCE.switch_owner(
+                                        RuntimeFileUtils.INSTANCE.getPathAsUser(
+                                                RuntimeFileUtils.INSTANCE.buildExternalStorageAppDataDirs(ai.packageName).getPath(),
                                                 userId
                                         ),
                                         ai.uid,
@@ -208,7 +208,7 @@ public class CleanerServer extends ContextWrapper {
             intent.putExtra(Intent.EXTRA_TEXT, mountedPath);
             intent.setType(String.valueOf(reason));
             intent.putExtra(Intent.EXTRA_STREAM,
-                    FileUtils.INSTANCE.getPathAsUser(finalPath, 0));
+                    RuntimeFileUtils.INSTANCE.getPathAsUser(finalPath, 0));
         });
     }
 

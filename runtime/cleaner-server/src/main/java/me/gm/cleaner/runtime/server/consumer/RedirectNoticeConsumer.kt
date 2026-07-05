@@ -65,6 +65,12 @@ object RedirectNoticeConsumer {
                     continue
                 }
 
+                // 如果 mountedPath 已作为目录存在，跳过提示（文件已可访问）
+                if (mountedPath.isNotEmpty() && java.io.File(mountedPath).isDirectory) {
+                    skipped++
+                    continue
+                }
+
                 // denylist 检查
                 if (ServicePreferences.denylist.contains(packageName)) {
                     skipped++

@@ -22,11 +22,11 @@ android {
 
 dependencies {
     implementation project(':core:ipc-contract')
+    implementation project(':core:common')
     implementation project(':core:config-store')
     implementation project(':core:storage-redirect-domain')
     implementation project(':core:storage-redirect-databus')
     implementation project(':platform:hidden-api')
-    implementation project(':shared')
     compileOnly files('../../app/libs/api-82.jar')
 
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
