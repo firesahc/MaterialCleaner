@@ -11,7 +11,7 @@
 #endif
 
 jint JNI_OnLoad_Extra(JNIEnv *env, jclass clazz) {
-    if ((clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/util/FileUtils"))) == nullptr) { // "me/gm/cleaner/util/FileUtils"
+    if ((clazz = env->FindClass(AY_OBFUSCATE("me/gm/cleaner/core/common/RuntimeFileUtils"))) == nullptr) { // "me/gm/cleaner/core/common/RuntimeFileUtils"
         return JNI_ERR;
     }
     auto a = AY_OBFUSCATE("a"); // "a" - short method name

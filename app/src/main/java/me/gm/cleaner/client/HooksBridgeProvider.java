@@ -13,9 +13,6 @@ import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.List;
-import java.util.Map;
-
 import me.gm.cleaner.server.ICleanerHooksService;
 import me.gm.cleaner.server.ICleanerServerCallback;
 import me.gm.cleaner.server.IMediaProviderHooksService;
@@ -29,7 +26,7 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
  *
  * <p>The Xposed side registers its {@link IMediaProviderHooksService} binder via
  * {@code register_hooks_callback}. The Server side receives an {@link ICleanerHooksService}
- * proxy that forwards relevant sync methods (setReadOnlyPaths, setMountPoint, etc.) to
+ * proxy that forwards relevant sync methods (setCleanerServerBinder, refreshPolicyFromDataBus, etc.) to
  * the registered Xposed service.</p>
  *
  * <p>Authority: {@code me.gm.cleaner.hooks_bridge}</p>
@@ -47,9 +44,53 @@ public class HooksBridgeProvider extends ContentProvider {
 
     /** 查询 Xposed 模块是否已注册到 HooksBridge */
     public static boolean isMediaProviderConnected() {
-        return sMediaProviderService != null;
+        return getAliveMediaProviderService() != null;
     }
 
+    @Nullable
+    private static IMediaProviderHooksService getAliveMediaProviderService() {
+        IMediaProviderHooksService service = sMediaProviderService;
+        if (service == null) {
+            return null;
+        }
+        if (service.asBinder().pingBinder()) {
+            return service;
+        }
+        markMediaProviderDisconnected(service, "pingBinder returned false");
+        return null;
+    }
+
+    @GuardedBy("sMediaProviderLock")
+    private static void unlinkXposedDeathRecipientLocked(@Nullable IMediaProviderHooksService service) {
+        if (service == null || sXposedDeathRecipient == null) {
+            return;
+        }
+        try {
+            service.asBinder().unlinkToDeath(sXposedDeathRecipient, 0);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Failed to unlink DeathRecipient from Xposed binder", e);
+        }
+    }
+
+    private static void markMediaProviderDisconnected(
+            @Nullable IMediaProviderHooksService expectedService,
+            @NonNull String reason
+    ) {
+        boolean changed = false;
+        synchronized (sMediaProviderLock) {
+            if (expectedService == null || sMediaProviderService == expectedService) {
+                unlinkXposedDeathRecipientLocked(sMediaProviderService);
+                sMediaProviderService = null;
+                sXposedDeathRecipient = null;
+                changed = true;
+            }
+        }
+        if (changed) {
+            Log.w(TAG, "Xposed/MediaProvider binder disconnected: " + reason);
+            XposedConnectionState.INSTANCE.onDisconnected();
+            ServerStateMachine.INSTANCE.onXposedConnected(false);
+        }
+    }
 
     /** Server-side callback registered from root process. */
     private static volatile ICleanerServerCallback sServerCallback;
@@ -67,7 +108,7 @@ public class HooksBridgeProvider extends ContentProvider {
             sServerCallback = callback;
             sNeedsServerCallbackForward = true;
             // Forward to Xposed if registered
-            IMediaProviderHooksService xposed = sMediaProviderService;
+            IMediaProviderHooksService xposed = getAliveMediaProviderService();
             Log.i("MC_REDIRECT", "[HooksBridge] setCleanerServerBinder: sMediaProviderService=" + (xposed != null));
             if (xposed != null) {
                 try {
@@ -76,6 +117,7 @@ public class HooksBridgeProvider extends ContentProvider {
                     Log.i("MC_REDIRECT", "[HooksBridge] Forwarded setCleanerServerBinder to Xposed");
                 } catch (RemoteException e) {
                     Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
+                    markMediaProviderDisconnected(xposed, "forward setCleanerServerBinder failed");
                 }
             } else {
                 Log.w("MC_REDIRECT", "[HooksBridge] sMediaProviderService is null, will forward when Xposed connects");
@@ -84,27 +126,42 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public void setMediaProviderBinder(IMediaProviderHooksService service) {
+            if (service == null) {
+                markMediaProviderDisconnected(null, "null binder registered");
+                return;
+            }
+            boolean connected = false;
+            boolean linkFailed = false;
             synchronized (sMediaProviderLock) {
                 // 取消旧 DeathRecipient（无论 Binder 是否相同，防止堆积）
                 IMediaProviderHooksService old = sMediaProviderService;
-                if (old != null && sXposedDeathRecipient != null) {
-                    old.asBinder().unlinkToDeath(sXposedDeathRecipient, 0);
-                }
+                unlinkXposedDeathRecipientLocked(old);
                 // 注册新 DeathRecipient
                 sMediaProviderService = service;
+                final IMediaProviderHooksService registeredService = service;
                 sXposedDeathRecipient = () -> {
-                    Log.w(TAG, "Xposed/MediaProvider binder died");
-                    XposedConnectionState.INSTANCE.onDisconnected();
-                    ServerStateMachine.INSTANCE.onXposedConnected(false);
-                    synchronized (sMediaProviderLock) {
-                        sMediaProviderService = null;
-                    }
+                    markMediaProviderDisconnected(registeredService, "binderDied");
                 };
                 try {
                     service.asBinder().linkToDeath(sXposedDeathRecipient, 0);
                 } catch (RemoteException e) {
                     Log.e(TAG, "Failed to link DeathRecipient to Xposed binder", e);
+                    sMediaProviderService = null;
+                    sXposedDeathRecipient = null;
+                    linkFailed = true;
+                } catch (RuntimeException e) {
+                    Log.e(TAG, "Failed to link DeathRecipient to Xposed binder", e);
+                    sMediaProviderService = null;
+                    sXposedDeathRecipient = null;
+                    linkFailed = true;
                 }
+                connected = !linkFailed;
+            }
+            if (linkFailed) {
+                markMediaProviderDisconnected(null, "linkToDeath failed during registration");
+                return;
+            }
+            if (connected) {
                 XposedConnectionState.INSTANCE.onConnected();
                 ServerStateMachine.INSTANCE.onXposedConnected(true);
             }
@@ -119,6 +176,7 @@ public class HooksBridgeProvider extends ContentProvider {
                     Log.i("MC_REDIRECT", "[HooksBridge] Forwarded setCleanerServerBinder to new Xposed instance");
                 } catch (RemoteException e) {
                     Log.w(TAG, "Failed to forward setCleanerServerBinder to Xposed", e);
+                    markMediaProviderDisconnected(service, "forward callback to new Xposed instance failed");
                 }
             } else if (sNeedsServerCallbackForward) {
                 // Server callback was set in a previous app instance but lost on restart.
@@ -134,39 +192,30 @@ public class HooksBridgeProvider extends ContentProvider {
         }
 
         @Override
-        public void setReadOnlyPaths(Map<String, List> paths) {
-            IMediaProviderHooksService xposed = sMediaProviderService;
+        public void refreshPolicyFromDataBus() {
+            IMediaProviderHooksService xposed = getAliveMediaProviderService();
             if (xposed != null) {
                 try {
-                    xposed.setReadOnlyPaths(paths);
+                    xposed.refreshPolicyFromDataBus();
                 } catch (RemoteException e) {
-                    Log.w(TAG, "Failed to forward setReadOnlyPaths to Xposed", e);
+                    Log.w(TAG, "Failed to forward refreshPolicyFromDataBus to Xposed", e);
+                    markMediaProviderDisconnected(xposed, "forward refreshPolicyFromDataBus failed");
                 }
             }
         }
 
         @Override
-        public void setMountPoint(List<String> value) {
-            IMediaProviderHooksService xposed = sMediaProviderService;
+        public long getNativeMountPointsGeneration() {
+            IMediaProviderHooksService xposed = getAliveMediaProviderService();
             if (xposed != null) {
                 try {
-                    xposed.setMountPoint(value);
+                    return xposed.getNativeMountPointsGeneration();
                 } catch (RemoteException e) {
-                    Log.w(TAG, "Failed to forward setMountPoint to Xposed", e);
+                    Log.w(TAG, "Failed to forward getNativeMountPointsGeneration to Xposed", e);
+                    markMediaProviderDisconnected(xposed, "forward getNativeMountPointsGeneration failed");
                 }
             }
-        }
-
-        @Override
-        public void setRecordExternalAppSpecificStorage(boolean value) {
-            IMediaProviderHooksService xposed = sMediaProviderService;
-            if (xposed != null) {
-                try {
-                    xposed.setRecordExternalAppSpecificStorage(value);
-                } catch (RemoteException e) {
-                    Log.w(TAG, "Failed to forward setRecordExternalAppSpecificStorage to Xposed", e);
-                }
-            }
+            return 0L;
         }
     };
 
