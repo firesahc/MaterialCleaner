@@ -15,5 +15,6 @@ data class ConfiguredMountPointsSnapshot(
     val schemaVersion: Int = 1,
     val generation: Long = 0L,
     val createdAt: Long = 0L,
+    val publisher: String = "",
     val points: List<String> = emptyList(),
 )

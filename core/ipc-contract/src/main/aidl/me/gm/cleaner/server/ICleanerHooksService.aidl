@@ -9,9 +9,7 @@ interface ICleanerHooksService {
 
     void setMediaProviderBinder(in IMediaProviderHooksService iinterface) = 2;
 
-    void setReadOnlyPaths(in Map<String, List> packageNameToReadOnlyPaths) = 30;
+    void refreshPolicyFromDataBus() = 33;
 
-    void setMountPoint(in List<String> value) = 31;
-
-    void setRecordExternalAppSpecificStorage(boolean value) = 32;
+    long getNativeMountPointsGeneration() = 34;
 }

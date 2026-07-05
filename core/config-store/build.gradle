@@ -19,7 +19,6 @@ android {
 }
 
 dependencies {
-    implementation project(':shared')
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
     implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"

@@ -24,6 +24,7 @@ data class RedirectPolicySnapshot(
     val schemaVersion: Int = 1,
     val generation: Long = 0L,
     val createdAt: Long = 0L,
+    val publisher: String = "",
     val storageRedirectRules: Map<String, Map<Int, List<RedirectRule>>> = emptyMap(),
     val readOnlyRules: Map<String, List<String>> = emptyMap(),
     val denylist: Set<String> = emptySet(),

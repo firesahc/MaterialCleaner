@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicLong
  *     redirect_policy_changed
  *     read_only_changed
  *     configured_mount_points_changed
+ *     platform_capabilities_changed
+ *     filesystem_events_changed
  *   events/
  *     filesystem/     ← MediaProvider 进程写入，server 进程读取
  *     redirect_notice/ ← MediaProvider 进程写入，server 进程读取
@@ -62,11 +64,15 @@ object DataBus {
     const val SNAPSHOT_REDIRECT_POLICY = "redirect_policy.json"
     const val SNAPSHOT_READ_ONLY = "read_only.json"
     const val SNAPSHOT_CONFIGURED_MOUNT_POINTS = "configured_mount_points.json"
+    const val SNAPSHOT_PLATFORM_CAPABILITIES = "platform_capabilities.json"
+    const val SNAPSHOT_ORCHESTRATED_STATUS = "orchestrated_status.json"
 
     // ── 信号文件名 ──
     const val SIGNAL_REDIRECT_POLICY_CHANGED = "redirect_policy_changed"
     const val SIGNAL_READ_ONLY_CHANGED = "read_only_changed"
     const val SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED = "configured_mount_points_changed"
+    const val SIGNAL_PLATFORM_CAPABILITIES_CHANGED = "platform_capabilities_changed"
+    const val SIGNAL_FILESYSTEM_EVENTS_CHANGED = "filesystem_events_changed"
 
     // ── 事件子目录 ──
     const val EVENT_FILESYSTEM = "filesystem"
@@ -93,6 +99,7 @@ object DataBus {
                 "$BUS_ROOT/$DIR_SIGNALS",
                 "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
                 "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
+                "$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED",
                 "$BUS_ROOT/$DIR_CURSORS",
                 "$BUS_ROOT/$DIR_TMP",
             )
@@ -125,7 +132,9 @@ object DataBus {
 
     fun writeSnapshot(name: String, content: String): Boolean {
         val targetFile = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
-        val tmpFile = File("$BUS_ROOT/$DIR_TMP/$name.tmp")
+        val pid = Process.myPid()
+        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
+        val tmpFile = File("$BUS_ROOT/$DIR_TMP/$name-$pid-$rand.tmp")
 
         return try {
             FileOutputStream(tmpFile).use { fos ->
@@ -134,10 +143,11 @@ object DataBus {
                 fos.fd.sync()
             }
             if (!tmpFile.renameTo(targetFile)) {
-                Log.w(TAG, "rename failed for $name, fallback to copy")
-                targetFile.delete()
-                tmpFile.copyTo(targetFile, overwrite = true)
+                // tmpfs 上 rename 永远在同一文件系统内，失败概率极低；
+                // 放弃 fallback copy 以避免非原子覆盖的数据丢失窗口。
+                Log.e(TAG, "rename failed for $name on tmpfs, deleting tmp")
                 tmpFile.delete()
+                return false
             }
             // 确保 MediaProvider 进程可读取
             targetFile.setReadable(true, false)
@@ -154,6 +164,42 @@ object DataBus {
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         return try {
             if (!file.exists()) null else file.readText(Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read snapshot: $name", e)
+            null
+        }
+    }
+
+    /**
+     * 读取快照并验证 JSON 有效性。
+     *
+     * 如果快照损坏（不是有效 JSON），将文件隔离为 .corrupted 后缀
+     * 以避免重复读取失败，并返回 null。
+     * 隔离而非删除——保留损坏文件供人工审查。
+     *
+     * 此方法与 [readSnapshot] 的区别在于增加了 JSON 格式验证和损坏隔离。
+     * 消费者按需选择使用：
+     * - 健康检查/诊断路径 → [readSnapshotSafe]（本方法）
+     * - 热路径且自身有 JSON 解析保护的 → [readSnapshot]
+     */
+    fun readSnapshotSafe(name: String): String? {
+        val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
+        return try {
+            if (!file.exists()) return null
+            val content = file.readText(Charsets.UTF_8)
+            // 验证 JSON 格式有效性
+            org.json.JSONObject(content)
+            content
+        } catch (e: org.json.JSONException) {
+            Log.e(TAG, "Corrupted snapshot detected: $name, quarantining")
+            try {
+                val corruptedName = "${name}.corrupted.${System.currentTimeMillis()}"
+                file.renameTo(File(file.parentFile, corruptedName))
+            } catch (e2: Exception) {
+                Log.w(TAG, "Failed to quarantine corrupted snapshot $name", e2)
+                file.delete()
+            }
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read snapshot: $name", e)
             null
@@ -289,9 +335,11 @@ object DataBus {
                 fos.fd.sync()
             }
             if (!tmpFile.renameTo(cursorFile)) {
-                cursorFile.delete()
-                tmpFile.copyTo(cursorFile, overwrite = true)
+                // tmpfs 上 rename 永远在同一文件系统内，失败概率极低；
+                // 放弃 fallback copy 以避免非原子覆盖的数据丢失窗口。
+                Log.e(TAG, "rename failed for cursor: $queue, deleting tmp")
                 tmpFile.delete()
+                return false
             }
             true
         } catch (e: Exception) {

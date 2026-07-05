@@ -7,17 +7,18 @@ import androidx.core.content.edit
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.preference.PreferenceManager
-import me.gm.cleaner.SharedConstants
-import me.gm.cleaner.util.FileUtils
-import me.gm.cleaner.util.toList
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.util.regex.Pattern
 
 // Preference key constants (values match existing R.string values to preserve user data)
+private const val PREF_STORAGE_REDIRECT = "storage_redirect"
+private const val READ_ONLY = "read_only"
+private const val DENY_LIST_KEY = "deny_list"
 private const val SORT_BY_KEY = "sort_by"
 private const val MENU_RULE_COUNT_KEY = "rule_count"
 private const val MENU_MOUNT_STATE_KEY = "mount_state"
@@ -58,9 +59,9 @@ object ServicePreferences {
     // @Server
     fun init(context: Context) {
         preferences = PreferenceManager.getDefaultSharedPreferences(context)
-        storageRedirectFile = context.filesDir.resolve(SharedConstants.PREF_STORAGE_REDIRECT)
-        readOnlyFile = context.filesDir.resolve(SharedConstants.READ_ONLY)
-        denylistFile = context.filesDir.resolve(SharedConstants.DENY_LIST_KEY)
+        storageRedirectFile = context.filesDir.resolve(PREF_STORAGE_REDIRECT)
+        readOnlyFile = context.filesDir.resolve(READ_ONLY)
+        denylistFile = context.filesDir.resolve(DENY_LIST_KEY)
         readStorageRedirect()
     }
 
@@ -279,7 +280,7 @@ object ServicePreferences {
     private fun getPathAsUserQuickly(path: String, userId: Int): String = if (userId == 0) {
         path
     } else {
-        FileUtils.getPathAsUser(path, userId)
+        getPathAsUser(path, userId)
     }
 
     // READ ONLY
@@ -437,4 +438,33 @@ object ServicePreferences {
     // @Server
     val upsert: Boolean
         get() = preferences.getBoolean(UPSERT_KEY, true)
+}
+
+private val APP_DATA_DIR_PATHS: Pattern by lazy {
+    Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/)?([^/]+)?(/.*)?")
+}
+
+private fun getPathAsUser(path: String, userId: Int): String {
+    val matcher = APP_DATA_DIR_PATHS.matcher(path)
+    if (!matcher.matches()) {
+        return path
+    }
+    val builder = StringBuilder()
+    for (i in 1..matcher.groupCount()) {
+        val group = matcher.group(i) ?: continue
+        if (group.all { it.isDigit() }) {
+            builder.append(userId)
+        } else {
+            builder.append(group)
+        }
+    }
+    return builder.toString()
+}
+
+private fun JSONArray.toList(): ArrayList<String> {
+    val list = ArrayList<String>(length())
+    for (i in 0 until length()) {
+        list.add(getString(i))
+    }
+    return list
 }
