@@ -9,6 +9,7 @@ include ':app', ':shared'
 
 // ── 计划 11 新模块（渐进迁移中）──
 include ':core:ipc-contract'
+include ':core:common'
 include ':core:storage-redirect-domain'
 include ':core:storage-redirect-databus'
 include ':core:config-store'
