@@ -70,7 +70,7 @@ final class QuerySessionCache {
         }
 
         if (shouldSignalLeases) {
-            DataBus.INSTANCE.signal(DataBus.SIGNAL_QUERY_SESSION_LEASES_CHANGED);
+            HookDataBusBridge.INSTANCE.signal(DataBus.SIGNAL_QUERY_SESSION_LEASES_CHANGED);
         }
     }
 
@@ -129,7 +129,7 @@ final class QuerySessionCache {
             event.put("originalPath", entry.originalPath);
             event.put("mountedPath", entry.mountedPath);
             event.put("sourceLayer", "MEDIA_PROVIDER_QUERY_SESSION");
-            return DataBus.INSTANCE.writeLease(
+            return HookDataBusBridge.INSTANCE.writeLease(
                     DataBus.LEASE_QUERY_SESSIONS,
                     leaseKey(entry),
                     event.toString()
@@ -170,9 +170,10 @@ final class QuerySessionCache {
             event.put("mountedPath", originalPath);
             event.put("type", "QUERY");
             event.put("reason", aggressive ? "MEDIA_NOT_FOUND_AGGRESSIVE" : "MEDIA_NOT_FOUND");
-            final var seq = DataBus.INSTANCE.writeEvent(DataBus.EVENT_REDIRECT_NOTICE, event.toString());
+            final var seq = HookDataBusBridge.INSTANCE.writeEvent(
+                    DataBus.EVENT_REDIRECT_NOTICE, event.toString());
             if (seq >= 0) {
-                DataBus.INSTANCE.signal(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
+                HookDataBusBridge.INSTANCE.signal(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
             }
         } catch (Exception e) {
             Log.e(TAG, "emitMediaNotFound failed", e);

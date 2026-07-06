@@ -86,10 +86,9 @@ object NativeHookStatus {
 
     fun publishSnapshot() {
         runCatching {
-            if (!DataBus.ensureInitialized()) return
             val json = toJson(mountPointsGeneration)
-            if (DataBus.writeSnapshot(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS, json)) {
-                DataBus.signal(DataBus.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)
+            if (HookDataBusBridge.writeSnapshot(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS, json)) {
+                HookDataBusBridge.signal(DataBus.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)
             }
         }.onFailure {
             Log.w(TAG, "publishSnapshot failed", it)

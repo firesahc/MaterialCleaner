@@ -324,9 +324,9 @@ public class FuseJavaGate {
             event.put("path", path);
             event.put("flags", flags);
             event.put("sourceLayer", "FUSE_JAVA_GATE");
-            DataBus.INSTANCE.writeEvent(DataBus.EVENT_FILESYSTEM, event.toString());
+            HookDataBusBridge.INSTANCE.writeEvent(DataBus.EVENT_FILESYSTEM, event.toString());
             // 数据面契约 6.4: 写事件后发 signal，消除消费者端 2s 轮询延迟
-            DataBus.INSTANCE.signal(DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED);
+            HookDataBusBridge.INSTANCE.signal(DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED);
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[FuseJavaGate] DataBus write failed", e);
         }

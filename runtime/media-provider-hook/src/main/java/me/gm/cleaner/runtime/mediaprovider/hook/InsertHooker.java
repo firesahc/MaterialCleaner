@@ -261,9 +261,10 @@ public class InsertHooker extends XC_MethodHook {
             event.put("mountedPath", mountedPath);
             event.put("type", type);
             event.put("reason", "REDIRECTED_TO_INTERNAL");
-            final var seq = DataBus.INSTANCE.writeEvent(DataBus.EVENT_REDIRECT_NOTICE, event.toString());
+            final var seq = HookDataBusBridge.INSTANCE.writeEvent(
+                    DataBus.EVENT_REDIRECT_NOTICE, event.toString());
             if (seq >= 0) {
-                DataBus.INSTANCE.signal(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
+                HookDataBusBridge.INSTANCE.signal(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
             }
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[InsertHooker] DataBus write failed", e);

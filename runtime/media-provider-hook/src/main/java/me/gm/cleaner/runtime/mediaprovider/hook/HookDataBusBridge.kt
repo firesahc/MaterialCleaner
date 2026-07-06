@@ -51,4 +51,61 @@ object HookDataBusBridge {
         }
         return DataBus.getSignalTimestamp(name)
     }
+
+    fun writeEvent(queue: String, content: String): Long {
+        val remote = callback
+        if (remote != null) {
+            try {
+                val seq = remote.writeDataBusEvent(queue, content)
+                if (seq >= 0L) return seq
+            } catch (e: RemoteException) {
+                Log.w(TAG, "writeEvent via server failed: $queue", e)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "writeEvent via server failed: $queue", e)
+            }
+        }
+        return DataBus.writeEvent(queue, content)
+    }
+
+    fun writeLease(category: String, key: String, content: String): Boolean {
+        val remote = callback
+        if (remote != null) {
+            try {
+                if (remote.writeDataBusLease(category, key, content)) return true
+            } catch (e: RemoteException) {
+                Log.w(TAG, "writeLease via server failed: $category/$key", e)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "writeLease via server failed: $category/$key", e)
+            }
+        }
+        return DataBus.writeLease(category, key, content)
+    }
+
+    fun writeSnapshot(name: String, content: String): Boolean {
+        val remote = callback
+        if (remote != null) {
+            try {
+                if (remote.writeDataBusSnapshot(name, content)) return true
+            } catch (e: RemoteException) {
+                Log.w(TAG, "writeSnapshot via server failed: $name", e)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "writeSnapshot via server failed: $name", e)
+            }
+        }
+        return DataBus.ensureInitialized() && DataBus.writeSnapshot(name, content)
+    }
+
+    fun signal(name: String): Boolean {
+        val remote = callback
+        if (remote != null) {
+            try {
+                if (remote.signalDataBus(name)) return true
+            } catch (e: RemoteException) {
+                Log.w(TAG, "signal via server failed: $name", e)
+            } catch (e: RuntimeException) {
+                Log.w(TAG, "signal via server failed: $name", e)
+            }
+        }
+        return DataBus.signal(name)
+    }
 }
