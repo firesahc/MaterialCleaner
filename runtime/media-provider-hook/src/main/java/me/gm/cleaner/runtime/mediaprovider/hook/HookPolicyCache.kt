@@ -88,6 +88,10 @@ object HookPolicyCache {
     val isFuseBpfEnabledFromCache: Boolean get() = cachedIsFuseBpfEnabled
     /** 缓存的 FUSE 可用性，供 MediaProvider Hook 使用 */
     val fuseAvailableFromCache: Boolean get() = cachedFuseAvailable
+    /** 是否已经成功加载 platform_capabilities 快照 */
+    val platformCapabilitiesLoaded: Boolean get() = capabilitiesGeneration > 0
+    /** 缓存的 SDK 版本，仅用于诊断日志 */
+    val sdkVersionIntFromCache: Int get() = cachedSdkVersionInt
 
     // ── 偏好标记 ──
     @Volatile
