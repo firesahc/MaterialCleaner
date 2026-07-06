@@ -11,6 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.regex.Pattern
@@ -72,6 +73,30 @@ object ServicePreferences {
         broadcasting = true
         _preferencesChangeLiveData.postValue(preferences)
         broadcasting = false
+    }
+
+    private fun writeUtf8Atomically(file: File, content: String) {
+        val parent = file.parentFile
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs()
+        }
+        val tmpFile = File(parent, "${file.name}.${System.nanoTime()}.tmp")
+        try {
+            FileOutputStream(tmpFile).use { fos ->
+                fos.write(content.toByteArray(Charsets.UTF_8))
+                fos.flush()
+                fos.fd.sync()
+            }
+            if (!tmpFile.renameTo(file)) {
+                throw IOException("rename failed: ${tmpFile.path} -> ${file.path}")
+            }
+        } catch (e: IOException) {
+            tmpFile.delete()
+            throw e
+        } catch (e: RuntimeException) {
+            tmpFile.delete()
+            throw e
+        }
     }
 
     // APP LIST CONFIG
@@ -249,9 +274,7 @@ object ServicePreferences {
             return
         }
         try {
-            storageRedirectFile.createNewFile()
-            val bb = ByteBuffer.wrap(json.toString().toByteArray())
-            storageRedirectFile.outputStream().use { it.channel.write(bb) }
+            writeUtf8Atomically(storageRedirectFile, json.toString())
             notifyListeners()
         } catch (e: IOException) {
             Log.e(TAG, "Failed to write storage redirect", e)
@@ -340,9 +363,7 @@ object ServicePreferences {
     private fun writeReadOnly(json: JSONObject) {
         readOnlyCache = json
         try {
-            readOnlyFile.createNewFile()
-            val bb = ByteBuffer.wrap(json.toString().toByteArray())
-            readOnlyFile.outputStream().use { it.channel.write(bb) }
+            writeUtf8Atomically(readOnlyFile, json.toString())
             notifyListeners()
         } catch (e: IOException) {
             Log.e(TAG, "Failed to write read-only config", e)
@@ -405,9 +426,7 @@ object ServicePreferences {
         set(value) {
             try {
                 denylistCache = value
-                denylistFile.createNewFile()
-                val bb = ByteBuffer.wrap(value.joinToString("\n").toByteArray())
-                denylistFile.outputStream().use { it.channel.write(bb) }
+                writeUtf8Atomically(denylistFile, value.joinToString("\n"))
             } catch (e: IOException) {
                 Log.e(TAG, "Failed to write denylist", e)
             }
