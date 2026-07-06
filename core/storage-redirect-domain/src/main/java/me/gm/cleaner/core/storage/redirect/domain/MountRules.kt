@@ -72,7 +72,7 @@ class MountRules {
 
     private fun getMountedPath(ruleZipped: List<Pair<String, String>>, path: String): String {
         val fileSystemLastMatch = ruleZipped.indexOfLast { (_, target) ->
-            startsWithPath(target, path)
+            startsWithPath(path, target)
         }
         if (fileSystemLastMatch == -1) {
             return path
@@ -80,7 +80,7 @@ class MountRules {
 
         var mountedPath = path
         ruleZipped.subList(fileSystemLastMatch, ruleZipped.size).forEach { (source, target) ->
-            if (startsWithPath(target, mountedPath)) {
+            if (startsWithPath(mountedPath, target)) {
                 mountedPath = source + mountedPath.substring(target.length)
             }
         }
