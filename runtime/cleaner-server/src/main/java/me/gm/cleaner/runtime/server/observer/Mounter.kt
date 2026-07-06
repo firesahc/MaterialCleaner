@@ -12,16 +12,10 @@ import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
-import me.gm.cleaner.core.common.RuntimeSystemProperties
-import me.gm.cleaner.core.config.ServicePreferences
-import me.gm.cleaner.core.config.ServicePreferences.getPackageSr
-import me.gm.cleaner.core.config.ServicePreferences.getPackageSrZipped
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
+import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.io.path.Path
-import kotlin.io.path.readText
 import kotlin.math.min
 
 class Mounter {
@@ -46,7 +40,7 @@ class Mounter {
     private val mountRetryCount = mutableMapOf<Int, Int>()
 
     fun mountForAllPackages(): Boolean =
-            !isFuseBpfEnabled && ServicePreferences.recordExternalAppSpecificStorage
+        VfsRuntimeConfigStore.shouldMountForAllPackages()
 
     fun bindMountAsync(packageName: String, pid: Int, uid: Int) {
         handler.post {
@@ -58,23 +52,8 @@ class Mounter {
         bindMountLocked(packageName, pid, uid)
     }
 
-    internal val isFuseBpfEnabled: Boolean by lazy {
-        var is_enabled = RuntimeSystemProperties.getBoolean("ro.fuse.bpf.is_running")
-        if (is_enabled != null) return@lazy is_enabled
-        is_enabled = RuntimeSystemProperties.getBoolean("persist.sys.fuse.bpf.override")
-        if (is_enabled != null) return@lazy is_enabled
-        is_enabled = RuntimeSystemProperties.getBoolean("ro.fuse.bpf.enabled")
-        if (is_enabled != null) return@lazy is_enabled
-
-        try {
-            // If the kernel has fuse-bpf, /sys/fs/fuse/features/fuse_bpf will exist and have the contents
-            // 'supported\n' - see fs/fuse/inode.c in the kernel source
-            val filename = "/sys/fs/fuse/features/fuse_bpf"
-            Path(filename).readText() == "supported\n"
-        } catch (e: IOException) {
-            false
-        }
-    }
+    internal val isFuseBpfEnabled: Boolean
+        get() = VfsRuntimeConfigStore.isFuseBpfEnabled()
 
     private fun getMkdirList(rules: MountRules): List<String> = rules.mountPoint + rules.sources
 
@@ -82,11 +61,12 @@ class Mounter {
         totalAttempts.incrementAndGet()
         Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid " +
                 "attempt=${totalAttempts.get()}")
+        val userId = uid.toUserId()
         val recordExternalAppSpecificStorage =
-            ServicePreferences.recordExternalAppSpecificStorage &&
-                    !ServicePreferences.denylist.contains(packageName)
+            VfsRuntimeConfigStore.shouldRecordExternalAppSpecificStorage(packageName)
+        val rules = VfsRuntimeConfigStore.getMountRules(packageName, userId)
 
-        if (ServicePreferences.getPackageSrCount(packageName) == 0) {
+        if (rules == null || rules.isEmpty()) {
             return RuntimeFileUtils.bind_mount(
                 pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
@@ -95,17 +75,12 @@ class Mounter {
         }
 
         pidRecords.put(packageName, pid)
-        val userId = uid.toUserId()
-        val rules: MountRules
         if (!mkdirRecords.containsKey(packageName)) {
-            rules = MountRules(getPackageSrZipped(packageName, userId))
             val mkdirRecord = mutableSetOf<String>()
             getMkdirList(rules).forEach { record(mkdirRecord, it) }
             if (RuntimeFileUtils.auto_prepare_dirs(mkdirRecord.toTypedArray(), uid)) {
                 mkdirRecords.putAll(packageName, mkdirRecord)
             }
-        } else {
-            rules = MountRules(getPackageSr(packageName, userId))
         }
         val ret = RuntimeFileUtils.bind_mount(
             pid, uid,
@@ -189,7 +164,10 @@ class Mounter {
         val remountPackages = mutableSetOf<String>()
         for (procInfo in procList) {
             procInfo.pkgList.forEach { packageName ->
-                val rules = MountRules(getPackageSr(packageName, procInfo.uid.toUserId()))
+                val rules = VfsRuntimeConfigStore.getMountRules(
+                    packageName,
+                    procInfo.uid.toUserId(),
+                ) ?: return@forEach
                 val targets = rules.targets
                 val mountedIndices =
                     RuntimeFileUtils.check_mounts(procInfo.pid, targets.toTypedArray())

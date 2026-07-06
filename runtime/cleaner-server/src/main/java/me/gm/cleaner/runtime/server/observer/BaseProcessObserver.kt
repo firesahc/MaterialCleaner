@@ -3,8 +3,8 @@ package me.gm.cleaner.runtime.server.observer
 import android.app.ActivityManager
 import androidx.annotation.CallSuper
 import api.SystemService
-import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
+import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
 import java.util.concurrent.CopyOnWriteArraySet
 
 abstract class BaseProcessObserver : BaseObserver() {
@@ -21,7 +21,7 @@ abstract class BaseProcessObserver : BaseObserver() {
         if (!isMounterActiveForUid(uid)) {
             return true
         }
-        if (ServicePreferences.getPackageSrCount(packageName) > 0) {
+        if (VfsRuntimeConfigStore.getPackageRuleCount(packageName) > 0) {
             return mounter.bindMount(packageName, pid, uid)
         }
         return true
@@ -42,15 +42,27 @@ abstract class BaseProcessObserver : BaseObserver() {
         }
 
     fun remountAll() {
-        mounter.forProcListAsync(getRunningAppProcesses(ServicePreferences.srPackages), false, true)
+        mounter.forProcListAsync(
+            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            false,
+            true,
+        )
     }
 
     fun remountAllWithCheck() {
-        mounter.forProcListAsync(getRunningAppProcesses(ServicePreferences.srPackages), true, true)
+        mounter.forProcListAsync(
+            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            true,
+            true,
+        )
     }
 
     fun recordAll() {
-        mounter.forProcListAsync(getRunningAppProcesses(ServicePreferences.srPackages), true, false)
+        mounter.forProcListAsync(
+            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            true,
+            false,
+        )
     }
 
     fun isFuseBpfEnabled(): Boolean = mounter.isFuseBpfEnabled

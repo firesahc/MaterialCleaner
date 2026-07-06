@@ -38,6 +38,7 @@ object SnapshotPublisher {
 
         val userIds = SystemService.getUserIdsNoThrow()
         val policy = RuntimeRedirectPolicyFactory.build(userIds)
+        VfsRuntimeConfigStore.updatePolicy(policy)
 
         val policyPublished = publishRedirectPolicy(policy)
         val readOnlyPublished = publishReadOnly(policy)
@@ -61,12 +62,29 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        VfsRuntimeConfigStore.updatePolicy(snapshot)
 
         val json = serializeRedirectPolicy(snapshot)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY, json)
         val signaled = written && DataBus.signal(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
         Log.d(TAG, "publishRedirectPolicy: generation=${snapshot.generation}")
         return written && signaled
+    }
+
+    /**
+     * 使用同一份策略快照同时发布规则和 configured_mount_points。
+     *
+     * 规则变更时必须保持两者 generation/publisherEpoch 一致，避免 Hook
+     * 和 native 层看到来自不同策略代数的事实。
+     */
+    fun publishStorageRedirectPolicySet(): Boolean {
+        if (!DataBus.ensureInitialized()) return false
+
+        val snapshot = RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        val policyPublished = publishRedirectPolicy(snapshot)
+        val mountPointsPublished = publishConfiguredMountPoints(snapshot)
+        return policyPublished && mountPointsPublished
     }
 
     /**
@@ -93,6 +111,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        VfsRuntimeConfigStore.updatePolicy(snapshot)
         val mountPoints = RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot)
 
         val json = serializeConfiguredMountPoints(mountPoints)
@@ -109,6 +128,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val caps = PlatformCapabilitiesDetector.detect()
+        VfsRuntimeConfigStore.updateCapabilities(caps)
         val json = PlatformCapabilitiesDetector.toJson(caps)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES, json)
         val signaled = written && DataBus.signal(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)

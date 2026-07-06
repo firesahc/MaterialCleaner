@@ -6,7 +6,6 @@ import api.SystemService
 import hidden.HiddenApiBridge.UserHandle_isIsolated
 import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
-import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.runtime.server.observer.BaseProcessObserver
 import me.gm.cleaner.runtime.server.observer.ObserverManager
@@ -116,7 +115,7 @@ class VfsLayerController {
         val startUpAwarePids = observer.getAllStartUpAwarePids()
         val mountFailedPids = observer.getMountFailedPids()
         val mountedPackages = observer.getMountedPackages()
-        val srPackages = ServicePreferences.srPackages
+        val srPackages = VfsRuntimeConfigStore.getStorageRedirectPackages()
         val processes = selectProcesses(flags, startUpAwarePids)
         val statuses = TreeMap<String, MutablePackageStatus>()
 
@@ -172,7 +171,10 @@ class VfsLayerController {
                 },
                 metrics = mapOf(
                     "started" to "true",
-                    "configuredPackages" to ServicePreferences.srPackages.size.toString(),
+                    "configuredPackages" to VfsRuntimeConfigStore
+                        .getStorageRedirectPackages()
+                        .size
+                        .toString(),
                     "mountedPackages" to mountedPackages.toString(),
                     "recordedPids" to recordedPids.toString(),
                     "mountFailedPids" to mountFailedPids.toString(),
@@ -195,7 +197,7 @@ class VfsLayerController {
     private fun switchAppDataDirOwnersAsync() {
         Thread {
             for (userId in SystemService.getUserIdsNoThrow()) {
-                for (packageName in ServicePreferences.srPackages) {
+                for (packageName in VfsRuntimeConfigStore.getStorageRedirectPackages()) {
                     val ai = SystemService.getApplicationInfoNoThrow(packageName, 0, userId)
                         ?: continue
                     RuntimeFileUtils.switch_owner(
@@ -228,7 +230,7 @@ class VfsLayerController {
         mountFailedPids: Set<Int>,
         mkdir: Boolean,
     ): Int {
-        val targets = ServicePreferences.getPackageSr(packageName, userId).second
+        val targets = VfsRuntimeConfigStore.getMountTargets(packageName, userId)
         val mountedIndices = RuntimeFileUtils.check_mounts(pid, targets.toTypedArray())
         var pidFlag = 0
         if (mountedIndices == null) {

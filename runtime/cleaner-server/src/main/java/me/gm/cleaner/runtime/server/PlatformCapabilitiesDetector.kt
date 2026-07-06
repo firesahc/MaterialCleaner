@@ -5,14 +5,13 @@ import android.util.Log
 import api.SystemService
 import me.gm.cleaner.core.common.RuntimeSystemProperties
 import me.gm.cleaner.core.storage.redirect.domain.PlatformCapabilities
-import me.gm.cleaner.runtime.server.observer.Mounter
 import java.io.File
 
 /**
  * 平台能力探测器。
  *
  * 统一采集 Android 平台、厂商变体、FUSE/BPF/sdcardfs 等特性状态。
- * 替代散落在各处的 Build.VERSION.SDK_INT、HookSystemProperties、Mounter.isFuseBpfEnabled 判断。
+ * 替代散落在各处的 Build.VERSION.SDK_INT、HookSystemProperties、FUSE BPF 判断。
  *
  * 使用方式：
  * ```
@@ -41,10 +40,9 @@ object PlatformCapabilitiesDetector {
     /**
      * 采集所有平台能力。
      *
-     * @param mounter VFS Mounter 实例（用于获取 isFuseBpfEnabled）
      * @return 当前平台能力快照
      */
-    fun detect(mounter: Mounter? = null): PlatformCapabilities {
+    fun detect(): PlatformCapabilities {
         val gen = capsGeneration.incrementAndGet()
         cachedGeneration = gen
         val now = System.currentTimeMillis()
@@ -55,9 +53,7 @@ object PlatformCapabilitiesDetector {
         val fuseAvailable = sdkInt >= Build.VERSION_CODES.R
                 || RuntimeSystemProperties.getBoolean("persist.sys.fuse") == true
 
-        // FUSE BPF 可用性：优先从 Mounter 获取（已实现复杂的多层探测）
-        val isFuseBpfEnabled = mounter?.isFuseBpfEnabled
-                ?: detectFuseBpfFallback()
+        val isFuseBpfEnabled = detectFuseBpfFallback()
 
         // sdcardfs：ro.sys.sdcardfs 属性
         val usesSdcardfs = RuntimeSystemProperties.getBoolean("ro.sys.sdcardfs") == true

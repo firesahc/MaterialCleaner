@@ -19,8 +19,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
@@ -70,6 +72,23 @@ public class CleanerService extends ICleanerService.Stub {
             return;
         }
         throw new SecurityException(String.valueOf(func));
+    }
+
+    private LinkedHashSet<String> currentStorageRedirectPackages() {
+        return new LinkedHashSet<>(
+                VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages()
+        );
+    }
+
+    private void remountAffectedStorageRedirectPackages(Set<String> previousPackages) {
+        final var affectedPackages = new LinkedHashSet<String>();
+        if (previousPackages != null) {
+            affectedPackages.addAll(previousPackages);
+        }
+        affectedPackages.addAll(VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages());
+        if (!affectedPackages.isEmpty()) {
+            mServer.vfsLayerController.remount(affectedPackages.toArray(new String[0]));
+        }
     }
 
     @Override
@@ -218,6 +237,7 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public void notifyPreferencesChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyPreferencesChanged" : 12);
+        final var previousPackages = currentStorageRedirectPackages();
         try {
             final var sps = new SharedPreferences[]{
                     ServicePreferences.INSTANCE.getPreferences()
@@ -236,18 +256,20 @@ public class CleanerService extends ICleanerService.Stub {
         // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
         SnapshotPublisher.INSTANCE.publishRedirectPolicy();
         MediaProviderHookGateway.refreshPolicyFromDataBus();
+        remountAffectedStorageRedirectPackages(previousPackages);
     }
 
     @Override
     public void notifySrChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 13);
+        final var previousPackages = currentStorageRedirectPackages();
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
         // 发布规则变更快照到 DataBus，控制面只触发 Hook 侧刷新。
         // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
-        SnapshotPublisher.INSTANCE.publishRedirectPolicy();
-        SnapshotPublisher.INSTANCE.publishConfiguredMountPoints();
+        SnapshotPublisher.INSTANCE.publishStorageRedirectPolicySet();
         MediaProviderHookGateway.refreshPolicyFromDataBus();
+        remountAffectedStorageRedirectPackages(previousPackages);
     }
 
     @Override

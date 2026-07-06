@@ -15,7 +15,7 @@ import java.util.Map;
 import api.SystemService;
 import me.gm.cleaner.core.common.AndroidFilesystemConfig;
 import me.gm.cleaner.core.common.RuntimeFileUtils;
-import me.gm.cleaner.core.config.ServicePreferences;
+import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore;
 
 public class PackageInfoMapper {
     private static volatile SparseArray<String> sUidToSrPackageNames;
@@ -48,7 +48,7 @@ public class PackageInfoMapper {
                     return;
                 }
 
-                final var srPackages = ServicePreferences.INSTANCE.getSrPackages();
+                final var srPackages = VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages();
                 for (final var userId : SystemService.getUserIdsNoThrow()) {
                     for (final var pi : SystemService.getInstalledPackagesNoThrow(0, userId)) {
                         final var uid = pi.applicationInfo.uid;
