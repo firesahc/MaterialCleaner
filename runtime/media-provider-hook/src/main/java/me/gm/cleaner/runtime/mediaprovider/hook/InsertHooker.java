@@ -1,14 +1,11 @@
 package me.gm.cleaner.runtime.mediaprovider.hook;
 
-import static me.gm.cleaner.runtime.mediaprovider.hook.MediaProviderHook.TYPE_INSERT;
-
 import android.content.ContentValues;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.FileUtils;
-import android.os.RemoteException;
 import android.provider.MediaStore;
 import android.text.TextUtils;
 import android.util.Log;
@@ -65,12 +62,10 @@ public class InsertHooker extends XC_MethodHook {
     private final static int DOWNLOADS_ID = 801;
 
     private final MediaProviderHook mHook;
-    private final MediaProviderHooksService mService;
     private final ClassLoader mClassLoader;
 
-    public InsertHooker(MediaProviderHook hook, MediaProviderHooksService service, ClassLoader classLoader) {
+    public InsertHooker(MediaProviderHook hook, ClassLoader classLoader) {
         mHook = hook;
-        mService = service;
         mClassLoader = classLoader;
     }
 
@@ -140,7 +135,6 @@ public class InsertHooker extends XC_MethodHook {
         final var callingPkg = mHook.getCallingPackage(param.thisObject);
         final var originalData = data;
 
-        // 1. 优先尝试本地 RuleCache（避免热路径 Binder 调用）
         final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(callingPkg, data);
         if (localMountedPath != null && !data.equals(localMountedPath) &&
                 TextUtils.isEmpty(extractPathOwnerPackageName(localMountedPath))) {
@@ -149,24 +143,6 @@ public class InsertHooker extends XC_MethodHook {
             emitRedirectNotice(callingPkg, data, localMountedPath, "INSERT");
             return;
         }
-
-        // 2. 回退到 Binder 远程查询
-        mService.whileAlive(service -> {
-            try {
-                final var mountedPath = service.getMountedPath(
-                        callingPkg, data, TYPE_INSERT);
-                Log.i("MC_REDIRECT", "[InsertHooker] getMountedPath pkg=" + callingPkg
-                        + " original=" + originalData + " mounted=" + mountedPath);
-                if (mountedPath != null && !data.equals(mountedPath) &&
-                        TextUtils.isEmpty(extractPathOwnerPackageName(mountedPath))) {
-                    values.put(MediaStore.MediaColumns.DATA, mountedPath);
-                    Log.i("MC_REDIRECT", "[InsertHooker] PATH REDIRECTED: " + originalData + " -> " + mountedPath);
-                    emitRedirectNotice(callingPkg, data, mountedPath, "INSERT");
-                }
-            } catch (RemoteException e) {
-                Log.e("MC_REDIRECT", "[InsertHooker] getMountedPath error", e);
-            }
-        });
     }
 
     private boolean wasPathEmpty(ContentValues values) {
@@ -285,7 +261,10 @@ public class InsertHooker extends XC_MethodHook {
             event.put("mountedPath", mountedPath);
             event.put("type", type);
             event.put("reason", "REDIRECTED_TO_INTERNAL");
-            DataBus.INSTANCE.writeEvent(DataBus.EVENT_REDIRECT_NOTICE, event.toString());
+            final var seq = DataBus.INSTANCE.writeEvent(DataBus.EVENT_REDIRECT_NOTICE, event.toString());
+            if (seq >= 0) {
+                DataBus.INSTANCE.signal(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
+            }
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[InsertHooker] DataBus write failed", e);
         }

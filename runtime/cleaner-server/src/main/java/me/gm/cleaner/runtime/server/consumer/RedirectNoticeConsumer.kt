@@ -24,6 +24,9 @@ object RedirectNoticeConsumer {
     @Volatile
     private var cursor: String = ""
 
+    @Volatile
+    private var lastSignalTimestamp: Long = 0L
+
     fun bind(server: CleanerServer) {
         this.server = server
     }
@@ -39,19 +42,26 @@ object RedirectNoticeConsumer {
      */
     fun pollAndConsume(): Int {
         val srv = server ?: return 0
-        val events = DataBus.readEvents(DataBus.EVENT_REDIRECT_NOTICE, cursor)
+        val signalTime = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED)
+        if (signalTime <= lastSignalTimestamp && lastSignalTimestamp > 0) return 0
+        lastSignalTimestamp = signalTime
+
+        val events = DataBus.readEventFiles(DataBus.EVENT_REDIRECT_NOTICE, cursor)
         if (events.isEmpty()) return 0
 
         var consumed = 0
         var skipped = 0
-        for (eventJson in events) {
+        var failed = false
+        for (eventFile in events) {
             try {
+                val eventJson = eventFile.content
                 val event = JSONObject(eventJson)
                 val timeMillis = event.optLong("timeMillis", 0L)
 
                 // TTL 检查
                 if (timeMillis > 0 && System.currentTimeMillis() - timeMillis > EVENT_TTL_MS) {
                     skipped++
+                    advanceCursor(eventFile)
                     continue
                 }
 
@@ -62,39 +72,46 @@ object RedirectNoticeConsumer {
 
                 if (packageName.isEmpty()) {
                     skipped++
+                    advanceCursor(eventFile)
                     continue
                 }
 
                 // 如果 mountedPath 已作为目录存在，跳过提示（文件已可访问）
                 if (mountedPath.isNotEmpty() && java.io.File(mountedPath).isDirectory) {
                     skipped++
+                    advanceCursor(eventFile)
                     continue
                 }
 
                 // denylist 检查
                 if (ServicePreferences.denylist.contains(packageName)) {
                     skipped++
+                    advanceCursor(eventFile)
                     continue
                 }
 
                 // 通过控制面方法触发 UI 广播（Java 侧，避免 Kotlin stub Intent 问题）
                 srv.showRedirectNotice(packageName, originalPath, mountedPath, reason)
                 consumed++
+                advanceCursor(eventFile)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to consume redirect notice", e)
+                Log.e(TAG, "Failed to consume redirect notice ${eventFile.name}, keeping cursor", e)
+                failed = true
+                break
             }
         }
-
-        // 推进游标并持久化
-        val lastFile = DataBus.getLastEventFilename(DataBus.EVENT_REDIRECT_NOTICE)
-        if (lastFile.isNotEmpty()) {
-            cursor = lastFile
-            DataBus.writeCursor(DataBus.EVENT_REDIRECT_NOTICE, cursor)
+        if (failed) {
+            lastSignalTimestamp = 0L
         }
 
         if (consumed > 0 || skipped > 0) {
             Log.d(TAG, "Consumed $consumed, skipped $skipped, cursor='$cursor'")
         }
         return consumed
+    }
+
+    private fun advanceCursor(event: DataBus.EventFile) {
+        cursor = event.name
+        DataBus.writeCursorToEvent(DataBus.EVENT_REDIRECT_NOTICE, event)
     }
 }

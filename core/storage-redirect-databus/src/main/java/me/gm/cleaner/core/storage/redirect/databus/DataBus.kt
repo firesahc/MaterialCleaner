@@ -73,6 +73,7 @@ object DataBus {
     const val SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED = "configured_mount_points_changed"
     const val SIGNAL_PLATFORM_CAPABILITIES_CHANGED = "platform_capabilities_changed"
     const val SIGNAL_FILESYSTEM_EVENTS_CHANGED = "filesystem_events_changed"
+    const val SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED = "redirect_notice_events_changed"
 
     // ── 事件子目录 ──
     const val EVENT_FILESYSTEM = "filesystem"
@@ -83,6 +84,11 @@ object DataBus {
 
     // 每进程事件序列号
     private val eventSeqCounter = AtomicLong(0)
+
+    data class EventFile(
+        val name: String,
+        val content: String,
+    )
 
     /**
      * 确保总线目录结构存在，设置跨进程可访问权限。
@@ -288,6 +294,13 @@ object DataBus {
      * @return 事件 JSON 字符串列表（按文件名排序）
      */
     fun readEvents(queue: String, afterCursor: String): List<String> {
+        return readEventFiles(queue, afterCursor).map { it.content }
+    }
+
+    /**
+     * 读取游标之后的所有事件，并保留文件名供消费者精确推进游标。
+     */
+    fun readEventFiles(queue: String, afterCursor: String): List<EventFile> {
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists()) return emptyList()
 
@@ -295,7 +308,7 @@ object DataBus {
             eventDir.listFiles()
                 ?.filter { it.isFile && it.name.endsWith(".json") && it.name > afterCursor }
                 ?.sortedBy { it.name }
-                ?.map { it.readText(Charsets.UTF_8) }
+                ?.map { EventFile(it.name, it.readText(Charsets.UTF_8)) }
                 ?: emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read events from $queue", e)
@@ -348,6 +361,9 @@ object DataBus {
             false
         }
     }
+
+    fun writeCursorToEvent(queue: String, event: EventFile): Boolean =
+        writeCursor(queue, event.name)
 
     /**
      * 读取持久化消费游标。

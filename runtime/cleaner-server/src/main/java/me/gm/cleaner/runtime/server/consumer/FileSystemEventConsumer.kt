@@ -46,26 +46,31 @@ object FileSystemEventConsumer {
         if (signalTime <= lastSignalTimestamp && lastSignalTimestamp > 0) return 0
         lastSignalTimestamp = signalTime
 
-        val events = DataBus.readEvents(DataBus.EVENT_FILESYSTEM, cursor)
+        val events = DataBus.readEventFiles(DataBus.EVENT_FILESYSTEM, cursor)
         if (events.isEmpty()) return 0
 
         val observer = ObserverManager.fastGetObserver(FileSystemObserver::class.java)
         if (observer == null) {
-            Log.w(TAG, "FileSystemObserver not available, skipping ${events.size} events")
-            advanceCursor()
+            Log.w(TAG, "FileSystemObserver not available, keeping cursor for ${events.size} events")
+            lastSignalTimestamp = 0L
             return 0
         }
 
         var consumed = 0
-        for (eventJson in events) {
+        var failed = false
+        for (eventFile in events) {
             try {
+                val eventJson = eventFile.content
                 val event = JSONObject(eventJson)
                 val timeMillis = event.optLong("timeMillis", System.currentTimeMillis())
                 val packageName = event.optString("packageName", "")
                 val path = event.optString("path", "")
                 val flags = event.optInt("flags", 0)
 
-                if (packageName.isEmpty() || path.isEmpty()) continue
+                if (packageName.isEmpty() || path.isEmpty()) {
+                    advanceCursor(eventFile)
+                    continue
+                }
 
                 observer.onEvent(timeMillis, packageName, path, flags)
                 consumed++
@@ -73,12 +78,16 @@ object FileSystemEventConsumer {
                 // 归档到 consumed/ 目录，保留事件记录供审计
                 // 直接文件写入（不含序列号），避免浪费事件序列号计数器
                 archiveEvent(eventJson)
+                advanceCursor(eventFile)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to consume event", e)
+                Log.e(TAG, "Failed to consume event ${eventFile.name}, keeping cursor", e)
+                failed = true
+                break
             }
         }
-
-        advanceCursor()
+        if (failed) {
+            lastSignalTimestamp = 0L
+        }
 
         if (consumed > 0) {
             Log.d(TAG, "Consumed $consumed events, cursor='$cursor'")
@@ -129,12 +138,9 @@ object FileSystemEventConsumer {
         }
     }
 
-    private fun advanceCursor() {
-        val lastFile = DataBus.getLastEventFilename(DataBus.EVENT_FILESYSTEM)
-        if (lastFile.isNotEmpty()) {
-            cursor = lastFile
-            DataBus.writeCursor(DataBus.EVENT_FILESYSTEM, cursor)
-        }
+    private fun advanceCursor(event: DataBus.EventFile) {
+        cursor = event.name
+        DataBus.writeCursorToEvent(DataBus.EVENT_FILESYSTEM, event)
     }
 
     /**

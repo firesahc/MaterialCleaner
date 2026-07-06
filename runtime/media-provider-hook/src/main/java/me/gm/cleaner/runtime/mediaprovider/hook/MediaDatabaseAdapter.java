@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
-import android.os.RemoteException;
 import android.util.Log;
 
 import java.io.File;
@@ -90,23 +89,24 @@ public class MediaDatabaseAdapter {
                     return;
                 }
                 final var callingPackage = ((ContentProvider) param.thisObject).getCallingPackage();
-                mService.whileAlive(service -> {
-                    try {
-                        final var mountedPath = service.getMountedPath(
-                                callingPackage, file.getPath(), MediaProviderHook.TYPE_CONNECTION);
-                        if (mountedPath != null && !file.getPath().equals(mountedPath)) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                param.args[1] = mountedPath;
-                            } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
-                                extras.putParcelable(Intent.EXTRA_STREAM, Uri.parse(mountedPath));
-                            }
-                        }
-                    } catch (RemoteException e) {
-                        Log.e("MediaDatabaseAdapter", "scan error", e);
-                    }
-                });
+                final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(
+                        callingPackage, file.getPath());
+                if (localMountedPath != null && !file.getPath().equals(localMountedPath)) {
+                    applyScanPath(param, extras, localMountedPath);
+                    Log.i("MC_REDIRECT", "[MediaDatabaseAdapter] scan_file redirected (local cache): "
+                            + file.getPath() + " -> " + localMountedPath);
+                }
             }
         });
+    }
+
+    private void applyScanPath(final XC_MethodHook.MethodHookParam param,
+                               final Bundle extras, final String mountedPath) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            param.args[1] = mountedPath;
+        } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            extras.putParcelable(Intent.EXTRA_STREAM, Uri.parse(mountedPath));
+        }
     }
 
     // ── insertFile Hook ──
@@ -117,7 +117,7 @@ public class MediaDatabaseAdapter {
         }
         for (final var method : mMediaProviderClass.getDeclaredMethods()) {
             if (method.getName().equals("insertFile")) {
-                XposedBridge.hookMethod(method, new InsertHooker(mHook, mService, mClassLoader));
+                XposedBridge.hookMethod(method, new InsertHooker(mHook, mClassLoader));
             }
         }
     }

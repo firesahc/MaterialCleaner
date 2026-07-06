@@ -1,11 +1,11 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
-import android.text.TextUtils
 import android.util.Log
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import org.json.JSONObject
 import java.io.File
+import java.util.regex.Pattern
 
 /**
  * MediaProvider Java Hook 层的本地策略缓存。
@@ -29,8 +29,8 @@ import java.io.File
 object HookPolicyCache {
     private const val TAG = "HookPolicyCache"
 
-    /** 默认用户 ID（用于快照中未指定 userId 的规则） */
-    private const val DEFAULT_USER_ID = 0
+    private val PATHS_HAVE_USER_ID: Pattern =
+        Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
 
     // ── ReadOnly 缓存 ──
     @Volatile
@@ -42,7 +42,7 @@ object HookPolicyCache {
 
     // ── Rule 缓存 ──
     @Volatile
-    private var ruleCache: Map<String, MountRules> = emptyMap()
+    private var ruleCache: Map<String, Map<Int, MountRules>> = emptyMap()
     @Volatile
     private var policyGeneration: Long = 0L
     @Volatile
@@ -97,7 +97,7 @@ object HookPolicyCache {
                 parseRedirectPolicy(policyJson)
                 lastPolicySignalTimestamp = DataBus.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
                 Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
-                        "packages=${ruleCache.size}")
+                        "packages=${ruleCache.size}, users=${ruleCache.values.sumOf { it.size }}")
             } catch (e: Exception) {
                 Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
             }
@@ -325,7 +325,15 @@ object HookPolicyCache {
      * @return 挂载后路径，如果包不在缓存中返回 null（调用方应走 Binder fallback）
      */
     fun getMountedPath(packageName: String, path: String): String? {
-        val rules = ruleCache[packageName] ?: return null
+        return getMountedPath(packageName, extractUserIdFromPath(path), path)
+    }
+
+    /**
+     * 从本地缓存按用户计算挂载后路径。
+     */
+    fun getMountedPath(packageName: String, userId: Int, path: String): String? {
+        val userRules = ruleCache[packageName] ?: return null
+        val rules = userRules[userId] ?: userRules[0] ?: return null
         return rules.getMountedPath(path)
     }
 
@@ -347,28 +355,35 @@ object HookPolicyCache {
             return
         }
 
-        val newCache = mutableMapOf<String, MountRules>()
+        val newCache = mutableMapOf<String, Map<Int, MountRules>>()
         val rulesObj = root.optJSONObject("storageRedirectRules")
         if (rulesObj != null) {
             for (pkg in rulesObj.keys()) {
                 val userObj = rulesObj.optJSONObject(pkg)
                 if (userObj == null) continue
 
-                // 取 userId=0 的规则（最常用），暂不处理多用户
-                val rulesArr = userObj.optJSONArray(DEFAULT_USER_ID.toString())
-                    ?: userObj.optJSONArray("0")
-                if (rulesArr == null || rulesArr.length() == 0) continue
+                val userCache = mutableMapOf<Int, MountRules>()
+                for (userKey in userObj.keys()) {
+                    val userId = userKey.toIntOrNull() ?: continue
+                    val rulesArr = userObj.optJSONArray(userKey)
+                    if (rulesArr == null || rulesArr.length() == 0) continue
 
-                val zipped = mutableListOf<Pair<String, String>>()
-                for (i in 0 until rulesArr.length()) {
-                    val ruleObj = rulesArr.getJSONObject(i)
-                    val source = ruleObj.optString("source", "")
-                    val target = ruleObj.optString("target", "")
-                    if (source.isNotEmpty() && target.isNotEmpty()) {
-                        zipped.add(source to target)
+                    val zipped = mutableListOf<Pair<String, String>>()
+                    for (i in 0 until rulesArr.length()) {
+                        val ruleObj = rulesArr.getJSONObject(i)
+                        val source = ruleObj.optString("source", "")
+                        val target = ruleObj.optString("target", "")
+                        if (source.isNotEmpty() && target.isNotEmpty()) {
+                            zipped.add(source to target)
+                        }
+                    }
+                    if (zipped.isNotEmpty()) {
+                        userCache[userId] = MountRules(zipped)
                     }
                 }
-                newCache[pkg] = MountRules(zipped)
+                if (userCache.isNotEmpty()) {
+                    newCache[pkg] = userCache
+                }
             }
         }
 
@@ -388,6 +403,14 @@ object HookPolicyCache {
         // 解析偏好标记
         recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false)
         FuseNativePolicyAdapter.applyRecordExternalAppSpecificStorage(recordExternalAppSpecificStorage)
+    }
+
+    private fun extractUserIdFromPath(path: String): Int {
+        val matcher = PATHS_HAVE_USER_ID.matcher(path)
+        if (!matcher.matches()) {
+            return 0
+        }
+        return matcher.group(2)?.toIntOrNull() ?: 0
     }
 
     private fun parseReadOnly(json: String) {
