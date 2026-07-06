@@ -147,7 +147,7 @@ class VfsLayerController {
     }
 
     fun collectReport(generation: Long, now: Long): LayerReport {
-        val observer = ObserverManager.fastGetObserver(BaseProcessObserver::class.java)
+        val observer = ObserverManager.getObserver(BaseProcessObserver::class.java)
         return if (observer != null) {
             LayerReport(
                 id = LayerId.VFS,
