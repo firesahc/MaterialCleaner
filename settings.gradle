@@ -4,10 +4,10 @@ DirectoryScanner.removeDefaultExclude('**/.gitattributes')
 
 rootProject.name = "Cleaner"
 
-// ── 当前兼容模块 ──
+// ── 应用与共享模块 ──
 include ':app', ':shared'
 
-// ── 计划 11 新模块（渐进迁移中）──
+// ── 架构模块 ──
 include ':core:ipc-contract'
 include ':core:common'
 include ':core:storage-redirect-domain'
@@ -16,14 +16,3 @@ include ':core:config-store'
 include ':platform:hidden-api'
 include ':runtime:cleaner-server'
 include ':runtime:media-provider-hook'
-
-// ── 计划 11 目标模块结构 ──
-// :core:ipc-contract          ← :aidl 迁移目标
-// :core:config-store          ← :shared 中 ServicePreferences/SecurityHelper
-// :core:storage-redirect-domain ← :shared 中 policy/ 模型
-// :core:storage-redirect-databus ← :shared 中 DataBus
-// :platform:hidden-api        ← :hidden-api 重命名
-// :runtime:cleaner-server     ← :server 中 server/observer/consumer/orchestrator
-// :runtime:media-provider-hook ← :server 中 xposed/
-// :native-code:mount-runtime  ← C++ Mount/ProcInfo
-// :native-code:fuse-hook      ← C++ inline/bpf_hook/xhook
