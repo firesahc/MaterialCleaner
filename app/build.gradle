@@ -188,6 +188,7 @@ dependencies {
     implementation project(':core:ipc-contract')
     implementation project(':core:config-store')
     implementation project(':core:storage-redirect-domain')
+    implementation project(':runtime:media-provider-hook')
     runtimeOnly project(':runtime:cleaner-server')
     implementation project(':shared')
     compileOnly files('libs/api-82.jar')
