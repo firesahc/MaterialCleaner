@@ -20,6 +20,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private final AtomicBoolean mPolicyCacheInitialized = new AtomicBoolean(false);
     private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
         mCleanerServerBinder = null;
+        HookDataBusBridge.INSTANCE.setCallback(null);
         requestReRegister("server callback died");
     };
 
@@ -81,6 +82,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         // 先取消旧 DeathRecipient，防止多次 link 导致重复触发
         unlinkCleanerServerDeathRecipient(mCleanerServerBinder);
         mCleanerServerBinder = iinterface;
+        HookDataBusBridge.INSTANCE.setCallback(iinterface);
         if (iinterface == null) {
             HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints();
             return;
@@ -90,11 +92,13 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         } catch (final RemoteException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
             mCleanerServerBinder = null;
+            HookDataBusBridge.INSTANCE.setCallback(null);
             requestReRegister("server callback linkToDeath failed");
             return;
         } catch (final RuntimeException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
             mCleanerServerBinder = null;
+            HookDataBusBridge.INSTANCE.setCallback(null);
             requestReRegister("server callback linkToDeath failed");
             return;
         }

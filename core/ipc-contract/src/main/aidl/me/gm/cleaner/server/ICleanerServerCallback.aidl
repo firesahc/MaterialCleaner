@@ -17,4 +17,8 @@ interface ICleanerServerCallback {
     boolean onMaybeAccessQueriedPaths(String packageName, String mountedPath) = 22;
 
     void onReleaseQueriedPaths(String packageName) = 23;
+
+    String readDataBusSnapshot(String name) = 30;
+
+    long getDataBusSignalTimestamp(String name) = 31;
 }

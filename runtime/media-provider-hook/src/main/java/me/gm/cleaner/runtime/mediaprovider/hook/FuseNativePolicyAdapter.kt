@@ -43,7 +43,7 @@ object FuseNativePolicyAdapter {
         signalTimestamp: Long
     ): Pair<Boolean, Long> {
         // 先检查 signal 是否变更
-        val mountSignalTime = DataBus.getSignalTimestamp(
+        val mountSignalTime = HookDataBusBridge.getSignalTimestamp(
             DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED
         )
         if (mountSignalTime <= signalTimestamp && signalTimestamp > 0) {
@@ -51,7 +51,7 @@ object FuseNativePolicyAdapter {
         }
 
         // 读取快照
-        val json = DataBus.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
+        val json = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
             ?: return Pair(false, currentGeneration)
 
         return try {

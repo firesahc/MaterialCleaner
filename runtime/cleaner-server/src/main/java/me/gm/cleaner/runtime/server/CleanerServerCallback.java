@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import api.SystemService;
 import me.gm.cleaner.core.common.RuntimeFileUtils;
 import me.gm.cleaner.core.config.ServicePreferences;
+import me.gm.cleaner.core.storage.redirect.databus.DataBus;
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicyDeriver;
 import me.gm.cleaner.runtime.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.runtime.server.observer.BaseProcessObserver;
@@ -152,6 +153,17 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
                 rmdirSafe(mountedPath);
             }
         }
+    }
+
+    @Override
+    public String readDataBusSnapshot(String name) {
+        final var snapshot = DataBus.INSTANCE.readSnapshot(name);
+        return snapshot == null ? "" : snapshot;
+    }
+
+    @Override
+    public long getDataBusSignalTimestamp(String name) {
+        return DataBus.INSTANCE.getSignalTimestamp(name);
     }
 
     public void releaseAll() {
