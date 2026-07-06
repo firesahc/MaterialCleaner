@@ -9,6 +9,7 @@ import android.util.Log;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -59,6 +60,8 @@ public class FuseJavaGate {
         hookInsertFileIfNecessaryForFuse();
         hookDeleteFileForFuse();
         hookRenameForFuse();
+        hookFileLookupForFuse();
+        hookFileOpenForFuse();
         hookDirAccessCheck();
         hookUidAllowedAccess();
     }
@@ -73,7 +76,8 @@ public class FuseJavaGate {
                 final var uid = (int) param.args[1];
                 final var packageName = getCallingPackageName(param.thisObject, uid);
                 dispatchFileSystemEvent(packageName, path, FileObserver.CREATE);
-                if (mService.isReadOnly(path, uid)) {
+                final var mountedPath = redirectFusePath(param, 0, uid, "insertFileIfNecessaryForFuse");
+                if (mService.isReadOnly(mountedPath, uid)) {
                     param.setResult(OsConstants.EPERM);
                 }
             }
@@ -98,7 +102,8 @@ public class FuseJavaGate {
                 final var uid = (int) param.args[1];
                 final var packageName = getCallingPackageName(param.thisObject, uid);
                 dispatchFileSystemEvent(packageName, path, FileObserver.DELETE);
-                if (mService.isReadOnly(path, uid)) {
+                final var mountedPath = redirectFusePath(param, 0, uid, "deleteFileForFuse");
+                if (mService.isReadOnly(mountedPath, uid)) {
                     param.setResult(OsConstants.EPERM);
                 }
             }
@@ -121,11 +126,71 @@ public class FuseJavaGate {
                 }
                 dispatchFileSystemEvent(packageName, oldPath, FileObserver.MOVED_FROM | isDir);
                 dispatchFileSystemEvent(packageName, newPath, FileObserver.MOVED_TO | isDir);
-                if (mService.isReadOnly(oldPath, uid) || mService.isReadOnly(newPath, uid)) {
+                final var mountedOldPath = redirectFusePath(param, 0, uid, "renameForFuse.oldPath");
+                final var mountedNewPath = redirectFusePath(param, 1, uid, "renameForFuse.newPath");
+                if (mService.isReadOnly(mountedOldPath, uid) || mService.isReadOnly(mountedNewPath, uid)) {
                     param.setResult(OsConstants.EPERM);
                 }
             }
         });
+    }
+
+    private void hookFileLookupForFuse() {
+        hookFusePathEntrypoint("onFileLookupForFuse");
+    }
+
+    private void hookFileOpenForFuse() {
+        hookFusePathEntrypoint("onFileOpenForFuse");
+    }
+
+    private void hookFusePathEntrypoint(final String methodName) {
+        var hooked = false;
+        for (final var method : mMediaProviderClass.getDeclaredMethods()) {
+            if (!methodName.equals(method.getName()) || !hasStringPathArgument(method)) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(final MethodHookParam param) {
+                    final var uid = findCallingUid(param.args);
+                    if (uid < 0) {
+                        Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName +
+                                " cannot find uid, signature=" +
+                                Arrays.toString(method.getParameterTypes()));
+                        return;
+                    }
+                    redirectFusePath(param, 0, uid, methodName);
+                }
+            });
+            hooked = true;
+            Log.i("MC_REDIRECT", "[FuseJavaGate] hooked " + methodName +
+                    " signature=" + Arrays.toString(method.getParameterTypes()));
+        }
+        if (!hooked) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " not found");
+        }
+    }
+
+    private boolean hasStringPathArgument(final Method method) {
+        final var parameterTypes = method.getParameterTypes();
+        return parameterTypes.length > 0 && parameterTypes[0] == String.class;
+    }
+
+    private int findCallingUid(final Object[] args) {
+        var firstInt = -1;
+        for (int i = 1; i < args.length; i++) {
+            if (!(args[i] instanceof Integer)) {
+                continue;
+            }
+            final var value = (int) args[i];
+            if (firstInt < 0) {
+                firstInt = value;
+            }
+            if (value >= 10000) {
+                return value;
+            }
+        }
+        return firstInt;
     }
 
     private void hookDirAccessCheck() {
@@ -146,7 +211,8 @@ public class FuseJavaGate {
                                 (accessType == DIRECTORY_ACCESS_FOR_CREATE ?
                                         FileObserver.CREATE : FileObserver.DELETE) | DIR);
                     }
-                    if (accessType != DIRECTORY_ACCESS_FOR_READ && mService.isReadOnly(path, uid)) {
+                    final var mountedPath = redirectFusePath(param, 0, uid, "isDirAccessAllowedForFuse");
+                    if (accessType != DIRECTORY_ACCESS_FOR_READ && mService.isReadOnly(mountedPath, uid)) {
                         param.setResult(OsConstants.EPERM);
                     }
                 }
@@ -165,7 +231,9 @@ public class FuseJavaGate {
                     final var packageName = getCallingPackageName(param.thisObject, uid);
                     dispatchFileSystemEvent(packageName, path,
                             (forCreate ? FileObserver.CREATE : FileObserver.DELETE) | DIR);
-                    if (mService.isReadOnly(path, uid)) {
+                    final var mountedPath = redirectFusePath(param, 0, uid,
+                            "isDirectoryCreationOrDeletionAllowedForFuse");
+                    if (mService.isReadOnly(mountedPath, uid)) {
                         param.setResult(OsConstants.EPERM);
                     }
                 }
@@ -259,5 +327,29 @@ public class FuseJavaGate {
         final var localCallingIdentity = XposedHelpers.callMethod(
                 mp, "getCachedCallingIdentityForFuse", uid);
         return (String) XposedHelpers.callMethod(localCallingIdentity, "getPackageName");
+    }
+
+    private String redirectFusePath(final XC_MethodHook.MethodHookParam param, final int pathIndex,
+                                    final int uid, final String operation) {
+        final var path = (String) param.args[pathIndex];
+        if (path == null) {
+            return null;
+        }
+        final String packageName;
+        try {
+            packageName = getCallingPackageName(param.thisObject, uid);
+        } catch (Throwable t) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] " + operation +
+                    " cannot resolve package for uid=" + uid + ", path=" + path, t);
+            return path;
+        }
+        final var mountedPath = HookPolicyCache.INSTANCE.getMountedPath(packageName, path);
+        if (mountedPath == null || path.equals(mountedPath)) {
+            return path;
+        }
+        param.args[pathIndex] = mountedPath;
+        Log.i("MC_REDIRECT", "[FuseJavaGate] " + operation + " redirected: pkg=" +
+                packageName + " " + path + " -> " + mountedPath);
+        return mountedPath;
     }
 }
