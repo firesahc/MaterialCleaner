@@ -5,10 +5,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
-import android.os.RemoteException;
 import android.provider.MediaStore.Files.FileColumns;
 import android.util.ArraySet;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -133,27 +131,6 @@ public class QueryHooker extends XC_MethodHook {
         final var threadLocal = (ThreadLocal<?>) XposedHelpers.getObjectField(
                 param.thisObject, "mCallingIdentity");
         final var uid = (int) XposedHelpers.getObjectField(threadLocal.get(), "uid");
-        final var now = System.currentTimeMillis();
-        synchronized (mHook.mQueryRecord) {
-            mHook.mQueryRecord.put(uid, now);
-        }
-
-        // 本地缓存优化：如果该包没有任何重定向规则，跳过 Binder 调用
-        final var firstMounted = HookPolicyCache.INSTANCE.getMountedPath(callingPackage, data.get(0));
-        if (firstMounted == null) {
-            // 缓存中无此包 → 无法确认是否有规则 → 走 Binder
-        } else if (firstMounted.equals(data.get(0))) {
-            // 包在缓存中，路径未命中任何规则 → 该包无重定向 → 跳过 Binder
-            return;
-        }
-        // 其余情况（包在缓存中 + 路径命中规则）→ 走 Binder（server 后处理：mkdirs/UI 提示等）
-
-        mService.whileAlive(service -> {
-            try {
-                service.setQueriedPaths(callingPackage, data);
-            } catch (RemoteException e) {
-                Log.e("QueryHooker", "error", e);
-            }
-        });
+        QuerySessionCache.recordQueriedPaths(callingPackage, uid, data);
     }
 }

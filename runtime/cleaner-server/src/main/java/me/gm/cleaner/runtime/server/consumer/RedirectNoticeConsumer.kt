@@ -69,15 +69,9 @@ object RedirectNoticeConsumer {
                 val originalPath = event.optString("originalPath", "")
                 val mountedPath = event.optString("mountedPath", "")
                 val reason = event.optString("reason", "REDIRECTED_TO_INTERNAL")
+                val type = event.optString("type", "")
 
                 if (packageName.isEmpty()) {
-                    skipped++
-                    advanceCursor(eventFile)
-                    continue
-                }
-
-                // 如果 mountedPath 已作为目录存在，跳过提示（文件已可访问）
-                if (mountedPath.isNotEmpty() && java.io.File(mountedPath).isDirectory) {
                     skipped++
                     advanceCursor(eventFile)
                     continue
@@ -91,7 +85,30 @@ object RedirectNoticeConsumer {
                 }
 
                 // 通过控制面方法触发 UI 广播（Java 侧，避免 Kotlin stub Intent 问题）
-                srv.showRedirectNotice(packageName, originalPath, mountedPath, reason)
+                when (reason) {
+                    "MEDIA_NOT_FOUND", "MEDIA_NOT_FOUND_AGGRESSIVE" -> {
+                        val path = originalPath.ifBlank { mountedPath }
+                        if (path.isBlank()) {
+                            skipped++
+                            advanceCursor(eventFile)
+                            continue
+                        }
+                        srv.showMediaNotFoundNotice(
+                            packageName,
+                            path,
+                            reason == "MEDIA_NOT_FOUND_AGGRESSIVE",
+                        )
+                    }
+                    else -> {
+                        // 如果 mountedPath 已作为目录存在，跳过保存提示（文件已可访问）
+                        if (mountedPath.isNotEmpty() && java.io.File(mountedPath).isDirectory) {
+                            skipped++
+                            advanceCursor(eventFile)
+                            continue
+                        }
+                        srv.showRedirectNotice(packageName, originalPath, mountedPath, type)
+                    }
+                }
                 consumed++
                 advanceCursor(eventFile)
             } catch (e: Exception) {

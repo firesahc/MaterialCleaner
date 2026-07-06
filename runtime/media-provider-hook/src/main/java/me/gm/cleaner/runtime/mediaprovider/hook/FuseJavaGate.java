@@ -2,15 +2,12 @@ package me.gm.cleaner.runtime.mediaprovider.hook;
 
 import android.os.Build;
 import android.os.FileObserver;
-import android.os.RemoteException;
 import android.system.OsConstants;
 import android.util.Log;
 
 import java.io.File;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -301,50 +298,10 @@ public class FuseJavaGate {
         XposedBridge.hookMethod(method, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(final MethodHookParam param) {
-                mService.whileAlive(service -> {
-                    try {
-                        final var uid = (int) param.args[0];
-                        final var path = (String) param.args[1];
-                        final int i;
-                        final var gcPackages = new ArrayList<String>();
-                        final var gcIndices = new ArrayList<Integer>();
-                        synchronized (mHook.mQueryRecord) {
-                            final var size = mHook.mQueryRecord.size();
-                            if (size == 0) return;
-                            i = mHook.mQueryRecord.indexOfKey(uid);
-                            if (i < 0) {
-                                if (size > 1) {
-                                    for (var j = 0; j < size; j++) {
-                                        final var key = mHook.mQueryRecord.keyAt(j);
-                                        final var value = mHook.mQueryRecord.valueAt(j);
-                                        if (TimeUnit.MILLISECONDS.toSeconds(
-                                                System.currentTimeMillis() - value) > 5) {
-                                            gcPackages.add(getCallingPackageName(param.thisObject, key));
-                                            gcIndices.add(j);
-                                        }
-                                    }
-                                    final var iterator = gcIndices.listIterator(gcIndices.size());
-                                    while (iterator.hasPrevious()) {
-                                        mHook.mQueryRecord.removeAt(iterator.previous());
-                                    }
-                                }
-                            }
-                        }
-                        for (int idx = 0; idx < gcPackages.size(); idx++) {
-                            service.onReleaseQueriedPaths(gcPackages.get(idx));
-                        }
-                        if (i < 0) return;
-                        final var packageName = getCallingPackageName(param.thisObject, uid);
-                        if (service.onMaybeAccessQueriedPaths(packageName, path)) {
-                            synchronized (mHook.mQueryRecord) {
-                                mHook.mQueryRecord.removeAt(i);
-                            }
-                            service.onReleaseQueriedPaths(packageName);
-                        }
-                    } catch (RemoteException e) {
-                        Log.e("FuseJavaGate", "error", e);
-                    }
-                });
+                final var uid = (int) param.args[0];
+                final var path = (String) param.args[1];
+                final var packageName = getCallingPackageName(param.thisObject, uid);
+                QuerySessionCache.maybeAccessQueriedPath(packageName, uid, path);
             }
         });
     }

@@ -9,6 +9,7 @@ import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway
 import me.gm.cleaner.runtime.server.observer.ObserverManager
 import me.gm.cleaner.runtime.server.observer.StorageMountObserver
 import me.gm.cleaner.runtime.server.consumer.FileSystemEventConsumer
+import me.gm.cleaner.runtime.server.consumer.QuerySessionLeaseConsumer
 import me.gm.cleaner.runtime.server.consumer.RedirectNoticeConsumer
 import me.gm.cleaner.runtime.server.orchestrator.LayerId
 import me.gm.cleaner.runtime.server.orchestrator.LayerReport
@@ -126,6 +127,7 @@ class LayerOrchestrator(
         // 立即补偿消费积压事件
         FileSystemEventConsumer.pollAndConsume()
         RedirectNoticeConsumer.pollAndConsume()
+        QuerySessionLeaseConsumer.pollAndApply()
         // 启动定时轮询（每 2s）
         startConsumerScheduler()
 
@@ -212,6 +214,7 @@ class LayerOrchestrator(
         // ── 补偿消费 ──
         FileSystemEventConsumer.pollAndConsume()
         RedirectNoticeConsumer.pollAndConsume()
+        QuerySessionLeaseConsumer.pollAndApply()
         startConsumerScheduler()
 
         Log.i(TAG, "performHooksReconnect: done")
@@ -235,6 +238,7 @@ class LayerOrchestrator(
         server.handler.postDelayed({
             FileSystemEventConsumer.pollAndConsume()
             RedirectNoticeConsumer.pollAndConsume()
+            QuerySessionLeaseConsumer.pollAndApply()
             // 独立于事件消费心跳，执行 Native Hook 健康检查
             nativeHookHealthCheck()
             // 定期发布状态快照到 DataBus（供 App UI 直接读取）

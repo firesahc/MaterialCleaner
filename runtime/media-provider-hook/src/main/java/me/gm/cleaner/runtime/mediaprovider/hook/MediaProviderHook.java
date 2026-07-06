@@ -2,7 +2,6 @@ package me.gm.cleaner.runtime.mediaprovider.hook;
 
 import android.os.Build;
 import android.util.Log;
-import android.util.SparseLongArray;
 
 import de.robv.android.xposed.XposedHelpers;
 
@@ -10,7 +9,6 @@ import de.robv.android.xposed.XposedHelpers;
  * MediaProvider Hook 引导装配器。
  *
  * 职责：
- * - 持有共享状态（mQueryRecord）
  * - 提供共享工具方法（isFuseThread, getCallingPackage）
  * - 装配子组件：MediaDatabaseAdapter + FuseJavaGate
  *
@@ -19,8 +17,6 @@ import de.robv.android.xposed.XposedHelpers;
 public class MediaProviderHook {
     static final int TYPE_CONNECTION = 1;
     static final int TYPE_INSERT = 2;
-
-    final SparseLongArray mQueryRecord = new SparseLongArray();
 
     private final MediaProviderHooksService mService;
     private final ClassLoader mClassLoader;

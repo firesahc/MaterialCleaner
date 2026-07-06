@@ -94,6 +94,10 @@ object HookPolicyCache {
     var recordExternalAppSpecificStorage: Boolean = false
         private set
 
+    @Volatile
+    var aggressivelyPromptForReadingMediaFiles: Boolean = false
+        private set
+
     /**
      * 从 DataBus 加载最后一次快照初始化缓存。
      * 应在 MediaProvider 进程初始化时调用一次。
@@ -437,6 +441,8 @@ object HookPolicyCache {
 
         // 解析偏好标记
         recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false)
+        aggressivelyPromptForReadingMediaFiles =
+            root.optBoolean("aggressivelyPromptForReadingMediaFiles", false)
         FuseNativePolicyAdapter.applyRecordExternalAppSpecificStorage(recordExternalAppSpecificStorage)
     }
 

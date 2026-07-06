@@ -154,14 +154,29 @@ public class CleanerServer extends ContextWrapper {
      * 使用 Java 实现避免 Kotlin stub Intent 遮蔽问题（hidden-api 模块）。
      */
     public void showRedirectNotice(String packageName, String originalPath,
-                                   String mountedPath, String reason) {
+                                   String mountedPath, String type) {
         final var finalPath = originalPath;
         broadcastIntent(intent -> {
             intent.setAction(ServerConstants.ACTION_REDIRECTED_TO_INTERNAL);
             intent.putExtra(Intent.EXTRA_PACKAGE_NAME,
                     SystemService.getPackageInfoNoThrow(packageName, 0, 0));
             intent.putExtra(Intent.EXTRA_TEXT, mountedPath);
-            intent.setType(String.valueOf(reason));
+            intent.setType("INSERT".equals(type) ? "2" : "0");
+            intent.putExtra(Intent.EXTRA_STREAM,
+                    RuntimeFileUtils.INSTANCE.getPathAsUser(finalPath, 0));
+        });
+    }
+
+    public void showMediaNotFoundNotice(String packageName, String path, boolean aggressive) {
+        final var finalPath = path;
+        broadcastIntent(intent -> {
+            intent.setAction(ServerConstants.ACTION_MEDIA_NOT_FOUND);
+            intent.putExtra(Intent.EXTRA_PACKAGE_NAME,
+                    SystemService.getPackageInfoNoThrow(packageName, 0, 0));
+            intent.putExtra(Intent.EXTRA_TEXT, finalPath);
+            if (aggressive) {
+                intent.setType(Intent.EXTRA_SUBJECT);
+            }
             intent.putExtra(Intent.EXTRA_STREAM,
                     RuntimeFileUtils.INSTANCE.getPathAsUser(finalPath, 0));
         });

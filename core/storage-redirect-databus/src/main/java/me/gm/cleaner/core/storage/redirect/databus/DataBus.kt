@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicLong
  *     filesystem/     ← MediaProvider 进程写入，server 进程读取
  *     redirect_notice/ ← MediaProvider 进程写入，server 进程读取
  *     consumed/       ← 已消费事件归档
+ *   leases/
+ *     query_sessions/ ← MediaProvider 写入，server 按 TTL 维护临时目录
  *   cursors/          ← 消费者游标持久化
  *   tmp/
  * ```
@@ -56,6 +58,7 @@ object DataBus {
     private const val DIR_SNAPSHOTS = "snapshots"
     private const val DIR_SIGNALS = "signals"
     private const val DIR_EVENTS = "events"
+    private const val DIR_LEASES = "leases"
     private const val DIR_CURSORS = "cursors"
     private const val DIR_CONSUMED = "consumed"
     private const val DIR_TMP = "tmp"
@@ -76,10 +79,14 @@ object DataBus {
     const val SIGNAL_NATIVE_HOOK_STATUS_CHANGED = "native_hook_status_changed"
     const val SIGNAL_FILESYSTEM_EVENTS_CHANGED = "filesystem_events_changed"
     const val SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED = "redirect_notice_events_changed"
+    const val SIGNAL_QUERY_SESSION_LEASES_CHANGED = "query_session_leases_changed"
 
     // ── 事件子目录 ──
     const val EVENT_FILESYSTEM = "filesystem"
     const val EVENT_REDIRECT_NOTICE = "redirect_notice"
+
+    // ── Lease 子目录 ──
+    const val LEASE_QUERY_SESSIONS = "query_sessions"
 
     @Volatile
     private var initialized = false
@@ -108,6 +115,7 @@ object DataBus {
                 "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
                 "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
                 "$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED",
+                "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS",
                 "$BUS_ROOT/$DIR_CURSORS",
                 "$BUS_ROOT/$DIR_TMP",
             )
@@ -367,6 +375,79 @@ object DataBus {
     fun writeCursorToEvent(queue: String, event: EventFile): Boolean =
         writeCursor(queue, event.name)
 
+    // ── Lease（短期会话） ──
+
+    /**
+     * 原子写入一个短期 lease。
+     *
+     * Lease 表示短期有效状态，命名由调用方提供但会被规整为文件安全形式。
+     * 内容仍由调用方使用 JSON 表达，并在 payload 中包含 expiresAt。
+     */
+    fun writeLease(category: String, key: String, content: String): Boolean {
+        ensureInitialized()
+        val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
+        if (!leaseDir.exists() && !leaseDir.mkdirs()) {
+            Log.e(TAG, "Failed to create lease dir: $category")
+            return false
+        }
+        leaseDir.setReadable(true, false)
+        leaseDir.setWritable(true, false)
+        leaseDir.setExecutable(true, false)
+
+        val filename = "${sanitizeFileName(key)}.json"
+        val pid = Process.myPid()
+        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
+        val tmpFile = File(leaseDir, "$filename-$pid-$rand.tmp")
+        val targetFile = File(leaseDir, filename)
+
+        return try {
+            FileOutputStream(tmpFile).use { fos ->
+                fos.write(content.toByteArray(Charsets.UTF_8))
+                fos.flush()
+                fos.fd.sync()
+            }
+            if (!tmpFile.renameTo(targetFile)) {
+                Log.e(TAG, "Lease rename failed: $category/$filename")
+                tmpFile.delete()
+                return false
+            }
+            targetFile.setReadable(true, false)
+            targetFile.setWritable(true, false)
+            Log.d(TAG, "Lease written: $category/$filename")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write lease: $category/$filename", e)
+            tmpFile.delete()
+            false
+        }
+    }
+
+    fun readLeaseFiles(category: String): List<EventFile> {
+        val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
+        if (!leaseDir.exists()) return emptyList()
+
+        return try {
+            leaseDir.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".json") }
+                ?.sortedBy { it.name }
+                ?.map { EventFile(it.name, it.readText(Charsets.UTF_8)) }
+                ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read leases from $category", e)
+            emptyList()
+        }
+    }
+
+    fun deleteLeaseFile(category: String, name: String): Boolean {
+        val file = File("$BUS_ROOT/$DIR_LEASES/$category/${sanitizeFileName(name)}")
+        return try {
+            !file.exists() || file.delete()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete lease: $category/$name", e)
+            false
+        }
+    }
+
     /**
      * 读取持久化消费游标。
      * @return 游标值（上次消费的最后文件名），"" 表示未消费过
@@ -380,4 +461,7 @@ object DataBus {
             ""
         }
     }
+
+    private fun sanitizeFileName(value: String): String =
+        value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(180).ifBlank { "lease" }
 }
