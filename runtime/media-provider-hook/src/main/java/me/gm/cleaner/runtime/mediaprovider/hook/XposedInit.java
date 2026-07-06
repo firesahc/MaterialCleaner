@@ -16,6 +16,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 public class XposedInit implements IXposedHookLoadPackage {
     private final MediaProviderHooksService mediaProviderHooksService = new MediaProviderHooksService();
     private Context mContext;
+    private boolean mInlineHookInitialized;
 
     private void onMediaProviderLoaded(LoadPackageParam lpparam, Context context) {
         mContext = context;
@@ -25,6 +26,7 @@ public class XposedInit implements IXposedHookLoadPackage {
             );
             Log.i("MC_REDIRECT", "[XposedInit] MediaProvider class found, registering hooks...");
             NativeHookStatus.INSTANCE.markMediaProviderHookLoaded(lpparam.packageName);
+            initializeInlineHook(lpparam.packageName);
             setupReRegisterOnDeath();
             MediaProviderHooksService.requestReRegister("initial MediaProvider load");
             mediaProviderHooksService.initPolicyCache();
@@ -40,6 +42,23 @@ public class XposedInit implements IXposedHookLoadPackage {
             return HookBridgeRegistrar.registerHooksCallback(mContext, mediaProviderHooksService);
         }
         return false;
+    }
+
+    private void initializeInlineHook(String packageName) {
+        if (mInlineHookInitialized) {
+            return;
+        }
+        Log.i("MC_REDIRECT", "[XposedInit] Loading inline lib for package: " + packageName);
+        try {
+            System.loadLibrary("inline");
+            final var nativeStatus = InlineHookConfig.INSTANCE.initializeXHook();
+            NativeHookStatus.INSTANCE.markInlineLoadSucceeded(nativeStatus);
+            mInlineHookInitialized = true;
+            Log.i("MC_REDIRECT", "[XposedInit] libinline loaded and xhook initialized");
+        } catch (Throwable e) {
+            NativeHookStatus.INSTANCE.markInlineLoadFailed(e);
+            Log.e("MC_REDIRECT", "[XposedInit] Failed to load inline library, FUSE native hook disabled", e);
+        }
     }
 
     // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）
@@ -81,16 +100,7 @@ public class XposedInit implements IXposedHookLoadPackage {
             default:
                 return;
         }
-        Log.i("MC_REDIRECT", "[XposedInit] Loading inline lib for package: " + lpparam.packageName);
-        try {
-            System.loadLibrary("inline");
-            final var nativeStatus = InlineHookConfig.INSTANCE.initializeXHook();
-            NativeHookStatus.INSTANCE.markInlineLoadSucceeded(nativeStatus);
-            Log.i("MC_REDIRECT", "[XposedInit] libinline loaded and xhook initialized");
-        } catch (Throwable e) {
-            NativeHookStatus.INSTANCE.markInlineLoadFailed(e);
-            Log.e("MC_REDIRECT", "[XposedInit] Failed to load inline library, FUSE native hook disabled", e);
-        }
+        Log.i("MC_REDIRECT", "[XposedInit] Installing MediaProvider attach hook for package: " + lpparam.packageName);
         XposedHelpers.findAndHookMethod(ContentProvider.class, "attachInfo",
                 Context.class, ProviderInfo.class, new XC_MethodHook() {
                     @Override

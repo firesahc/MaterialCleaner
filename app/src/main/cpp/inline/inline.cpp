@@ -1,17 +1,35 @@
 #include <cstring>
 #include <dlfcn.h>
+#include <fstream>
 #include <jni.h>
+#include <string>
 #include "bpf_hook.h"
 #include "logging.h"
 #include "obfuscate.h"
+
+static bool isMediaProviderFuseMapped() {
+    std::ifstream maps("/proc/self/maps");
+    std::string line;
+    while (std::getline(maps, line)) {
+        if (line.find("/apex/com.android.mediaprovider/") != std::string::npos &&
+            line.find("MediaProvider.apk") != std::string::npos) {
+            return true;
+        }
+        if (line.find("libfuse_jni.so") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
 
 static std::string xhook_init() {
     void *handle = dlopen("libfuse_jni.so", RTLD_NOLOAD);
     if (handle == nullptr) {
         handle = dlopen("libfuse_jni.so", RTLD_LAZY);
     }
-    if (handle != nullptr) {
-        return bpf_hook::Hook(handle);
+    const bool fuseLibraryMapped = handle != nullptr || isMediaProviderFuseMapped();
+    if (fuseLibraryMapped) {
+        return bpf_hook::Hook(handle, true);
     }
     return "{\"fuseLibraryLoaded\":false,\"fuseLibraryName\":\"libfuse_jni.so\","
            "\"xhookRefreshCalled\":false,\"lastError\":\"dlopen libfuse_jni.so failed\"}";
