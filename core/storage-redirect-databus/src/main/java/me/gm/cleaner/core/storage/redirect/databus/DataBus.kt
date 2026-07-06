@@ -66,12 +66,14 @@ object DataBus {
     const val SNAPSHOT_CONFIGURED_MOUNT_POINTS = "configured_mount_points.json"
     const val SNAPSHOT_PLATFORM_CAPABILITIES = "platform_capabilities.json"
     const val SNAPSHOT_ORCHESTRATED_STATUS = "orchestrated_status.json"
+    const val SNAPSHOT_NATIVE_HOOK_STATUS = "native_hook_status.json"
 
     // ── 信号文件名 ──
     const val SIGNAL_REDIRECT_POLICY_CHANGED = "redirect_policy_changed"
     const val SIGNAL_READ_ONLY_CHANGED = "read_only_changed"
     const val SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED = "configured_mount_points_changed"
     const val SIGNAL_PLATFORM_CAPABILITIES_CHANGED = "platform_capabilities_changed"
+    const val SIGNAL_NATIVE_HOOK_STATUS_CHANGED = "native_hook_status_changed"
     const val SIGNAL_FILESYSTEM_EVENTS_CHANGED = "filesystem_events_changed"
     const val SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED = "redirect_notice_events_changed"
 

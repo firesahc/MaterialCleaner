@@ -1,8 +1,12 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
+import android.util.Log
+import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import org.json.JSONObject
 
 object NativeHookStatus {
+    private const val TAG = "NativeHookStatus"
+
     @Volatile
     private var mediaProviderHookLoaded = false
     @Volatile
@@ -22,6 +26,8 @@ object NativeHookStatus {
     @Volatile
     private var lastMountPointsApplySuccess = false
     @Volatile
+    private var mountPointsGeneration = 0L
+    @Volatile
     private var lastMountPointsApplyAt = 0L
     @Volatile
     private var lastMountPointsApplyGeneration = 0L
@@ -33,11 +39,13 @@ object NativeHookStatus {
     fun markMediaProviderHookLoaded(packageName: String) {
         mediaProviderHookLoaded = true
         mediaProviderPackageName = packageName
+        publishSnapshot()
     }
 
     fun markPolicyCacheInitialized() {
         policyCacheInitialized = true
         policyCacheInitializedAt = System.currentTimeMillis()
+        publishSnapshot()
     }
 
     fun markInlineLoadSucceeded(statusJson: String) {
@@ -45,6 +53,7 @@ object NativeHookStatus {
         inlineHookInitialized = true
         inlineHookStatusJson = statusJson
         lastInlineError = ""
+        publishSnapshot()
     }
 
     fun markInlineLoadFailed(error: Throwable) {
@@ -52,26 +61,46 @@ object NativeHookStatus {
         inlineHookInitialized = false
         inlineHookStatusJson = ""
         lastInlineError = describe(error)
+        publishSnapshot()
     }
 
     fun markMountPointsApplySucceeded(generation: Long, count: Int) {
         lastMountPointsApplySuccess = true
+        mountPointsGeneration = generation
         lastMountPointsApplyAt = System.currentTimeMillis()
         lastMountPointsApplyGeneration = generation
         lastMountPointsApplyCount = count
         lastMountPointsApplyError = ""
+        publishSnapshot()
     }
 
     fun markMountPointsApplyFailed(generation: Long, count: Int, error: Throwable) {
         lastMountPointsApplySuccess = false
+        mountPointsGeneration = generation
         lastMountPointsApplyAt = System.currentTimeMillis()
         lastMountPointsApplyGeneration = generation
         lastMountPointsApplyCount = count
         lastMountPointsApplyError = describe(error)
+        publishSnapshot()
     }
 
-    fun toJson(mountPointsGeneration: Long): String {
+    fun publishSnapshot() {
+        runCatching {
+            if (!DataBus.ensureInitialized()) return
+            val json = toJson(mountPointsGeneration)
+            if (DataBus.writeSnapshot(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS, json)) {
+                DataBus.signal(DataBus.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)
+            }
+        }.onFailure {
+            Log.w(TAG, "publishSnapshot failed", it)
+        }
+    }
+
+    fun toJson(mountPointsGeneration: Long = this.mountPointsGeneration): String {
         val root = JSONObject()
+        root.put("schemaVersion", 1)
+        root.put("createdAt", System.currentTimeMillis())
+        root.put("publisher", "NativeHookStatus")
         root.put("mediaProviderHookLoaded", mediaProviderHookLoaded)
         root.put("mediaProviderPackageName", mediaProviderPackageName)
         root.put("policyCacheInitialized", policyCacheInitialized)

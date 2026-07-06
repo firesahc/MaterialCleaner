@@ -46,5 +46,6 @@ object HookPolicyRefreshScheduler {
         if (HookPolicyCache.isStale()) {
             HookPolicyCache.refreshChangedSnapshotsFromDataBus()
         }
+        NativeHookStatus.publishSnapshot()
     }
 }
