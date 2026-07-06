@@ -1,7 +1,6 @@
 package me.gm.cleaner.runtime.server.observer
 
 import android.util.Log
-import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway
 import me.gm.cleaner.runtime.server.BuildConfig
 import me.gm.cleaner.runtime.server.CleanerServer
 import java.util.concurrent.ConcurrentHashMap
@@ -14,9 +13,7 @@ object ObserverManager {
         val observers = mutableListOf<BaseObserver>()
         observers += StorageMountObserver()
         observers += ActivityManagerLogsObserver(server)
-        if (MediaProviderHookGateway.pingBinder()) {
-            observers += FileSystemObserver(server)
-        }
+        observers += FileSystemObserver(server)
         observers += IntentReceiver()
         observers += DataAppDirObserver()
         observers.forEach { it.start() }
