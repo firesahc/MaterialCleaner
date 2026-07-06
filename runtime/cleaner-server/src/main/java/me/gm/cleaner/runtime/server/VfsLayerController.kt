@@ -149,18 +149,35 @@ class VfsLayerController {
     fun collectReport(generation: Long, now: Long): LayerReport {
         val observer = ObserverManager.getObserver(BaseProcessObserver::class.java)
         return if (observer != null) {
+            val mountedPackages = observer.getMountedPackages().size
+            val recordedPids = observer.getAllStartUpAwarePids().size
+            val mountFailedPids = observer.getMountFailedPids().size
+            val mountTotalAttempts = observer.getTotalMountAttempts()
+            val mountFailureCount = observer.getMountFailureCount()
+            val state = if (mountFailedPids > 0 || mountFailureCount > 0) {
+                LayerState.DEGRADED
+            } else {
+                LayerState.HEALTHY
+            }
             LayerReport(
                 id = LayerId.VFS,
-                state = LayerState.HEALTHY,
+                state = state,
                 generation = generation,
-                lastHeartbeatAt = now,
+                lastHeartbeatAt = if (state == LayerState.HEALTHY) now else 0L,
+                lastErrorAt = if (state == LayerState.HEALTHY) 0L else now,
+                lastError = if (state == LayerState.HEALTHY) {
+                    null
+                } else {
+                    "VFS mount failures detected"
+                },
                 metrics = mapOf(
                     "started" to "true",
-                    "mountedPackages" to observer.getMountedPackages().size.toString(),
-                    "recordedPids" to observer.getAllStartUpAwarePids().size.toString(),
-                    "mountFailedPids" to observer.getMountFailedPids().size.toString(),
-                    "mountTotalAttempts" to observer.getTotalMountAttempts().toString(),
-                    "mountFailureCount" to observer.getMountFailureCount().toString(),
+                    "configuredPackages" to ServicePreferences.srPackages.size.toString(),
+                    "mountedPackages" to mountedPackages.toString(),
+                    "recordedPids" to recordedPids.toString(),
+                    "mountFailedPids" to mountFailedPids.toString(),
+                    "mountTotalAttempts" to mountTotalAttempts.toString(),
+                    "mountFailureCount" to mountFailureCount.toString(),
                 ),
             )
         } else {
