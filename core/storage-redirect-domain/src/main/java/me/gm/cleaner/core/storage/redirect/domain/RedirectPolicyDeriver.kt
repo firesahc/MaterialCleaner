@@ -25,7 +25,9 @@ object RedirectPolicyDeriver {
         return ConfiguredMountPointsSnapshot(
             schemaVersion = 1,
             generation = policy.generation,
+            publisherEpoch = policy.publisherEpoch,
             createdAt = policy.createdAt,
+            publisher = policy.publisher,
             points = points,
         )
     }

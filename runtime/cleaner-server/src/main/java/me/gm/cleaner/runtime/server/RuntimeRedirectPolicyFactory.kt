@@ -4,6 +4,7 @@ import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
 import me.gm.cleaner.core.storage.redirect.domain.RedirectRule
 import java.util.concurrent.atomic.AtomicLong
+import java.util.UUID
 
 /**
  * 运行时重定向策略工厂。
@@ -13,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object RuntimeRedirectPolicyFactory {
     private const val PUBLISHER_IDENTITY = "RuntimeRedirectPolicyFactory"
+    val publisherEpoch: String = UUID.randomUUID().toString()
 
     /** 单调递增的策略代数计数器 */
     private val generationCounter = AtomicLong(0)
@@ -44,6 +46,7 @@ object RuntimeRedirectPolicyFactory {
         return RedirectPolicySnapshot(
             schemaVersion = 1,
             generation = gen,
+            publisherEpoch = publisherEpoch,
             createdAt = now,
             publisher = PUBLISHER_IDENTITY,
             storageRedirectRules = rules,

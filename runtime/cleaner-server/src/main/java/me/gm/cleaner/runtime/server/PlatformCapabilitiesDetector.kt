@@ -87,6 +87,7 @@ object PlatformCapabilitiesDetector {
         return PlatformCapabilities(
             schemaVersion = 1,
             generation = gen,
+            publisherEpoch = RuntimeRedirectPolicyFactory.publisherEpoch,
             createdAt = now,
             publisher = "PlatformCapabilitiesDetector",
             sdkVersionInt = sdkInt,
@@ -181,6 +182,7 @@ object PlatformCapabilitiesDetector {
             PlatformCapabilities(
                 schemaVersion = root.optInt("schemaVersion", 1),
                 generation = root.optLong("generation", 0L),
+                publisherEpoch = root.optString("publisherEpoch", ""),
                 createdAt = root.optLong("createdAt", 0L),
                 publisher = root.optString("publisher", ""),
                 sdkVersionInt = root.optInt("sdkVersionInt", 0),
@@ -212,6 +214,7 @@ object PlatformCapabilitiesDetector {
         val root = org.json.JSONObject()
         root.put("schemaVersion", caps.schemaVersion)
         root.put("generation", caps.generation)
+        root.put("publisherEpoch", caps.publisherEpoch)
         root.put("createdAt", caps.createdAt)
         root.put("publisher", caps.publisher)
         root.put("sdkVersionInt", caps.sdkVersionInt)

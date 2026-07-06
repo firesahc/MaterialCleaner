@@ -14,6 +14,7 @@ package me.gm.cleaner.core.storage.redirect.domain
  *
  * @property schemaVersion 快照结构版本（当前为 1）
  * @property generation 快照代数
+ * @property publisherEpoch 发布者本轮生命周期标识；发布者重启后允许 generation 从 1 重新开始
  * @property createdAt 快照创建时间戳
  * @property publisher 发布者标识
  * @property sdkVersionInt API level（如 33, 34, 35）
@@ -32,6 +33,7 @@ package me.gm.cleaner.core.storage.redirect.domain
 data class PlatformCapabilities(
     val schemaVersion: Int = 1,
     val generation: Long = 0L,
+    val publisherEpoch: String = "",
     val createdAt: Long = 0L,
     val publisher: String = "",
     val sdkVersionInt: Int = 0,

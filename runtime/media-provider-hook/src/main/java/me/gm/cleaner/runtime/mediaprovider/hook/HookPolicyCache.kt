@@ -38,6 +38,8 @@ object HookPolicyCache {
     @Volatile
     private var readOnlyGeneration: Long = 0L
     @Volatile
+    private var readOnlyPublisherEpoch: String = ""
+    @Volatile
     private var lastReadOnlySignalTimestamp: Long = 0L
 
     // ── Rule 缓存 ──
@@ -46,11 +48,15 @@ object HookPolicyCache {
     @Volatile
     private var policyGeneration: Long = 0L
     @Volatile
+    private var policyPublisherEpoch: String = ""
+    @Volatile
     private var lastPolicySignalTimestamp: Long = 0L
 
     // ── Configured Mount Points（推送到 native） ──
     @Volatile
     private var configuredMountPointsGeneration: Long = 0L
+    @Volatile
+    private var configuredMountPointsPublisherEpoch: String = ""
     @Volatile
     private var lastMountSignalTimestamp: Long = 0L
 
@@ -67,6 +73,8 @@ object HookPolicyCache {
     // ── PlatformCapabilities 缓存 ──
     @Volatile
     private var capabilitiesGeneration: Long = 0L
+    @Volatile
+    private var capabilitiesPublisherEpoch: String = ""
     @Volatile
     private var lastCapabilitiesSignalTimestamp: Long = 0L
     @Volatile
@@ -164,15 +172,23 @@ object HookPolicyCache {
         try {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
-            if (generation <= capabilitiesGeneration && capabilitiesGeneration > 0) {
+            val publisherEpoch = root.optString("publisherEpoch", "")
+            if (!shouldAcceptSnapshot(
+                    publisherEpoch,
+                    generation,
+                    capabilitiesPublisherEpoch,
+                    capabilitiesGeneration
+                )) {
                 return  // 未更新
             }
             cachedSdkVersionInt = root.optInt("sdkVersionInt", 0)
             cachedIsFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false)
             cachedFuseAvailable = root.optBoolean("fuseAvailable", false)
             capabilitiesGeneration = generation
+            capabilitiesPublisherEpoch = publisherEpoch
             Log.i(TAG, "loadPlatformCapabilities: sdk=$cachedSdkVersionInt, " +
-                    "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable")
+                    "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable, " +
+                    "epoch=$capabilitiesPublisherEpoch, generation=$capabilitiesGeneration")
         } catch (e: Exception) {
             Log.e(TAG, "loadPlatformCapabilities: failed", e)
         }
@@ -263,8 +279,17 @@ object HookPolicyCache {
         try {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
-            if (generation <= configuredMountPointsGeneration && configuredMountPointsGeneration > 0) {
-                Log.d(TAG, "loadConfiguredMountPoints: generation not newer ($generation <= $configuredMountPointsGeneration)")
+            val publisherEpoch = root.optString("publisherEpoch", "")
+            if (!shouldAcceptSnapshot(
+                    publisherEpoch,
+                    generation,
+                    configuredMountPointsPublisherEpoch,
+                    configuredMountPointsGeneration
+                )) {
+                Log.d(TAG, "loadConfiguredMountPoints: snapshot not newer " +
+                        "(epoch=$publisherEpoch generation=$generation, " +
+                        "currentEpoch=$configuredMountPointsPublisherEpoch " +
+                        "currentGeneration=$configuredMountPointsGeneration)")
                 return true
             }
 
@@ -274,14 +299,17 @@ object HookPolicyCache {
                 // 空数组必须显式推送到 native——清除旧 mountPoint
                 FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation)
                 configuredMountPointsGeneration = generation
+                configuredMountPointsPublisherEpoch = publisherEpoch
                 return true
             }
 
             val points = Array(pointsArr.length()) { pointsArr.getString(it) }
             FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation)
             configuredMountPointsGeneration = generation
+            configuredMountPointsPublisherEpoch = publisherEpoch
 
-            Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, generation=$generation")
+            Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, " +
+                    "epoch=$publisherEpoch, generation=$generation")
             return true
         } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
@@ -353,8 +381,11 @@ object HookPolicyCache {
     private fun parseRedirectPolicy(json: String) {
         val root = JSONObject(json)
         val generation = root.optLong("generation", 0L)
-        if (generation <= policyGeneration && policyGeneration > 0) {
-            Log.d(TAG, "parseRedirectPolicy: generation not newer ($generation <= $policyGeneration)")
+        val publisherEpoch = root.optString("publisherEpoch", "")
+        if (!shouldAcceptSnapshot(publisherEpoch, generation, policyPublisherEpoch, policyGeneration)) {
+            Log.d(TAG, "parseRedirectPolicy: snapshot not newer " +
+                    "(epoch=$publisherEpoch generation=$generation, " +
+                    "currentEpoch=$policyPublisherEpoch currentGeneration=$policyGeneration)")
             return
         }
 
@@ -392,6 +423,7 @@ object HookPolicyCache {
 
         ruleCache = newCache
         policyGeneration = generation
+        policyPublisherEpoch = publisherEpoch
 
         // 解析 denylist
         val denyArr = root.optJSONArray("denylist")
@@ -419,8 +451,11 @@ object HookPolicyCache {
     private fun parseReadOnly(json: String) {
         val root = JSONObject(json)
         val generation = root.optLong("generation", 0L)
-        if (generation <= readOnlyGeneration && readOnlyGeneration > 0) {
-            Log.d(TAG, "parseReadOnly: generation not newer ($generation <= $readOnlyGeneration)")
+        val publisherEpoch = root.optString("publisherEpoch", "")
+        if (!shouldAcceptSnapshot(publisherEpoch, generation, readOnlyPublisherEpoch, readOnlyGeneration)) {
+            Log.d(TAG, "parseReadOnly: snapshot not newer " +
+                    "(epoch=$publisherEpoch generation=$generation, " +
+                    "currentEpoch=$readOnlyPublisherEpoch currentGeneration=$readOnlyGeneration)")
             return
         }
 
@@ -441,5 +476,22 @@ object HookPolicyCache {
 
         readOnlyCache = newCache
         readOnlyGeneration = generation
+        readOnlyPublisherEpoch = publisherEpoch
+    }
+
+    private fun shouldAcceptSnapshot(
+        newEpoch: String,
+        newGeneration: Long,
+        currentEpoch: String,
+        currentGeneration: Long,
+    ): Boolean {
+        if (currentGeneration <= 0) return true
+        if (newEpoch.isNotBlank() && currentEpoch.isNotBlank() && newEpoch != currentEpoch) {
+            return true
+        }
+        if (newEpoch.isNotBlank() && currentEpoch.isBlank()) {
+            return true
+        }
+        return newGeneration > currentGeneration
     }
 }

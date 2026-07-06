@@ -8,12 +8,14 @@ package me.gm.cleaner.core.storage.redirect.domain
  *
  * @property schemaVersion 快照结构版本
  * @property generation 策略代数（与来源 RedirectPolicySnapshot.generation 一致）
+ * @property publisherEpoch 发布者本轮生命周期标识；与来源 RedirectPolicySnapshot 一致
  * @property createdAt 快照创建时间戳
  * @property points 所有配置的目标挂载点路径列表
  */
 data class ConfiguredMountPointsSnapshot(
     val schemaVersion: Int = 1,
     val generation: Long = 0L,
+    val publisherEpoch: String = "",
     val createdAt: Long = 0L,
     val publisher: String = "",
     val points: List<String> = emptyList(),

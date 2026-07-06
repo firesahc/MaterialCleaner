@@ -126,6 +126,7 @@ object SnapshotPublisher {
         val root = JSONObject()
         root.put("schemaVersion", snapshot.schemaVersion)
         root.put("generation", snapshot.generation)
+        root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
 
@@ -170,6 +171,7 @@ object SnapshotPublisher {
         val root = JSONObject()
         root.put("schemaVersion", snapshot.schemaVersion)
         root.put("generation", snapshot.generation)
+        root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
 
@@ -188,6 +190,7 @@ object SnapshotPublisher {
         val root = JSONObject()
         root.put("schemaVersion", snapshot.schemaVersion)
         root.put("generation", snapshot.generation)
+        root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
         root.put("points", JSONArray(snapshot.points as Collection<*>))
