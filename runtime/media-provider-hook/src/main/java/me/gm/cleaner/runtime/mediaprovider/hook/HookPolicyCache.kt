@@ -57,6 +57,9 @@ object HookPolicyCache {
     /** 已推送到 native 的 configured_mount_points generation（用于诊断） */
     val nativeMountPointsGeneration: Long get() = configuredMountPointsGeneration
 
+    fun getNativeHookStatusJson(): String =
+        NativeHookStatus.toJson(configuredMountPointsGeneration)
+
     // ── Denylist ──
     @Volatile
     private var denylist: Set<String> = emptySet()
@@ -280,7 +283,7 @@ object HookPolicyCache {
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, generation=$generation")
             return true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
             return false
         }

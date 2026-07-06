@@ -7,6 +7,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -16,6 +17,7 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
 
 public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private volatile ICleanerServerCallback mCleanerServerBinder = null;
+    private final AtomicBoolean mPolicyCacheInitialized = new AtomicBoolean(false);
     private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
         mCleanerServerBinder = null;
         requestReRegister("server callback died");
@@ -29,9 +31,13 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
      * 应在 Xposed 模块加载时调用一次。
      */
     public void initPolicyCache() {
+        if (!mPolicyCacheInitialized.compareAndSet(false, true)) {
+            return;
+        }
         HookPolicyCache.INSTANCE.initFromDataBus();
         // 启动定时刷新调度器（每 5s 检查信号并刷新 native 挂载点）
         HookPolicyRefreshScheduler.INSTANCE.start();
+        NativeHookStatus.INSTANCE.markPolicyCacheInitialized();
     }
 
     public void whileAlive(Consumer<ICleanerServerCallback> c) {
@@ -141,5 +147,10 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     @Override
     public long getNativeMountPointsGeneration() {
         return HookPolicyCache.INSTANCE.getNativeMountPointsGeneration();
+    }
+
+    @Override
+    public String getNativeHookStatusJson() {
+        return HookPolicyCache.INSTANCE.getNativeHookStatusJson();
     }
 }

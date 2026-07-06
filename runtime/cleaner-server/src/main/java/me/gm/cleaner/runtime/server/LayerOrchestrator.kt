@@ -306,15 +306,31 @@ class LayerOrchestrator(
         val vfsReport = server.vfsLayerController.collectReport(gen, now)
 
         // MediaProvider Java Hook Layer
-        val hooksConnected = MediaProviderHookGateway.pingBinder()
+        val hooksBridgeConnected = MediaProviderHookGateway.pingBinder()
+        val mediaProviderHookConnected = if (hooksBridgeConnected) {
+            MediaProviderHookGateway.isMediaProviderHookConnected()
+        } else {
+            false
+        }
         val hookReport = LayerReport(
             id = LayerId.MEDIA_PROVIDER_JAVA_HOOK,
-            state = if (hooksConnected) LayerState.HEALTHY else LayerState.UNAVAILABLE,
+            state = when {
+                mediaProviderHookConnected -> LayerState.HEALTHY
+                hooksBridgeConnected -> LayerState.UNAVAILABLE
+                else -> LayerState.UNAVAILABLE
+            },
             generation = gen,
-            lastHeartbeatAt = if (hooksConnected) now else 0L,
-            lastErrorAt = if (hooksConnected) 0L else now,
-            lastError = if (hooksConnected) null else "Hook Binder unavailable",
-            metrics = mapOf("binderConnected" to hooksConnected.toString()),
+            lastHeartbeatAt = if (mediaProviderHookConnected) now else 0L,
+            lastErrorAt = if (mediaProviderHookConnected) 0L else now,
+            lastError = when {
+                mediaProviderHookConnected -> null
+                hooksBridgeConnected -> "MediaProvider Hook unavailable"
+                else -> "Hook bridge Binder unavailable"
+            },
+            metrics = mapOf(
+                "binderConnected" to hooksBridgeConnected.toString(),
+                "mediaProviderHookConnected" to mediaProviderHookConnected.toString(),
+            ),
         )
 
         // FUSE Native Hook Layer
@@ -326,13 +342,40 @@ class LayerOrchestrator(
         // 演进方向：native 层通过 DataBus 心跳信号独立报告存活状态，
         // 届时可消除此盲区。
         // 当前保守策略：snapshotGen>0 时报告 STALE（比误报 HEALTHY 安全）。
-        val nativeGen = MediaProviderHookGateway.nativeMountPointsGeneration()
+        val nativeStatus = if (mediaProviderHookConnected) {
+            parseNativeHookStatus(MediaProviderHookGateway.nativeHookStatusJson())
+        } else {
+            NativeHookRuntimeStatus(
+                mediaProviderHookLoaded = false,
+                mountPointsGeneration = 0L,
+                lastError = "MediaProvider Hook unavailable",
+            )
+        }
+        val nativeGen = if (nativeStatus.mountPointsGeneration > 0) {
+            nativeStatus.mountPointsGeneration
+        } else {
+            MediaProviderHookGateway.nativeMountPointsGeneration()
+        }
         val snapshotGen = MediaProviderHookGateway.configuredMountPointsSnapshotGeneration()
         val nativeState = when {
+            !mediaProviderHookConnected -> LayerState.UNAVAILABLE
+            !nativeStatus.inlineLibraryLoaded -> LayerState.DEGRADED
+            nativeStatus.nativeLibraryKnownUnavailable -> LayerState.DISABLED
+            nativeStatus.nativeHookPartiallyAvailable -> LayerState.DEGRADED
             nativeGen > 0 && nativeGen >= snapshotGen -> LayerState.HEALTHY
-            nativeGen > 0 -> LayerState.STALE
-            snapshotGen > 0 -> LayerState.STALE
+            nativeGen > 0 || snapshotGen > 0 -> LayerState.STALE
             else -> LayerState.UNAVAILABLE
+        }
+        val nativeError = when {
+            nativeState == LayerState.HEALTHY -> null
+            nativeStatus.lastMountPointsApplyError.isNotBlank() -> nativeStatus.lastMountPointsApplyError
+            nativeStatus.lastInlineError.isNotBlank() -> nativeStatus.lastInlineError
+            nativeStatus.nativeLastError.isNotBlank() -> nativeStatus.nativeLastError
+            !mediaProviderHookConnected -> "MediaProvider Hook unavailable"
+            !nativeStatus.inlineLibraryLoaded -> "Inline native library unavailable"
+            nativeStatus.nativeLibraryKnownUnavailable -> "FUSE native library unavailable"
+            nativeStatus.nativeHookPartiallyAvailable -> "FUSE native symbols partially available"
+            else -> "Native mount points stale or unavailable"
         }
         val nativeReport = LayerReport(
             id = LayerId.FUSE_NATIVE_HOOK,
@@ -340,10 +383,21 @@ class LayerOrchestrator(
             generation = gen,
             lastHeartbeatAt = if (nativeState == LayerState.HEALTHY) now else 0L,
             lastErrorAt = if (nativeState == LayerState.HEALTHY) 0L else now,
-            lastError = if (nativeState == LayerState.HEALTHY) null else "Native mount points stale or unavailable",
+            lastError = nativeError,
             metrics = mapOf(
                 "configuredMountPointsGeneration" to nativeGen.toString(),
                 "snapshotConfiguredMountPointsGeneration" to snapshotGen.toString(),
+                "mediaProviderHookLoaded" to nativeStatus.mediaProviderHookLoaded.toString(),
+                "policyCacheInitialized" to nativeStatus.policyCacheInitialized.toString(),
+                "inlineLibraryLoaded" to nativeStatus.inlineLibraryLoaded.toString(),
+                "inlineHookInitialized" to nativeStatus.inlineHookInitialized.toString(),
+                "fuseLibraryLoaded" to nativeStatus.fuseLibraryLoaded.toString(),
+                "containsMountHooked" to nativeStatus.containsMountHooked.toString(),
+                "startsWithHooked" to nativeStatus.startsWithHooked.toString(),
+                "isFuseBpfEnabledHooked" to nativeStatus.isFuseBpfEnabledHooked.toString(),
+                "lastMountPointsApplySuccess" to nativeStatus.lastMountPointsApplySuccess.toString(),
+                "lastMountPointsApplyGeneration" to nativeStatus.lastMountPointsApplyGeneration.toString(),
+                "lastMountPointsApplyCount" to nativeStatus.lastMountPointsApplyCount.toString(),
             ),
         )
 
@@ -381,12 +435,13 @@ class LayerOrchestrator(
         // ControlPlane
         val controlReport = LayerReport(
             id = LayerId.CONTROL_PLANE,
-            state = if (hooksConnected) LayerState.HEALTHY else LayerState.DEGRADED,
+            state = if (hooksBridgeConnected) LayerState.HEALTHY else LayerState.DEGRADED,
             generation = gen,
             lastHeartbeatAt = now,
             metrics = mapOf(
                 "appBinderRegistered" to (server.cleanerService != null).toString(),
-                "hooksBridgeConnected" to hooksConnected.toString(),
+                "hooksBridgeConnected" to hooksBridgeConnected.toString(),
+                "mediaProviderHookConnected" to mediaProviderHookConnected.toString(),
             ),
         )
 
@@ -460,5 +515,60 @@ class LayerOrchestrator(
             metrics.keys.toTypedArray(),
             metrics.values.toTypedArray(),
         )
+    }
+
+    private fun parseNativeHookStatus(json: String): NativeHookRuntimeStatus {
+        if (json.isBlank()) {
+            return NativeHookRuntimeStatus(lastError = "Native hook status missing")
+        }
+        return try {
+            val root = JSONObject(json)
+            val native = root.optJSONObject("native")
+            NativeHookRuntimeStatus(
+                mediaProviderHookLoaded = root.optBoolean("mediaProviderHookLoaded", false),
+                policyCacheInitialized = root.optBoolean("policyCacheInitialized", false),
+                inlineLibraryLoaded = root.optBoolean("inlineLibraryLoaded", false),
+                inlineHookInitialized = root.optBoolean("inlineHookInitialized", false),
+                lastInlineError = root.optString("lastInlineError", ""),
+                mountPointsGeneration = root.optLong("mountPointsGeneration", 0L),
+                lastMountPointsApplySuccess = root.optBoolean("lastMountPointsApplySuccess", false),
+                lastMountPointsApplyGeneration = root.optLong("lastMountPointsApplyGeneration", 0L),
+                lastMountPointsApplyCount = root.optInt("lastMountPointsApplyCount", 0),
+                lastMountPointsApplyError = root.optString("lastMountPointsApplyError", ""),
+                fuseLibraryLoaded = native?.optBoolean("fuseLibraryLoaded", false) ?: false,
+                containsMountHooked = native?.optBoolean("containsMountHooked", false) ?: false,
+                startsWithHooked = native?.optBoolean("startsWithHooked", false) ?: false,
+                isFuseBpfEnabledHooked = native?.optBoolean("isFuseBpfEnabledHooked", false) ?: false,
+                nativeLastError = native?.optString("lastError", "") ?: "",
+            )
+        } catch (e: Exception) {
+            NativeHookRuntimeStatus(lastError = "Invalid native hook status: ${e.message}")
+        }
+    }
+
+    private data class NativeHookRuntimeStatus(
+        val mediaProviderHookLoaded: Boolean = false,
+        val policyCacheInitialized: Boolean = false,
+        val inlineLibraryLoaded: Boolean = false,
+        val inlineHookInitialized: Boolean = false,
+        val lastInlineError: String = "",
+        val mountPointsGeneration: Long = 0L,
+        val lastMountPointsApplySuccess: Boolean = false,
+        val lastMountPointsApplyGeneration: Long = 0L,
+        val lastMountPointsApplyCount: Int = 0,
+        val lastMountPointsApplyError: String = "",
+        val fuseLibraryLoaded: Boolean = false,
+        val containsMountHooked: Boolean = false,
+        val startsWithHooked: Boolean = false,
+        val isFuseBpfEnabledHooked: Boolean = false,
+        val nativeLastError: String = "",
+        val lastError: String = "",
+    ) {
+        val nativeLibraryKnownUnavailable: Boolean
+            get() = inlineLibraryLoaded && nativeLastError.contains("dlopen libfuse_jni.so failed")
+
+        val nativeHookPartiallyAvailable: Boolean
+            get() = inlineLibraryLoaded && fuseLibraryLoaded &&
+                    (!containsMountHooked || !startsWithHooked || !isFuseBpfEnabledHooked)
     }
 }

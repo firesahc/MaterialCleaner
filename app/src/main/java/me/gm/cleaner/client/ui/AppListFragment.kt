@@ -485,8 +485,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     private fun hookSummary(layer: OrchestratedLayerStatus): String {
         val connected = layer.metrics["binderConnected"]?.toBooleanStrictOrNull()
+        val mediaProviderConnected = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
         return when (connected) {
-            true -> "Hook Binder 已连接"
+            true -> if (mediaProviderConnected == true) {
+                "MediaProvider Hook 已连接"
+            } else {
+                "桥接已连接，等待 MediaProvider Hook"
+            }
             false -> "Hook Binder 未连接"
             null -> ""
         }
@@ -495,7 +500,17 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private fun nativeSummary(layer: OrchestratedLayerStatus): String {
         val nativeGen = layer.metrics["configuredMountPointsGeneration"]
         val snapshotGen = layer.metrics["snapshotConfiguredMountPointsGeneration"]
+        val inlineLoaded = layer.metrics["inlineLibraryLoaded"]?.toBooleanStrictOrNull()
+        val fuseLoaded = layer.metrics["fuseLibraryLoaded"]?.toBooleanStrictOrNull()
+        val containsMount = layer.metrics["containsMountHooked"]?.toBooleanStrictOrNull()
+        val startsWith = layer.metrics["startsWithHooked"]?.toBooleanStrictOrNull()
+        val bpf = layer.metrics["isFuseBpfEnabledHooked"]?.toBooleanStrictOrNull()
+        val applySuccess = layer.metrics["lastMountPointsApplySuccess"]?.toBooleanStrictOrNull()
         return when {
+            inlineLoaded == false -> "libinline 未加载"
+            fuseLoaded == false && inlineLoaded == true -> "FUSE native 库未加载"
+            containsMount == false || startsWith == false || bpf == false -> "native 符号部分缺失"
+            applySuccess == false && nativeGen != null && nativeGen != "0" -> "挂载点推送失败 · generation $nativeGen/$snapshotGen"
             nativeGen != null && snapshotGen != null -> "挂载点 generation $nativeGen/$snapshotGen"
             nativeGen != null -> "native generation $nativeGen"
             else -> ""
@@ -518,9 +533,11 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private fun controlPlaneSummary(layer: OrchestratedLayerStatus): String {
         val appBinder = layer.metrics["appBinderRegistered"]?.toBooleanStrictOrNull()
         val hooksBridge = layer.metrics["hooksBridgeConnected"]?.toBooleanStrictOrNull()
+        val mediaProviderHook = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
         val parts = mutableListOf<String>()
         if (appBinder != null) parts += if (appBinder) "App Binder 已注册" else "App Binder 未注册"
         if (hooksBridge != null) parts += if (hooksBridge) "Hook 桥已连接" else "Hook 桥未连接"
+        if (mediaProviderHook != null) parts += if (mediaProviderHook) "MediaProvider 已注册" else "MediaProvider 未注册"
         return parts.joinToString(" · ")
     }
 

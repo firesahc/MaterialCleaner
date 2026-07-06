@@ -10,7 +10,7 @@ namespace bpf_hook {
 
     extern bool recordExternalAppSpecificStorage;
 
-    void Hook(void *handle);
+    std::string Hook(void *handle);
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value);
 

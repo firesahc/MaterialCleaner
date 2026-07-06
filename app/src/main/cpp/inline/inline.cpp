@@ -5,19 +5,22 @@
 #include "logging.h"
 #include "obfuscate.h"
 
-static void xhook_init() {
+static std::string xhook_init() {
     void *handle = dlopen("libfuse_jni.so", RTLD_NOLOAD);
     if (handle == nullptr) {
         handle = dlopen("libfuse_jni.so", RTLD_LAZY);
     }
     if (handle != nullptr) {
-        bpf_hook::Hook(handle);
+        return bpf_hook::Hook(handle);
     }
+    return "{\"fuseLibraryLoaded\":false,\"fuseLibraryName\":\"libfuse_jni.so\","
+           "\"xhookRefreshCalled\":false,\"lastError\":\"dlopen libfuse_jni.so failed\"}";
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]]
-void xhook_init_jni(JNIEnv *env, jclass clazz) {
-    xhook_init();
+jstring xhook_init_jni(JNIEnv *env, jclass clazz) {
+    auto status = xhook_init();
+    return env->NewStringUTF(status.c_str());
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]]
@@ -36,7 +39,7 @@ jint JNI_OnLoad(JavaVM *jvm, void *v __unused) {
             {a, AY_OBFUSCATE("([Ljava/lang/String;)V"), (void *) bpf_hook::setMountPoint}, // "([Ljava/lang/String;)V"
             {a, AY_OBFUSCATE( // "(Z)V"
                         "(Z)V"),                        (void *) bpf_hook::setRecordExternalAppSpecificStorage},
-            {init, AY_OBFUSCATE("()V"),                 (void *) xhook_init_jni}, // "()V"
+            {init, AY_OBFUSCATE("()Ljava/lang/String;"), (void *) xhook_init_jni},
     };
     if (env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0]))) {
         return JNI_ERR;

@@ -71,18 +71,29 @@ object FuseNativePolicyAdapter {
             val points = Array(pointsArr.length()) { pointsArr.getString(it) }
             applyConfiguredMountPoints(points, generation)
             Pair(true, generation)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "refreshFromDataBus: failed", e)
             Pair(false, currentGeneration)
         }
     }
 
     fun applyConfiguredMountPoints(points: Array<String>, generation: Long) {
-        InlineHookConfig.setMountPoint(points)
-        Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
+        try {
+            InlineHookConfig.setMountPoint(points)
+            NativeHookStatus.markMountPointsApplySucceeded(generation, points.size)
+            Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
+        } catch (t: Throwable) {
+            NativeHookStatus.markMountPointsApplyFailed(generation, points.size, t)
+            Log.e(TAG, "applyConfiguredMountPoints failed: count=${points.size}, generation=$generation", t)
+            throw t
+        }
     }
 
     fun applyRecordExternalAppSpecificStorage(value: Boolean) {
-        InlineHookConfig.setRecordExternalAppSpecificStorage(value)
+        try {
+            InlineHookConfig.setRecordExternalAppSpecificStorage(value)
+        } catch (t: Throwable) {
+            Log.w(TAG, "applyRecordExternalAppSpecificStorage ignored because native hook is unavailable", t)
+        }
     }
 }

@@ -11,4 +11,6 @@ interface IMediaProviderHooksService {
     void refreshPolicyFromDataBus() = 13;
 
     long getNativeMountPointsGeneration() = 14;
+
+    String getNativeHookStatusJson() = 15;
 }

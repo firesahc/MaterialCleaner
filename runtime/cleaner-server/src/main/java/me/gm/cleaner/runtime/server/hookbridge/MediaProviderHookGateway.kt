@@ -39,6 +39,15 @@ object MediaProviderHookGateway {
     fun pingBinder(): Boolean =
         CleanerHooksClient.pingBinder()
 
+    fun isMediaProviderHookConnected(): Boolean =
+        runCatching {
+            var connected = false
+            whileAlive { service ->
+                connected = service.isMediaProviderHookConnected
+            }
+            connected
+        }.getOrDefault(false)
+
     fun registerCleanerServerBinder(server: CleanerServer) {
         whileAlive { service ->
             service.setCleanerServerBinder(server.mCleanerServerCallback)
@@ -82,6 +91,15 @@ object MediaProviderHookGateway {
             }
             generation
         }.getOrDefault(0L)
+
+    fun nativeHookStatusJson(): String =
+        runCatching {
+            var status = ""
+            whileAlive { service ->
+                status = service.nativeHookStatusJson
+            }
+            status
+        }.getOrDefault("")
 
     /**
      * 获取 configured_mount_points snapshot generation。

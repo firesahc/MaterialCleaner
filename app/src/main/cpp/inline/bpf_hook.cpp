@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 #include <libgen.h>
+#include <sstream>
 #include <shared_mutex>
 #include <regex>
 #include <sys/system_properties.h>
@@ -115,10 +116,28 @@ namespace bpf_hook {
         return strcmp(prop, "true") == 0;
     }
 
-    void Hook(void *handle) {
+    static void AppendJsonBool(std::ostringstream &out, const char *name, bool value) {
+        out << '"' << name << "\":" << (value ? "true" : "false");
+    }
+
+    static void AppendJsonString(std::ostringstream &out, const char *name, const char *value) {
+        out << '"' << name << "\":\"" << value << '"';
+    }
+
+    std::string Hook(void *handle) {
+        bool startsWithHooked = false;
+        bool containsMountHooked = false;
+        bool isFuseBpfEnabledHooked = false;
+        bool fuseReqUserdataHooked = false;
+        bool fuseBpfInstallHooked = false;
+        bool xhookRefreshCalled = false;
+        std::string lastError;
+
         if (!IsFuse()) {
             LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str()); // "FUSE not available, skipping hook"
-            return;
+            return "{\"fuseAvailable\":false,\"fuseLibraryLoaded\":true,"
+                   "\"fuseLibraryName\":\"libfuse_jni.so\",\"xhookRefreshCalled\":false,"
+                   "\"lastError\":\"FUSE not available\"}";
         }
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
         if (GetApiLevel() >= 31) {
@@ -126,8 +145,10 @@ namespace bpf_hook {
                 "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_"));
             if (startsWith != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_", (void *) new_StartsWith, (void **) &old_StartsWith);
+                startsWithHooked = true;
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str()); // "failed to find StartsWith"
+                lastError = "failed to find StartsWith";
             }
         }
         auto containsMount_31 = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE"
@@ -135,14 +156,17 @@ namespace bpf_hook {
         if (containsMount_31 != nullptr) {
             xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE", (void *) new_containsMount_31,
                       (void **) &old_containsMount_31);
+            containsMountHooked = true;
         } else {
             auto containsMount_30 = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_"
                     "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_"));
             if (containsMount_30 != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_", (void *) new_containsMount_30,
                           (void **) &old_containsMount_30);
+                containsMountHooked = true;
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str()); // "failed to find containsMount"
+                lastError = "failed to find containsMount";
             }
         }
         auto IsFuseBpfEnabled = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv"
@@ -150,14 +174,17 @@ namespace bpf_hook {
         if (IsFuseBpfEnabled != nullptr) {
             xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv", (void *) new_IsFuseBpfEnabled,
                       (void **) &old_IsFuseBpfEnabled);
+            isFuseBpfEnabledHooked = true;
 
 
             auto fuse_req_userdata = dlsym(handle, AY_OBFUSCATE("fuse_req_userdata")); // "fuse_req_userdata"
             if (fuse_req_userdata != nullptr) {
                 xhook_register("libfuse_jni\\.so", "fuse_req_userdata", (void *) new_fuse_req_userdata,
                           (void **) &old_fuse_req_userdata);
+                fuseReqUserdataHooked = true;
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str()); // "failed to find fuse_req_userdata"
+                lastError = "failed to find fuse_req_userdata";
             }
 
             auto fuse_bpf_install = dlsym(handle, AY_OBFUSCATE( // "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi"
@@ -165,13 +192,41 @@ namespace bpf_hook {
             if (fuse_bpf_install != nullptr) {
                 xhook_register("libfuse_jni\\.so", "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi", (void *) new_fuse_bpf_install,
                           (void **) &old_fuse_bpf_install);
+                fuseBpfInstallHooked = true;
             } else {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str()); // "failed to find fuse_bpf_install"
+                lastError = "failed to find fuse_bpf_install";
             }
         } else {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str()); // "failed to find IsFuseBpfEnabled"
+            lastError = "failed to find IsFuseBpfEnabled";
         }
         xhook_refresh(0);
+        xhookRefreshCalled = true;
+
+        std::ostringstream out;
+        out << "{";
+        AppendJsonBool(out, "fuseAvailable", true);
+        out << ",";
+        AppendJsonBool(out, "fuseLibraryLoaded", true);
+        out << ",";
+        AppendJsonString(out, "fuseLibraryName", "libfuse_jni.so");
+        out << ",";
+        AppendJsonBool(out, "startsWithHooked", startsWithHooked);
+        out << ",";
+        AppendJsonBool(out, "containsMountHooked", containsMountHooked);
+        out << ",";
+        AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
+        out << ",";
+        AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
+        out << ",";
+        AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
+        out << ",";
+        AppendJsonBool(out, "xhookRefreshCalled", xhookRefreshCalled);
+        out << ",";
+        AppendJsonString(out, "lastError", lastError.c_str());
+        out << "}";
+        return out.str();
     }
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value) {

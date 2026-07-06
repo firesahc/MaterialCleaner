@@ -8,6 +8,6 @@ object InlineHookConfig {
     private external fun a(value: Boolean)
     fun setRecordExternalAppSpecificStorage(value: Boolean) = a(value)
 
-    private external fun init()
-    fun initializeXHook() = init()
+    private external fun init(): String
+    fun initializeXHook(): String = init()
 }

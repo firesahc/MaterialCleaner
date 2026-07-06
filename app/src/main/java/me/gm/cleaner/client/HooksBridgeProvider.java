@@ -44,7 +44,18 @@ public class HooksBridgeProvider extends ContentProvider {
 
     /** 查询 Xposed 模块是否已注册到 HooksBridge */
     public static boolean isMediaProviderConnected() {
-        return getAliveMediaProviderService() != null;
+        IMediaProviderHooksService service = getAliveMediaProviderService();
+        if (service == null) {
+            return false;
+        }
+        try {
+            service.getVersion();
+            return true;
+        } catch (RemoteException e) {
+            Log.w(TAG, "Failed to query MediaProvider hook version", e);
+            markMediaProviderDisconnected(service, "query version failed");
+            return false;
+        }
     }
 
     @Nullable
@@ -216,6 +227,25 @@ public class HooksBridgeProvider extends ContentProvider {
                 }
             }
             return 0L;
+        }
+
+        @Override
+        public boolean isMediaProviderHookConnected() {
+            return isMediaProviderConnected();
+        }
+
+        @Override
+        public String getNativeHookStatusJson() {
+            IMediaProviderHooksService xposed = getAliveMediaProviderService();
+            if (xposed != null) {
+                try {
+                    return xposed.getNativeHookStatusJson();
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Failed to forward getNativeHookStatusJson to Xposed", e);
+                    markMediaProviderDisconnected(xposed, "forward getNativeHookStatusJson failed");
+                }
+            }
+            return "{\"mediaProviderHookLoaded\":false,\"lastError\":\"MediaProvider hook binder unavailable\"}";
         }
     };
 

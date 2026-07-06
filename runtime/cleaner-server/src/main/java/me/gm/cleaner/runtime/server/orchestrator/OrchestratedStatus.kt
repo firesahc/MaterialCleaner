@@ -47,9 +47,11 @@ data class OrchestratedStatus(
                         fuseNativeHook,
                     ).any {
                         it.state in setOf(
+                            LayerState.DEGRADED,
                             LayerState.UNAVAILABLE,
                             LayerState.RECOVERING,
                             LayerState.STALE,
+                            LayerState.DISABLED,
                         )
                     }
                     if (compatLayersDegraded) OverallHealth.DEGRADED

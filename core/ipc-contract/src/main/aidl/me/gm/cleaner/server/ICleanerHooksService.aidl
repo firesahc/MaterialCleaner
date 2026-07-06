@@ -12,4 +12,8 @@ interface ICleanerHooksService {
     void refreshPolicyFromDataBus() = 33;
 
     long getNativeMountPointsGeneration() = 34;
+
+    boolean isMediaProviderHookConnected() = 35;
+
+    String getNativeHookStatusJson() = 36;
 }
