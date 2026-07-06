@@ -92,7 +92,7 @@ namespace bpf_hook {
 
     void new_fuse_bpf_install(struct fuse *fuse, struct fuse_entry_param *e,
                               const std::string &child_path, int &backing_fd) {
-        if (recordExternalAppSpecificStorage || fuse_req->ctx.uid == 0) {
+        if (recordExternalAppSpecificStorage || (fuse_req != nullptr && fuse_req->ctx.uid == 0)) {
             return;
         }
         return old_fuse_bpf_install(fuse, e, child_path, backing_fd);
@@ -146,65 +146,83 @@ namespace bpf_hook {
                    "\"lastError\":\"FUSE not available\"}";
         }
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
+        if (handle == nullptr) {
+            lastError = "FUSE library mapped but symbol handle unavailable";
+        }
         if (GetApiLevel() >= 31) {
             const char *startsWithSymbol = AY_OBFUSCATE(
                     "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_");
             auto startsWith = handle == nullptr ? nullptr : dlsym(handle, startsWithSymbol);
-            startsWithHooked = (startsWith != nullptr || handle == nullptr) &&
-                    RegisterHook(startsWithSymbol, (void *) new_StartsWith, (void **) &old_StartsWith);
+            auto startsWithRegistered = RegisterHook(startsWithSymbol, (void *) new_StartsWith,
+                                                     (void **) &old_StartsWith);
+            startsWithHooked = startsWith != nullptr && startsWithRegistered;
             if (!startsWithHooked) {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str()); // "failed to find StartsWith"
-                lastError = "failed to find StartsWith";
+                if (handle != nullptr) {
+                    lastError = "failed to find StartsWith";
+                }
             }
         }
         const char *containsMount31Symbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE");
         auto containsMount_31 = handle == nullptr ? nullptr : dlsym(handle, containsMount31Symbol);
-        containsMountHooked = (containsMount_31 != nullptr || handle == nullptr) &&
-                RegisterHook(containsMount31Symbol, (void *) new_containsMount_31,
-                        (void **) &old_containsMount_31);
+        auto containsMount31Registered = RegisterHook(containsMount31Symbol, (void *) new_containsMount_31,
+                                                      (void **) &old_containsMount_31);
+        containsMountHooked = containsMount_31 != nullptr && containsMount31Registered;
         if (!containsMountHooked) {
             const char *containsMount30Symbol = AY_OBFUSCATE(
                     "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_");
             auto containsMount_30 = handle == nullptr ? nullptr : dlsym(handle, containsMount30Symbol);
-            containsMountHooked = (containsMount_30 != nullptr || handle == nullptr) &&
-                    RegisterHook(containsMount30Symbol, (void *) new_containsMount_30,
-                            (void **) &old_containsMount_30);
+            auto containsMount30Registered = RegisterHook(containsMount30Symbol,
+                                                          (void *) new_containsMount_30,
+                                                          (void **) &old_containsMount_30);
+            containsMountHooked = containsMount_30 != nullptr && containsMount30Registered;
         }
         if (!containsMountHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str()); // "failed to find containsMount"
-            lastError = "failed to find containsMount";
+            if (handle != nullptr) {
+                lastError = "failed to find containsMount";
+            }
         }
         const char *isFuseBpfEnabledSymbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv");
         auto IsFuseBpfEnabled = handle == nullptr ? nullptr : dlsym(handle, isFuseBpfEnabledSymbol);
-        isFuseBpfEnabledHooked = (IsFuseBpfEnabled != nullptr || handle == nullptr) &&
-                RegisterHook(isFuseBpfEnabledSymbol, (void *) new_IsFuseBpfEnabled,
-                        (void **) &old_IsFuseBpfEnabled);
+        auto isFuseBpfEnabledRegistered = RegisterHook(isFuseBpfEnabledSymbol,
+                                                       (void *) new_IsFuseBpfEnabled,
+                                                       (void **) &old_IsFuseBpfEnabled);
+        isFuseBpfEnabledHooked = IsFuseBpfEnabled != nullptr && isFuseBpfEnabledRegistered;
         if (!isFuseBpfEnabledHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str()); // "failed to find IsFuseBpfEnabled"
-            lastError = "failed to find IsFuseBpfEnabled";
+            if (handle != nullptr) {
+                lastError = "failed to find IsFuseBpfEnabled";
+            }
         }
 
         const char *fuseReqUserdataSymbol = AY_OBFUSCATE("fuse_req_userdata");
         auto fuse_req_userdata = handle == nullptr ? nullptr : dlsym(handle, fuseReqUserdataSymbol); // "fuse_req_userdata"
-        fuseReqUserdataHooked = (fuse_req_userdata != nullptr || handle == nullptr) &&
-                RegisterHook(fuseReqUserdataSymbol, (void *) new_fuse_req_userdata,
-                        (void **) &old_fuse_req_userdata);
+        auto fuseReqUserdataRegistered = RegisterHook(fuseReqUserdataSymbol,
+                                                      (void *) new_fuse_req_userdata,
+                                                      (void **) &old_fuse_req_userdata);
+        fuseReqUserdataHooked = fuse_req_userdata != nullptr && fuseReqUserdataRegistered;
         if (!fuseReqUserdataHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str()); // "failed to find fuse_req_userdata"
-            lastError = "failed to find fuse_req_userdata";
+            if (handle != nullptr) {
+                lastError = "failed to find fuse_req_userdata";
+            }
         }
 
         const char *fuseBpfInstallSymbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi");
         auto fuse_bpf_install = handle == nullptr ? nullptr : dlsym(handle, fuseBpfInstallSymbol);
-        fuseBpfInstallHooked = (fuse_bpf_install != nullptr || handle == nullptr) &&
-                RegisterHook(fuseBpfInstallSymbol, (void *) new_fuse_bpf_install,
-                        (void **) &old_fuse_bpf_install);
+        auto fuseBpfInstallRegistered = RegisterHook(fuseBpfInstallSymbol,
+                                                     (void *) new_fuse_bpf_install,
+                                                     (void **) &old_fuse_bpf_install);
+        fuseBpfInstallHooked = fuse_bpf_install != nullptr && fuseBpfInstallRegistered;
         if (!fuseBpfInstallHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str()); // "failed to find fuse_bpf_install"
-            lastError = "failed to find fuse_bpf_install";
+            if (handle != nullptr) {
+                lastError = "failed to find fuse_bpf_install";
+            }
         }
 
         xhook_refresh(0);
