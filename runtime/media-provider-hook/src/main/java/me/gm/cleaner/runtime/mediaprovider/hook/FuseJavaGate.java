@@ -60,6 +60,7 @@ public class FuseJavaGate {
         hookInsertFileIfNecessaryForFuse();
         hookDeleteFileForFuse();
         hookRenameForFuse();
+        hookOpenWithFuse();
         hookFileLookupForFuse();
         hookFileOpenForFuse();
         hookDirAccessCheck();
@@ -135,6 +136,32 @@ public class FuseJavaGate {
         });
     }
 
+    private void hookOpenWithFuse() {
+        var hooked = false;
+        for (final var method : mMediaProviderClass.getDeclaredMethods()) {
+            if (!"openWithFuse".equals(method.getName()) || !hasStringPathArgument(method)) {
+                continue;
+            }
+            final var parameterTypes = method.getParameterTypes();
+            if (parameterTypes.length < 2 || parameterTypes[1] != int.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(final MethodHookParam param) {
+                    final var uid = (int) param.args[1];
+                    redirectFusePath(param, 0, uid, "openWithFuse");
+                }
+            });
+            hooked = true;
+            Log.i("MC_REDIRECT", "[FuseJavaGate] hooked openWithFuse signature=" +
+                    Arrays.toString(parameterTypes));
+        }
+        if (!hooked) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] openWithFuse not found");
+        }
+    }
+
     private void hookFileLookupForFuse() {
         hookFusePathEntrypoint("onFileLookupForFuse");
     }
@@ -152,14 +179,16 @@ public class FuseJavaGate {
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(final MethodHookParam param) {
-                    final var uid = findCallingUid(param.args);
+                    final var originalPath = (String) param.args[0];
+                    final var uid = findCallingUid(methodName, param.args);
                     if (uid < 0) {
                         Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName +
                                 " cannot find uid, signature=" +
                                 Arrays.toString(method.getParameterTypes()));
                         return;
                     }
-                    redirectFusePath(param, 0, uid, methodName);
+                    final var mountedPath = redirectFusePath(param, 0, uid, methodName);
+                    redirectMatchingStringPathArgs(param, originalPath, mountedPath);
                 }
             });
             hooked = true;
@@ -174,6 +203,31 @@ public class FuseJavaGate {
     private boolean hasStringPathArgument(final Method method) {
         final var parameterTypes = method.getParameterTypes();
         return parameterTypes.length > 0 && parameterTypes[0] == String.class;
+    }
+
+    private void redirectMatchingStringPathArgs(final XC_MethodHook.MethodHookParam param,
+                                                final String originalPath,
+                                                final String mountedPath) {
+        if (originalPath == null || mountedPath == null || originalPath.equals(mountedPath)) {
+            return;
+        }
+        for (int i = 1; i < param.args.length; i++) {
+            if (originalPath.equals(param.args[i])) {
+                param.args[i] = mountedPath;
+            }
+        }
+    }
+
+    private int findCallingUid(final String methodName, final Object[] args) {
+        if ("onFileOpenForFuse".equals(methodName) && args.length > 2 &&
+                args[2] instanceof Integer) {
+            return (int) args[2];
+        }
+        if ("onFileLookupForFuse".equals(methodName) && args.length > 1 &&
+                args[1] instanceof Integer) {
+            return (int) args[1];
+        }
+        return findCallingUid(args);
     }
 
     private int findCallingUid(final Object[] args) {
