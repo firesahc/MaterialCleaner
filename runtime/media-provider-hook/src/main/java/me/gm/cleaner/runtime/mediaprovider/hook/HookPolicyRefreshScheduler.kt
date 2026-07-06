@@ -15,7 +15,7 @@ import java.util.TimerTask
  * ## 设计
  * - Timer 守护线程每 [POLL_INTERVAL_MS] 检查一次
  * - 检查策略、只读、configured_mount_points signal
- * - 与 Binder setMountPoint 并行工作（独立 fallback）
+ * - 检测到变更后从 DataBus 拉取新快照并同步 native
  * - 不在 MediaProvider 中创建独立 native 线程或 inotify watcher
  */
 object HookPolicyRefreshScheduler {

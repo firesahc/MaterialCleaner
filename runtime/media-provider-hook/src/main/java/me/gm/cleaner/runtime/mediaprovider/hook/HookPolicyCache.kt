@@ -20,10 +20,10 @@ import java.util.regex.Pattern
  * ## 刷新策略
  * - 初始化时从 DataBus 读取最后一次快照
  * - [refreshFromDataBus] 由外部按需调用（监听 signal 后）
- * - Binder 同步（setReadOnlyPaths/setMountPoint）仍保留作为 fallback
+ * - DataBus 是策略和挂载点的唯一分发通道
  *
  * ## 降级行为
- * - 快照不存在 → 返回 null，由调用方走 Binder fallback
+ * - 快照不存在 → 返回 null，调用方保持原路径并由状态诊断暴露快照问题
  * - 快照存在但 generation 过期 → 仍使用当前缓存，直到下次刷新
  */
 object HookPolicyCache {
@@ -251,7 +251,7 @@ object HookPolicyCache {
     /**
      * 从 DataBus 读取 configured_mount_points.json，
      * 解析 points 数组，并通过 [InlineHookConfig.setMountPoint] 推送到 native。
-     * 此路径独立于 Binder setMountPoint，两者可并行工作。
+     * 此路径是 native 挂载点配置的唯一分发路径。
      */
     private fun loadAndPushConfiguredMountPoints(): Boolean {
         val json = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
@@ -325,7 +325,7 @@ object HookPolicyCache {
      *
      * @param packageName 包名
      * @param path 原始路径
-     * @return 挂载后路径，如果包不在缓存中返回 null（调用方应走 Binder fallback）
+     * @return 挂载后路径；如果本地策略快照未加载或包无规则则返回 null
      */
     fun getMountedPath(packageName: String, path: String): String? {
         return getMountedPath(packageName, extractUserIdFromPath(path), path)
