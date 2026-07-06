@@ -79,6 +79,7 @@ object FuseNativePolicyAdapter {
 
     fun applyConfiguredMountPoints(points: Array<String>, generation: Long) {
         try {
+            retryInlineHookInitialization()
             InlineHookConfig.setMountPoint(points)
             NativeHookStatus.markMountPointsApplySucceeded(generation, points.size)
             Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
@@ -94,6 +95,16 @@ object FuseNativePolicyAdapter {
             InlineHookConfig.setRecordExternalAppSpecificStorage(value)
         } catch (t: Throwable) {
             Log.w(TAG, "applyRecordExternalAppSpecificStorage ignored because native hook is unavailable", t)
+        }
+    }
+
+    private fun retryInlineHookInitialization() {
+        try {
+            val nativeStatus = InlineHookConfig.initializeXHook()
+            NativeHookStatus.markInlineLoadSucceeded(nativeStatus)
+        } catch (t: Throwable) {
+            NativeHookStatus.markInlineLoadFailed(t)
+            Log.w(TAG, "retryInlineHookInitialization failed", t)
         }
     }
 }

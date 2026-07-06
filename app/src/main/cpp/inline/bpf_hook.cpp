@@ -1,9 +1,14 @@
 #include <dlfcn.h>
+#include <elf.h>
+#include <cstdint>
 #include <libgen.h>
+#include <link.h>
 #include <sstream>
 #include <shared_mutex>
 #include <regex>
+#include <sys/mman.h>
 #include <sys/system_properties.h>
+#include <unistd.h>
 
 #include "bpf_hook.h"
 #include "xhook/xhook.h"
@@ -11,6 +16,12 @@
 #include "fuse_lowlevel.h"
 #include "logging.h"
 #include "obfuscate.h"
+
+#if defined(__LP64__)
+#define MC_ELF_R_SYM ELF64_R_SYM
+#else
+#define MC_ELF_R_SYM ELF32_R_SYM
+#endif
 
 // Regex copied from FileUtils.java in MediaProvider, but without media directory.
 const std::regex PATTERN_OWNED_PATH(
@@ -25,6 +36,7 @@ static bool isPackageOwnedPath(const std::string &path) {
 
 namespace bpf_hook {
     static constexpr char FUSE_HOOK_PATH_REGEX[] = ".*(libfuse_jni\\.so|MediaProvider\\.apk).*";
+    static constexpr char FUSE_JNI_SONAME[] = "libfuse_jni.so";
 
     bool isFuseBpfEnabled = false;
     std::set<std::string> mountPoint = {};
@@ -130,6 +142,165 @@ namespace bpf_hook {
         return xhook_register(FUSE_HOOK_PATH_REGEX, symbol, newFunc, oldFunc) == 0;
     }
 
+    struct EmbeddedFuseHookResult {
+        bool foundFuseJni = false;
+        bool startsWithHooked = false;
+        bool containsMountHooked = false;
+        bool isFuseBpfEnabledHooked = false;
+        bool fuseReqUserdataHooked = false;
+        bool fuseBpfInstallHooked = false;
+    };
+
+    struct EmbeddedHookTarget {
+        const char *symbol;
+        void *replacement;
+        void **original;
+        bool *hooked;
+    };
+
+    static bool PatchGotSlot(ElfW(Addr) slotAddress, void *replacement, void **original) {
+        auto slot = reinterpret_cast<void **>(slotAddress);
+        if (slot == nullptr || replacement == nullptr || original == nullptr) {
+            return false;
+        }
+        if (*slot == replacement) {
+            return true;
+        }
+        *original = *slot;
+        const long pageSize = sysconf(_SC_PAGESIZE);
+        if (pageSize <= 0) {
+            return false;
+        }
+        auto page = reinterpret_cast<void *>(
+                reinterpret_cast<uintptr_t>(slot) & ~(static_cast<uintptr_t>(pageSize) - 1));
+        if (mprotect(page, static_cast<size_t>(pageSize), PROT_READ | PROT_WRITE) != 0) {
+            return false;
+        }
+        *slot = replacement;
+        __builtin___clear_cache(reinterpret_cast<char *>(slot),
+                                reinterpret_cast<char *>(slot) + sizeof(void *));
+        mprotect(page, static_cast<size_t>(pageSize), PROT_READ);
+        return true;
+    }
+
+    static bool IsRuntimeAddress(ElfW(Addr) value, ElfW(Addr) base) {
+        return value >= base;
+    }
+
+    static ElfW(Addr) ResolveDynamicAddress(ElfW(Addr) value, ElfW(Addr) base) {
+        return IsRuntimeAddress(value, base) ? value : base + value;
+    }
+
+    static int PatchEmbeddedFuseJniCallback(struct dl_phdr_info *info, size_t, void *data) {
+        auto result = static_cast<EmbeddedFuseHookResult *>(data);
+        if (info == nullptr || result == nullptr) {
+            return 0;
+        }
+
+        ElfW(Dyn) *dynamic = nullptr;
+        for (int i = 0; i < info->dlpi_phnum; i++) {
+            const auto &phdr = info->dlpi_phdr[i];
+            if (phdr.p_type == PT_DYNAMIC) {
+                dynamic = reinterpret_cast<ElfW(Dyn) *>(info->dlpi_addr + phdr.p_vaddr);
+                break;
+            }
+        }
+        if (dynamic == nullptr) {
+            return 0;
+        }
+
+        const char *strtab = nullptr;
+        ElfW(Sym) *symtab = nullptr;
+        ElfW(Rela) *jmprel = nullptr;
+        size_t pltrelsz = 0;
+        const char *soname = nullptr;
+        for (auto dyn = dynamic; dyn->d_tag != DT_NULL; dyn++) {
+            switch (dyn->d_tag) {
+                case DT_STRTAB:
+                    strtab = reinterpret_cast<const char *>(
+                            ResolveDynamicAddress(dyn->d_un.d_ptr, info->dlpi_addr));
+                    break;
+                case DT_SYMTAB:
+                    symtab = reinterpret_cast<ElfW(Sym) *>(
+                            ResolveDynamicAddress(dyn->d_un.d_ptr, info->dlpi_addr));
+                    break;
+                case DT_JMPREL:
+                    jmprel = reinterpret_cast<ElfW(Rela) *>(
+                            ResolveDynamicAddress(dyn->d_un.d_ptr, info->dlpi_addr));
+                    break;
+                case DT_PLTRELSZ:
+                    pltrelsz = dyn->d_un.d_val;
+                    break;
+                case DT_SONAME:
+                    if (strtab != nullptr) {
+                        soname = strtab + dyn->d_un.d_val;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (strtab == nullptr || symtab == nullptr || jmprel == nullptr || pltrelsz == 0) {
+            return 0;
+        }
+        if (soname == nullptr) {
+            for (auto dyn = dynamic; dyn->d_tag != DT_NULL; dyn++) {
+                if (dyn->d_tag == DT_SONAME) {
+                    soname = strtab + dyn->d_un.d_val;
+                    break;
+                }
+            }
+        }
+        if (soname == nullptr || strcmp(soname, FUSE_JNI_SONAME) != 0) {
+            return 0;
+        }
+
+        result->foundFuseJni = true;
+        const char *startsWithSymbol = AY_OBFUSCATE(
+                "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_");
+        const char *containsMount31Symbol = AY_OBFUSCATE(
+                "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE");
+        const char *isFuseBpfEnabledSymbol = AY_OBFUSCATE(
+                "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv");
+        const char *fuseReqUserdataSymbol = AY_OBFUSCATE("fuse_req_userdata");
+        const char *fuseBpfInstallSymbol = AY_OBFUSCATE(
+                "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi");
+
+        EmbeddedHookTarget targets[] = {
+                {startsWithSymbol,       reinterpret_cast<void *>(new_StartsWith),
+                        reinterpret_cast<void **>(&old_StartsWith), &result->startsWithHooked},
+                {containsMount31Symbol,  reinterpret_cast<void *>(new_containsMount_31),
+                        reinterpret_cast<void **>(&old_containsMount_31), &result->containsMountHooked},
+                {isFuseBpfEnabledSymbol, reinterpret_cast<void *>(new_IsFuseBpfEnabled),
+                        reinterpret_cast<void **>(&old_IsFuseBpfEnabled), &result->isFuseBpfEnabledHooked},
+                {fuseReqUserdataSymbol,  reinterpret_cast<void *>(new_fuse_req_userdata),
+                        reinterpret_cast<void **>(&old_fuse_req_userdata), &result->fuseReqUserdataHooked},
+                {fuseBpfInstallSymbol,   reinterpret_cast<void *>(new_fuse_bpf_install),
+                        reinterpret_cast<void **>(&old_fuse_bpf_install), &result->fuseBpfInstallHooked},
+        };
+
+        const auto count = pltrelsz / sizeof(ElfW(Rela));
+        for (size_t i = 0; i < count; i++) {
+            const auto &relocation = jmprel[i];
+            const auto symbolIndex = MC_ELF_R_SYM(relocation.r_info);
+            const char *symbolName = strtab + symtab[symbolIndex].st_name;
+            for (auto &target: targets) {
+                if (*target.hooked || strcmp(symbolName, target.symbol) != 0) {
+                    continue;
+                }
+                const auto slotAddress = info->dlpi_addr + relocation.r_offset;
+                *target.hooked = PatchGotSlot(slotAddress, target.replacement, target.original);
+            }
+        }
+        return 1;
+    }
+
+    static EmbeddedFuseHookResult HookEmbeddedFuseJni() {
+        EmbeddedFuseHookResult result;
+        dl_iterate_phdr(PatchEmbeddedFuseJniCallback, &result);
+        return result;
+    }
+
     std::string Hook(void *handle, bool fuseLibraryMapped) {
         bool startsWithHooked = false;
         bool containsMountHooked = false;
@@ -148,6 +319,38 @@ namespace bpf_hook {
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
         if (handle == nullptr) {
             lastError = "FUSE library mapped but symbol handle unavailable";
+            auto embeddedResult = HookEmbeddedFuseJni();
+            startsWithHooked = embeddedResult.startsWithHooked;
+            containsMountHooked = embeddedResult.containsMountHooked;
+            isFuseBpfEnabledHooked = embeddedResult.isFuseBpfEnabledHooked;
+            fuseReqUserdataHooked = embeddedResult.fuseReqUserdataHooked;
+            fuseBpfInstallHooked = embeddedResult.fuseBpfInstallHooked;
+            if (embeddedResult.foundFuseJni) {
+                lastError = containsMountHooked ? "" : "embedded libfuse_jni.so found but GOT hook failed";
+            }
+            std::ostringstream out;
+            out << "{";
+            AppendJsonBool(out, "fuseAvailable", true);
+            out << ",";
+            AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
+            out << ",";
+            AppendJsonString(out, "fuseLibraryName", "MediaProvider.apk/libfuse_jni.so");
+            out << ",";
+            AppendJsonBool(out, "startsWithHooked", startsWithHooked);
+            out << ",";
+            AppendJsonBool(out, "containsMountHooked", containsMountHooked);
+            out << ",";
+            AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
+            out << ",";
+            AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
+            out << ",";
+            AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
+            out << ",";
+            AppendJsonBool(out, "xhookRefreshCalled", false);
+            out << ",";
+            AppendJsonString(out, "lastError", lastError.c_str());
+            out << "}";
+            return out.str();
         }
         if (GetApiLevel() >= 31) {
             const char *startsWithSymbol = AY_OBFUSCATE(

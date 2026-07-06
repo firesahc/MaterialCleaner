@@ -53,12 +53,16 @@ public class XposedInit implements IXposedHookLoadPackage {
             System.loadLibrary("inline");
             final var nativeStatus = InlineHookConfig.INSTANCE.initializeXHook();
             NativeHookStatus.INSTANCE.markInlineLoadSucceeded(nativeStatus);
-            mInlineHookInitialized = true;
+            mInlineHookInitialized = isNativeHookReady(nativeStatus);
             Log.i("MC_REDIRECT", "[XposedInit] libinline loaded and xhook initialized");
         } catch (Throwable e) {
             NativeHookStatus.INSTANCE.markInlineLoadFailed(e);
             Log.e("MC_REDIRECT", "[XposedInit] Failed to load inline library, FUSE native hook disabled", e);
         }
+    }
+
+    private boolean isNativeHookReady(String nativeStatus) {
+        return nativeStatus != null && nativeStatus.contains("\"containsMountHooked\":true");
     }
 
     // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）
@@ -101,6 +105,7 @@ public class XposedInit implements IXposedHookLoadPackage {
                 return;
         }
         Log.i("MC_REDIRECT", "[XposedInit] Installing MediaProvider attach hook for package: " + lpparam.packageName);
+        initializeInlineHook(lpparam.packageName);
         XposedHelpers.findAndHookMethod(ContentProvider.class, "attachInfo",
                 Context.class, ProviderInfo.class, new XC_MethodHook() {
                     @Override
