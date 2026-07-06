@@ -22,7 +22,12 @@ package me.gm.cleaner.core.storage.redirect.domain
  * @property usesSdcardfs 是否使用 sdcardfs
  * @property hyperOsVariant 是否为 HyperOS 变体
  * @property specialAndroidDataHandlingRequired 是否需要特殊 Android/data 处理
- * @property xhookSymbolsAvailable Hook 符号是否可用（libfuse_jni.so 是否存在）
+ * @property xhookSymbolsAvailable 旧字段：系统 libfuse_jni.so xhook 入口是否可探测
+ * @property mediaProviderPackageName 当前系统使用的 MediaProvider 包名
+ * @property systemFuseJniAvailable 系统分区是否存在独立 libfuse_jni.so
+ * @property fuseJniLoadMode libfuse_jni.so 加载形态：SYSTEM_LIB、APEX_APK_EMBEDDED、UNKNOWN
+ * @property supportedNativeHookMode 当前平台可支持的 native Hook 形态：XHOOK、EMBEDDED_GOT_PATCH、NONE
+ * @property mediaProviderApiShape MediaProvider/FUSE API 形态，用于诊断和后续适配分支
  */
 data class PlatformCapabilities(
     val schemaVersion: Int = 1,
@@ -36,4 +41,9 @@ data class PlatformCapabilities(
     val hyperOsVariant: Boolean = false,
     val specialAndroidDataHandlingRequired: Boolean = false,
     val xhookSymbolsAvailable: Boolean = false,
+    val mediaProviderPackageName: String = "",
+    val systemFuseJniAvailable: Boolean = false,
+    val fuseJniLoadMode: String = "UNKNOWN",
+    val supportedNativeHookMode: String = "NONE",
+    val mediaProviderApiShape: String = "UNKNOWN",
 )

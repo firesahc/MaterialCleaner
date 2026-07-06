@@ -528,9 +528,15 @@ class LayerOrchestrator(
                 "inlineLibraryLoaded" to nativeStatus.inlineLibraryLoaded.toString(),
                 "inlineHookInitialized" to nativeStatus.inlineHookInitialized.toString(),
                 "fuseLibraryLoaded" to nativeStatus.fuseLibraryLoaded.toString(),
+                "fuseLibraryName" to nativeStatus.fuseLibraryName,
+                "hookMode" to nativeStatus.hookMode,
+                "fuseJniLoadMode" to nativeStatus.fuseJniLoadMode,
+                "embeddedFuseJniFound" to nativeStatus.embeddedFuseJniFound.toString(),
                 "containsMountHooked" to nativeStatus.containsMountHooked.toString(),
                 "startsWithHooked" to nativeStatus.startsWithHooked.toString(),
                 "isFuseBpfEnabledHooked" to nativeStatus.isFuseBpfEnabledHooked.toString(),
+                "fuseReqUserdataHooked" to nativeStatus.fuseReqUserdataHooked.toString(),
+                "fuseBpfInstallHooked" to nativeStatus.fuseBpfInstallHooked.toString(),
                 "lastMountPointsApplySuccess" to nativeStatus.lastMountPointsApplySuccess.toString(),
                 "lastMountPointsApplyGeneration" to nativeStatus.lastMountPointsApplyGeneration.toString(),
                 "lastMountPointsApplyCount" to nativeStatus.lastMountPointsApplyCount.toString(),
@@ -542,9 +548,33 @@ class LayerOrchestrator(
         val hasPolicy = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_REDIRECT_POLICY) != null
         val hasReadOnly = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_READ_ONLY) != null
         val hasMountPoints = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS) != null
-        val hasPlatformCaps = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES) != null
+        val platformCapsJson = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES)
+        val platformCaps = platformCapsJson?.let {
+            runCatching { JSONObject(it) }.getOrNull()
+        }
+        val hasPlatformCaps = platformCapsJson != null
         val hasStatus = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_ORCHESTRATED_STATUS) != null
         val busHealthy = busInit && hasPolicy && hasReadOnly && hasMountPoints
+        val busMetrics = mutableMapOf(
+            "busRootExists" to busInit.toString(),
+            "snapshotRedirectPolicy" to if (hasPolicy) "exists" else "missing",
+            "snapshotReadOnly" to if (hasReadOnly) "exists" else "missing",
+            "snapshotConfiguredMountPoints" to if (hasMountPoints) "exists" else "missing",
+            "snapshotPlatformCapabilities" to if (hasPlatformCaps) "exists" else "missing",
+            "snapshotOrchestratedStatus" to if (hasStatus) "exists" else "missing",
+        )
+        if (platformCaps != null) {
+            busMetrics["platformMediaProviderPackage"] =
+                platformCaps.optString("mediaProviderPackageName", "")
+            busMetrics["platformFuseJniLoadMode"] =
+                platformCaps.optString("fuseJniLoadMode", "UNKNOWN")
+            busMetrics["platformSupportedNativeHookMode"] =
+                platformCaps.optString("supportedNativeHookMode", "NONE")
+            busMetrics["platformMediaProviderApiShape"] =
+                platformCaps.optString("mediaProviderApiShape", "UNKNOWN")
+            busMetrics["platformSystemFuseJniAvailable"] =
+                platformCaps.optBoolean("systemFuseJniAvailable", false).toString()
+        }
         val busReport = LayerReport(
             id = LayerId.DATA_BUS,
             state = if (busHealthy) {
@@ -558,14 +588,7 @@ class LayerOrchestrator(
             lastHeartbeatAt = if (busInit) now else 0L,
             lastErrorAt = if (busHealthy) 0L else now,
             lastError = if (busHealthy) null else "DataBus snapshot missing or bus unavailable",
-            metrics = mapOf(
-                "busRootExists" to busInit.toString(),
-                "snapshotRedirectPolicy" to if (hasPolicy) "exists" else "missing",
-                "snapshotReadOnly" to if (hasReadOnly) "exists" else "missing",
-                "snapshotConfiguredMountPoints" to if (hasMountPoints) "exists" else "missing",
-                "snapshotPlatformCapabilities" to if (hasPlatformCaps) "exists" else "missing",
-                "snapshotOrchestratedStatus" to if (hasStatus) "exists" else "missing",
-            ),
+            metrics = busMetrics,
         )
 
         // ControlPlane
@@ -672,9 +695,15 @@ class LayerOrchestrator(
                 lastMountPointsApplyCount = root.optInt("lastMountPointsApplyCount", 0),
                 lastMountPointsApplyError = root.optString("lastMountPointsApplyError", ""),
                 fuseLibraryLoaded = native?.optBoolean("fuseLibraryLoaded", false) ?: false,
+                fuseLibraryName = native?.optString("fuseLibraryName", "") ?: "",
+                hookMode = native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN",
+                fuseJniLoadMode = native?.optString("fuseJniLoadMode", "UNKNOWN") ?: "UNKNOWN",
+                embeddedFuseJniFound = native?.optBoolean("embeddedFuseJniFound", false) ?: false,
                 containsMountHooked = native?.optBoolean("containsMountHooked", false) ?: false,
                 startsWithHooked = native?.optBoolean("startsWithHooked", false) ?: false,
                 isFuseBpfEnabledHooked = native?.optBoolean("isFuseBpfEnabledHooked", false) ?: false,
+                fuseReqUserdataHooked = native?.optBoolean("fuseReqUserdataHooked", false) ?: false,
+                fuseBpfInstallHooked = native?.optBoolean("fuseBpfInstallHooked", false) ?: false,
                 nativeLastError = native?.optString("lastError", "") ?: "",
             )
         } catch (e: Exception) {
@@ -694,9 +723,15 @@ class LayerOrchestrator(
         val lastMountPointsApplyCount: Int = 0,
         val lastMountPointsApplyError: String = "",
         val fuseLibraryLoaded: Boolean = false,
+        val fuseLibraryName: String = "",
+        val hookMode: String = "UNKNOWN",
+        val fuseJniLoadMode: String = "UNKNOWN",
+        val embeddedFuseJniFound: Boolean = false,
         val containsMountHooked: Boolean = false,
         val startsWithHooked: Boolean = false,
         val isFuseBpfEnabledHooked: Boolean = false,
+        val fuseReqUserdataHooked: Boolean = false,
+        val fuseBpfInstallHooked: Boolean = false,
         val nativeLastError: String = "",
         val lastError: String = "",
     ) {
@@ -704,7 +739,10 @@ class LayerOrchestrator(
             get() = inlineLibraryLoaded && nativeLastError.contains("dlopen libfuse_jni.so failed")
 
         val nativeHookPartiallyAvailable: Boolean
-            get() = inlineLibraryLoaded && fuseLibraryLoaded &&
-                    (!containsMountHooked || !startsWithHooked || !isFuseBpfEnabledHooked)
+            get() = inlineLibraryLoaded && fuseLibraryLoaded && when (hookMode) {
+                "EMBEDDED_GOT_PATCH" -> !embeddedFuseJniFound || !containsMountHooked
+                "XHOOK" -> !containsMountHooked || !startsWithHooked || !isFuseBpfEnabledHooked
+                else -> false
+            }
     }
 }

@@ -502,16 +502,34 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val snapshotGen = layer.metrics["snapshotConfiguredMountPointsGeneration"]
         val inlineLoaded = layer.metrics["inlineLibraryLoaded"]?.toBooleanStrictOrNull()
         val fuseLoaded = layer.metrics["fuseLibraryLoaded"]?.toBooleanStrictOrNull()
+        val hookMode = layer.metrics["hookMode"].orEmpty()
+        val embeddedFound = layer.metrics["embeddedFuseJniFound"]?.toBooleanStrictOrNull()
         val containsMount = layer.metrics["containsMountHooked"]?.toBooleanStrictOrNull()
         val startsWith = layer.metrics["startsWithHooked"]?.toBooleanStrictOrNull()
         val bpf = layer.metrics["isFuseBpfEnabledHooked"]?.toBooleanStrictOrNull()
         val applySuccess = layer.metrics["lastMountPointsApplySuccess"]?.toBooleanStrictOrNull()
+        val modeLabel = when (hookMode) {
+            "EMBEDDED_GOT_PATCH" -> "内嵌 FUSE Hook"
+            "XHOOK" -> "xhook"
+            else -> ""
+        }
+        fun generationSummary(prefix: String): String {
+            val label = listOf(prefix, modeLabel).filter { it.isNotBlank() }.joinToString(" · ")
+            return if (label.isBlank()) {
+                "挂载点 generation $nativeGen/$snapshotGen"
+            } else {
+                "$label · 挂载点 generation $nativeGen/$snapshotGen"
+            }
+        }
         return when {
             inlineLoaded == false -> "libinline 未加载"
             fuseLoaded == false && inlineLoaded == true -> "FUSE native 库未加载"
-            containsMount == false || startsWith == false || bpf == false -> "native 符号部分缺失"
+            hookMode == "EMBEDDED_GOT_PATCH" && embeddedFound == false -> "未发现内嵌 FUSE native 库"
+            hookMode == "EMBEDDED_GOT_PATCH" && containsMount == false -> "内嵌 FUSE containsMount 未 Hook"
+            hookMode != "EMBEDDED_GOT_PATCH" &&
+                    (containsMount == false || startsWith == false || bpf == false) -> "native 符号部分缺失"
             applySuccess == false && nativeGen != null && nativeGen != "0" -> "挂载点推送失败 · generation $nativeGen/$snapshotGen"
-            nativeGen != null && snapshotGen != null -> "挂载点 generation $nativeGen/$snapshotGen"
+            nativeGen != null && snapshotGen != null -> generationSummary("")
             nativeGen != null -> "native generation $nativeGen"
             else -> ""
         }
@@ -527,7 +545,18 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val missing = labels
             .filter { (key, _) -> layer.metrics[key] == "missing" }
             .map { (_, label) -> label }
-        return if (missing.isEmpty()) "关键快照完整" else "缺少${missing.joinToString("、")}快照"
+        if (missing.isNotEmpty()) {
+            return "缺少${missing.joinToString("、")}快照"
+        }
+        val hookMode = when (layer.metrics["platformSupportedNativeHookMode"]) {
+            "EMBEDDED_GOT_PATCH" -> "内嵌 FUSE"
+            "XHOOK" -> "系统 FUSE"
+            "NONE" -> "无 native Hook"
+            else -> ""
+        }
+        return listOf("关键快照完整", hookMode)
+            .filter { it.isNotBlank() }
+            .joinToString(" · ")
     }
 
     private fun controlPlaneSummary(layer: OrchestratedLayerStatus): String {

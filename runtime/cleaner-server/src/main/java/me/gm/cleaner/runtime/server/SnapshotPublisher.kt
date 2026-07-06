@@ -113,7 +113,10 @@ object SnapshotPublisher {
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES, json)
         val signaled = written && DataBus.signal(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
         Log.d(TAG, "publishPlatformCapabilities: sdk=${caps.sdkVersionInt}, " +
-                "fuseBpf=${caps.isFuseBpfEnabled}, fuse=${caps.fuseAvailable}")
+                "fuseBpf=${caps.isFuseBpfEnabled}, fuse=${caps.fuseAvailable}, " +
+                "mediaProvider=${caps.mediaProviderPackageName}, " +
+                "fuseJniLoadMode=${caps.fuseJniLoadMode}, " +
+                "nativeHookMode=${caps.supportedNativeHookMode}")
         return written && signaled
     }
 

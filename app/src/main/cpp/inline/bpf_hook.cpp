@@ -314,6 +314,8 @@ namespace bpf_hook {
             LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str()); // "FUSE not available, skipping hook"
             return "{\"fuseAvailable\":false,\"fuseLibraryLoaded\":true,"
                    "\"fuseLibraryName\":\"libfuse_jni.so\",\"xhookRefreshCalled\":false,"
+                   "\"hookMode\":\"NONE\",\"fuseJniLoadMode\":\"UNKNOWN\","
+                   "\"embeddedFuseJniFound\":false,"
                    "\"lastError\":\"FUSE not available\"}";
         }
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
@@ -335,6 +337,12 @@ namespace bpf_hook {
             AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
             out << ",";
             AppendJsonString(out, "fuseLibraryName", "MediaProvider.apk/libfuse_jni.so");
+            out << ",";
+            AppendJsonString(out, "hookMode", "EMBEDDED_GOT_PATCH");
+            out << ",";
+            AppendJsonString(out, "fuseJniLoadMode", "APEX_APK_EMBEDDED");
+            out << ",";
+            AppendJsonBool(out, "embeddedFuseJniFound", embeddedResult.foundFuseJni);
             out << ",";
             AppendJsonBool(out, "startsWithHooked", startsWithHooked);
             out << ",";
@@ -438,6 +446,12 @@ namespace bpf_hook {
         AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
         out << ",";
         AppendJsonString(out, "fuseLibraryName", handle == nullptr ? "MediaProvider.apk" : "libfuse_jni.so");
+        out << ",";
+        AppendJsonString(out, "hookMode", "XHOOK");
+        out << ",";
+        AppendJsonString(out, "fuseJniLoadMode", "SYSTEM_LIB");
+        out << ",";
+        AppendJsonBool(out, "embeddedFuseJniFound", false);
         out << ",";
         AppendJsonBool(out, "startsWithHooked", startsWithHooked);
         out << ",";

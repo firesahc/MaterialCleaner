@@ -2,6 +2,7 @@ package me.gm.cleaner.runtime.server
 
 import android.os.Build
 import android.util.Log
+import api.SystemService
 import me.gm.cleaner.core.common.RuntimeSystemProperties
 import me.gm.cleaner.core.storage.redirect.domain.PlatformCapabilities
 import me.gm.cleaner.runtime.server.observer.Mounter
@@ -21,6 +22,17 @@ import java.io.File
  */
 object PlatformCapabilitiesDetector {
     private const val TAG = "PlatformCapabilitiesDetector"
+    private const val FUSE_LOAD_MODE_SYSTEM_LIB = "SYSTEM_LIB"
+    private const val FUSE_LOAD_MODE_APEX_APK_EMBEDDED = "APEX_APK_EMBEDDED"
+    private const val FUSE_LOAD_MODE_UNKNOWN = "UNKNOWN"
+    private const val HOOK_MODE_XHOOK = "XHOOK"
+    private const val HOOK_MODE_EMBEDDED_GOT_PATCH = "EMBEDDED_GOT_PATCH"
+    private const val HOOK_MODE_NONE = "NONE"
+    private val MEDIA_PROVIDER_PACKAGE_CANDIDATES = arrayOf(
+        "com.android.providers.media.module",
+        "com.google.android.providers.media.module",
+        "com.android.providers.media",
+    )
 
     /** 单调递增代数计数器（替代 wall clock 避免 NTP 回拨等问题） */
     private val capsGeneration = java.util.concurrent.atomic.AtomicLong(0)
@@ -56,8 +68,21 @@ object PlatformCapabilitiesDetector {
         // Android/data 特殊处理：FUSE BPF 启用时需要
         val specialAndroidDataHandlingRequired = isFuseBpfEnabled
 
-        // libfuse_jni.so 是否存在（xhook 符号可用性）
-        val xhookSymbolsAvailable = detectXhookSymbolsAvailable()
+        val mediaProviderPackageName = detectMediaProviderPackageName()
+        val systemFuseJniAvailable = detectSystemFuseJniAvailable()
+        val fuseJniLoadMode = when {
+            systemFuseJniAvailable -> FUSE_LOAD_MODE_SYSTEM_LIB
+            fuseAvailable && mediaProviderPackageName.isNotBlank() -> FUSE_LOAD_MODE_APEX_APK_EMBEDDED
+            else -> FUSE_LOAD_MODE_UNKNOWN
+        }
+        val supportedNativeHookMode = when (fuseJniLoadMode) {
+            FUSE_LOAD_MODE_SYSTEM_LIB -> HOOK_MODE_XHOOK
+            FUSE_LOAD_MODE_APEX_APK_EMBEDDED -> HOOK_MODE_EMBEDDED_GOT_PATCH
+            else -> HOOK_MODE_NONE
+        }
+        // 旧字段保持原含义：仅表示系统分区 libfuse_jni.so 可用于 xhook。
+        val xhookSymbolsAvailable = systemFuseJniAvailable
+        val mediaProviderApiShape = detectMediaProviderApiShape(sdkInt)
 
         return PlatformCapabilities(
             schemaVersion = 1,
@@ -71,6 +96,11 @@ object PlatformCapabilitiesDetector {
             hyperOsVariant = hyperOsVariant,
             specialAndroidDataHandlingRequired = specialAndroidDataHandlingRequired,
             xhookSymbolsAvailable = xhookSymbolsAvailable,
+            mediaProviderPackageName = mediaProviderPackageName,
+            systemFuseJniAvailable = systemFuseJniAvailable,
+            fuseJniLoadMode = fuseJniLoadMode,
+            supportedNativeHookMode = supportedNativeHookMode,
+            mediaProviderApiShape = mediaProviderApiShape,
         )
     }
 
@@ -105,7 +135,7 @@ object PlatformCapabilitiesDetector {
                 || RuntimeSystemProperties.get("ro.build.version.miotg", "") == "1"
     }
 
-    private fun detectXhookSymbolsAvailable(): Boolean {
+    private fun detectSystemFuseJniAvailable(): Boolean {
         return try {
             val libPath = File("/system/lib64/libfuse_jni.so")
             if (libPath.exists()) return true
@@ -113,6 +143,31 @@ object PlatformCapabilitiesDetector {
             libPath32.exists()
         } catch (e: Exception) {
             false
+        }
+    }
+
+    private fun detectMediaProviderPackageName(): String {
+        return try {
+            val userIds = SystemService.getUserIdsNoThrow().ifEmpty { listOf(0) }
+            for (packageName in MEDIA_PROVIDER_PACKAGE_CANDIDATES) {
+                if (userIds.any { userId ->
+                        SystemService.getPackageInfoNoThrow(packageName, 0, userId) != null
+                    }) {
+                    return packageName
+                }
+            }
+            ""
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to detect MediaProvider package", e)
+            ""
+        }
+    }
+
+    private fun detectMediaProviderApiShape(sdkInt: Int): String {
+        return when {
+            sdkInt >= 35 -> "ANDROID_15_OPEN_WITH_FUSE"
+            sdkInt >= Build.VERSION_CODES.R -> "ANDROID_11_FUSE_DAEMON"
+            else -> "LEGACY_MEDIA_PROVIDER"
         }
     }
 
@@ -137,6 +192,11 @@ object PlatformCapabilitiesDetector {
                     "specialAndroidDataHandlingRequired", false
                 ),
                 xhookSymbolsAvailable = root.optBoolean("xhookSymbolsAvailable", false),
+                mediaProviderPackageName = root.optString("mediaProviderPackageName", ""),
+                systemFuseJniAvailable = root.optBoolean("systemFuseJniAvailable", false),
+                fuseJniLoadMode = root.optString("fuseJniLoadMode", FUSE_LOAD_MODE_UNKNOWN),
+                supportedNativeHookMode = root.optString("supportedNativeHookMode", HOOK_MODE_NONE),
+                mediaProviderApiShape = root.optString("mediaProviderApiShape", "UNKNOWN"),
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse PlatformCapabilities from JSON", e)
@@ -161,6 +221,11 @@ object PlatformCapabilitiesDetector {
         root.put("hyperOsVariant", caps.hyperOsVariant)
         root.put("specialAndroidDataHandlingRequired", caps.specialAndroidDataHandlingRequired)
         root.put("xhookSymbolsAvailable", caps.xhookSymbolsAvailable)
+        root.put("mediaProviderPackageName", caps.mediaProviderPackageName)
+        root.put("systemFuseJniAvailable", caps.systemFuseJniAvailable)
+        root.put("fuseJniLoadMode", caps.fuseJniLoadMode)
+        root.put("supportedNativeHookMode", caps.supportedNativeHookMode)
+        root.put("mediaProviderApiShape", caps.mediaProviderApiShape)
         return root.toString(2)
     }
 }
