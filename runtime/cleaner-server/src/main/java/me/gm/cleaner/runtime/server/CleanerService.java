@@ -7,6 +7,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.MatrixCursor;
 import android.os.Binder;
+import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -396,5 +397,18 @@ public class CleanerService extends ICleanerService.Stub {
     public OrchestratedStatus getOrchestratedStatus() {
         enforceManager(BuildConfig.DEBUG ? "getOrchestratedStatus" : 30);
         return mServer.layerOrchestrator.collectStatusForIpc();
+    }
+
+    @Override
+    public ParcelFileDescriptor openDiagnosticsArchive() throws RemoteException {
+        enforceManager(BuildConfig.DEBUG ? "openDiagnosticsArchive" : 31);
+        try {
+            return DiagnosticArchive.INSTANCE.open(mServer);
+        } catch (final Exception e) {
+            final var remoteException = new RemoteException("openDiagnosticsArchive failed: " +
+                    e.getMessage());
+            remoteException.initCause(e);
+            throw remoteException;
+        }
     }
 }

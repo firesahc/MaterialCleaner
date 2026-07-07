@@ -1,5 +1,6 @@
 package me.gm.cleaner.server;
 
+import android.os.ParcelFileDescriptor;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
 import me.gm.cleaner.model.BulkCursor;
@@ -77,4 +78,6 @@ interface ICleanerService {
 
     // status
     OrchestratedStatus getOrchestratedStatus() = 30;
+
+    ParcelFileDescriptor openDiagnosticsArchive() = 31;
 }

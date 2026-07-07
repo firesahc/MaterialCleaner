@@ -219,8 +219,8 @@ class MountAppPickerFragment : BaseFragment() {
                 viewModel.loadApps()
             }
 
-            R.id.menu_logcat -> {
-                grabLogcatAndShare(requireContext())
+            R.id.menu_diagnostics_archive -> {
+                exportDiagnosticsArchiveAndShare(requireContext())
             }
 
             else -> return super.onOptionsItemSelected(item)

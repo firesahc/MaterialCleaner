@@ -1,0 +1,162 @@
+package me.gm.cleaner.client.ui
+
+/**
+ * 诊断包抓取和分享工具。
+ */
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.ParcelFileDescriptor
+import android.util.Log
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.gm.cleaner.BuildConfig
+import me.gm.cleaner.R
+import me.gm.cleaner.client.CleanerClient
+import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+
+fun Fragment.exportDiagnosticsArchiveAndShare(context: Context) {
+    lifecycleScope.launch(Dispatchers.IO) {
+        try {
+            cleanupOldDiagnosticArchives(context)
+            val logFile = File(
+                context.cacheDir,
+                "material-cleaner-diagnostics-${System.currentTimeMillis()}.zip"
+            )
+            val pfd = runCatching { CleanerClient.service?.openDiagnosticsArchive() }
+                .onFailure {
+                    if (BuildConfig.DEBUG) Log.w("CleanerTest", "server diagnostics unavailable", it)
+                }
+                .getOrNull()
+            if (pfd != null) {
+                copyFromServerArchive(pfd, logFile)
+            } else {
+                createFallbackArchive(logFile)
+            }
+            val uri = FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", logFile
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            withContext(Dispatchers.Main) {
+                context.startActivity(
+                    Intent.createChooser(intent, context.getString(R.string.share_diagnostics_archive))
+                )
+            }
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.e("CleanerTest", "diagnostics archive export failed", e)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    context,
+                    "${context.getString(R.string.diagnostics_archive_failed)} ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+}
+
+private fun copyFromServerArchive(pfd: ParcelFileDescriptor, target: File) {
+    ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+        FileOutputStream(target).use { output ->
+            input.copyTo(output)
+        }
+    }
+    if (target.length() == 0L) {
+        throw IllegalStateException("diagnostics archive is empty")
+    }
+}
+
+private fun createFallbackArchive(target: File) {
+    ZipOutputStream(FileOutputStream(target)).use { zip ->
+        addTextEntry(zip, "manifest.txt", buildFallbackManifest())
+        addCommandEntry(
+            zip,
+            "logs/app_logcat_threadtime_recent.txt",
+            listOf("logcat", "-d", "-v", "threadtime", "-b", "main,system,crash", "-t", "2000")
+        )
+        val status = runCatching { CleanerClient.getOrchestratedStatus() }
+            .getOrNull()
+        addTextEntry(zip, "status/app_visible_status.txt", status?.toString() ?: "server unavailable")
+    }
+}
+
+private fun buildFallbackManifest(): String = buildString {
+    appendLine("createdAt=${System.currentTimeMillis()}")
+    appendLine("source=app-fallback")
+    appendLine("serverConnected=${CleanerClient.service != null}")
+    appendLine("serverVersion=${CleanerClient.serverVersion}")
+    appendLine("sdk=${Build.VERSION.SDK_INT}")
+    appendLine("release=${Build.VERSION.RELEASE}")
+    appendLine("manufacturer=${Build.MANUFACTURER}")
+    appendLine("brand=${Build.BRAND}")
+    appendLine("model=${Build.MODEL}")
+    appendLine("device=${Build.DEVICE}")
+    appendLine("fingerprint=${Build.FINGERPRINT}")
+}
+
+private fun addCommandEntry(zip: ZipOutputStream, entryName: String, command: List<String>) {
+    val result = runCommand(command)
+    addTextEntry(zip, entryName, buildString {
+        appendLine("$ ${command.joinToString(" ")}")
+        appendLine("exitCode=${result.exitCode}")
+        appendLine("timedOut=${result.timedOut}")
+        appendLine()
+        append(result.output)
+    })
+}
+
+private fun runCommand(command: List<String>): CommandResult {
+    var process: Process? = null
+    return try {
+        process = ProcessBuilder(command)
+            .redirectErrorStream(true)
+            .start()
+        val finished = process.waitFor(10, TimeUnit.SECONDS)
+        val output = process.inputStream.bufferedReader().readText()
+        if (!finished) {
+            process.destroyForcibly()
+        }
+        CommandResult(
+            exitCode = if (finished) process.exitValue() else -1,
+            timedOut = !finished,
+            output = output,
+        )
+    } catch (e: Exception) {
+        CommandResult(-1, timedOut = false, output = e.stackTraceToString())
+    } finally {
+        process?.destroy()
+    }
+}
+
+private fun addTextEntry(zip: ZipOutputStream, entryName: String, content: String) {
+    zip.putNextEntry(ZipEntry(entryName))
+    zip.write(content.toByteArray(Charsets.UTF_8))
+    zip.closeEntry()
+}
+
+private fun cleanupOldDiagnosticArchives(context: Context) {
+    context.cacheDir.listFiles()
+        ?.filter { it.isFile && it.name.startsWith("material-cleaner-diagnostics-") }
+        ?.sortedByDescending { it.lastModified() }
+        ?.drop(3)
+        ?.forEach { it.delete() }
+}
+
+private data class CommandResult(
+    val exitCode: Int,
+    val timedOut: Boolean,
+    val output: String,
+)

@@ -25,7 +25,9 @@
     <string name="menu_unselect_all">全不選</string>
     <string name="menu_hide_app_specific_storage">應用專屬儲存空間</string>
     <string name="refresh">刷新</string>
-    <string name="logcat">抓取日誌</string>
+    <string name="diagnostics_archive">匯出診斷包</string>
+    <string name="share_diagnostics_archive">分享診斷包</string>
+    <string name="diagnostics_archive_failed">匯出診斷包失敗：</string>
     <string name="menu_add_to_hide_list">加入隱藏列表</string>
     <string name="delete">刪除</string>
     <string name="delete_all_mount_rules">刪除所有掛載規則</string>

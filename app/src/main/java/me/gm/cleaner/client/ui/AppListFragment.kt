@@ -206,8 +206,8 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_logcat -> {
-                grabLogcatAndShare(requireContext())
+            R.id.menu_diagnostics_archive -> {
+                exportDiagnosticsArchiveAndShare(requireContext())
                 true
             }
             else -> super.onOptionsItemSelected(item)

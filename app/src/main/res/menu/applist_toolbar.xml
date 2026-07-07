@@ -68,7 +68,7 @@
         android:title="@string/refresh"
         app:showAsAction="never" />
     <item
-        android:id="@+id/menu_logcat"
-        android:title="@string/logcat"
+        android:id="@+id/menu_diagnostics_archive"
+        android:title="@string/diagnostics_archive"
         app:showAsAction="never" />
 </menu>
