@@ -131,7 +131,7 @@ object ServerStateMachine {
         // ── 执行启动 ──
 
         try {
-            // 1) 杀旧进程，确保干净
+            // 1) 清理已有 server 进程，确保启动环境干净
             CleanerClient.killServerProcess()
             delay(1000)
 

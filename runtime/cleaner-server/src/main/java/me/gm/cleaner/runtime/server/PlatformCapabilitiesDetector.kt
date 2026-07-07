@@ -76,7 +76,7 @@ object PlatformCapabilitiesDetector {
             FUSE_LOAD_MODE_APEX_APK_EMBEDDED -> HOOK_MODE_EMBEDDED_GOT_PATCH
             else -> HOOK_MODE_NONE
         }
-        // 旧字段保持原含义：仅表示系统分区 libfuse_jni.so 可用于 xhook。
+        // 兼容字段保持原含义：仅表示系统分区 libfuse_jni.so 可用于 xhook。
         val xhookSymbolsAvailable = systemFuseJniAvailable
         val mediaProviderApiShape = detectMediaProviderApiShape(sdkInt)
 

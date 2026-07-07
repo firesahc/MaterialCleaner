@@ -19,8 +19,8 @@ import java.util.TreeMap
 /**
  * VFS bind mount 层的生命周期门面。
  *
- * CleanerServer 只转交系统存储事件；本类负责与旧 observer/mounter 体系交互，
- * 让 VFS 层细节集中在单一边界内，便于后续继续迁移到快照驱动实现。
+ * CleanerServer 只转交系统存储事件；本类负责与现有 observer/mounter 体系交互，
+ * 让 VFS 层细节集中在单一边界内。
  */
 class VfsLayerController {
 

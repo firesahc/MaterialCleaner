@@ -304,7 +304,7 @@ object HookPolicyCache {
             val pointsArr = root.optJSONArray("points")
             if (pointsArr == null || pointsArr.length() == 0) {
                 Log.i(TAG, "loadConfiguredMountPoints: empty points, clearing native mountPoint, generation=$generation")
-                // 空数组必须显式推送到 native——清除旧 mountPoint
+                // 空数组必须显式推送到 native，用于清除残留 mountPoint。
                 FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation)
                 configuredMountPointsGeneration = generation
                 configuredMountPointsPublisherEpoch = publisherEpoch

@@ -79,7 +79,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     @Override
     public void setCleanerServerBinder(ICleanerServerCallback iinterface) {
         Log.i("MC_REDIRECT", "[MediaProviderHooksService] setCleanerServerBinder called, binder=" + (iinterface != null));
-        // 先取消旧 DeathRecipient，防止多次 link 导致重复触发
+        // 先取消已有 DeathRecipient，防止多次 link 导致重复触发
         unlinkCleanerServerDeathRecipient(mCleanerServerBinder);
         mCleanerServerBinder = iinterface;
         HookDataBusBridge.INSTANCE.setCallback(iinterface);

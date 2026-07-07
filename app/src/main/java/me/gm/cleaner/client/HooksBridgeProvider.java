@@ -144,7 +144,7 @@ public class HooksBridgeProvider extends ContentProvider {
             boolean connected = false;
             boolean linkFailed = false;
             synchronized (sMediaProviderLock) {
-                // 取消旧 DeathRecipient（无论 Binder 是否相同，防止堆积）
+                // 取消已有 DeathRecipient（无论 Binder 是否相同，防止堆积）
                 IMediaProviderHooksService old = sMediaProviderService;
                 unlinkXposedDeathRecipientLocked(old);
                 // 注册新 DeathRecipient

@@ -149,7 +149,7 @@ namespace FileUtils {
         TEMP_FAILURE_RETRY(chown(path, uid, gid));
     }
 
-    // TODO: FixupAppDir
+    // Mirrors vold's app-dir owner repair for redirected Android/data and Android/obb paths.
     void switch_owner(JNIEnv *env, jclass clazz, jstring jdir, jint juid, jboolean isPrivate) {
         const char *dir = env->GetStringUTFChars(jdir, nullptr);
         const uid_t uid = isPrivate ? juid : AID_MEDIA_RW;

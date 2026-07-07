@@ -65,7 +65,6 @@ interface ICleanerService {
 
     IRootWorkerService newRootWorkerService() = 24;
 
-    // TODO: refactor with the function above
     FileModel createFileModel(String path) = 25;
 
     ParceledListSlice<FileModel> listFiles(String path) = 26;

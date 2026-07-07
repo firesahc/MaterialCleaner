@@ -12,7 +12,7 @@ import java.io.File
  * Query session lease 消费器。
  *
  * MediaProvider Hook 进程只发布短期 lease，root server 在这里维护对应临时目录。
- * 这样 FUSE Java 热路径不依赖 Binder，同时保留旧逻辑中 root 创建/清理目录的能力。
+ * 这样 FUSE Java 热路径不依赖 Binder，同时保留 root 创建/清理目录的能力。
  */
 object QuerySessionLeaseConsumer {
     private const val TAG = "QuerySessionLeaseConsumer"

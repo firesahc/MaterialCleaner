@@ -65,7 +65,8 @@ private fun Path.deleteRecursivelyImpl(onCheckContinuation: () -> Unit): List<Ex
     val collector = ExceptionsCollector(onCheckContinuation)
     var useInsecure = true
 
-    // TODO: KT-54077
+    // Prefer SecureDirectoryStream when the platform provides it, matching Kotlin's
+    // symlink-safe recursive deletion strategy while keeping interruption checks.
     this.parent?.let { parent ->
         val directoryStream = try {
             Files.newDirectoryStream(parent)

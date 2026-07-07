@@ -34,7 +34,7 @@ public class MediaProviderHook {
 
         // 2. 判断 FUSE 是否可用。
         // 优先使用 server 端探测并发布到 DataBus 的 PlatformCapabilities 快照；
-        // 仅在首轮 DataBus 不可用时回退到旧的系统属性判断，避免构造期误禁用 FUSE Hook。
+        // 仅在首轮 DataBus 不可用时回退到系统属性判断，避免构造期误禁用 FUSE Hook。
         final var policyCache = HookPolicyCache.INSTANCE;
         final boolean hasPlatformCapabilities = policyCache.getPlatformCapabilitiesLoaded();
         final boolean isFuseAvailable = hasPlatformCapabilities
