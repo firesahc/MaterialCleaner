@@ -142,6 +142,13 @@ namespace bpf_hook {
         return xhook_register(FUSE_HOOK_PATH_REGEX, symbol, newFunc, oldFunc) == 0;
     }
 
+    // Match method for diagnostic output
+    enum MatchMethod {
+        MATCH_NONE  = 0,
+        MATCH_EXACT = 1,
+        MATCH_FUZZY = 2,
+    };
+
     struct EmbeddedFuseHookResult {
         bool foundFuseJni = false;
         bool startsWithHooked = false;
@@ -149,13 +156,23 @@ namespace bpf_hook {
         bool isFuseBpfEnabledHooked = false;
         bool fuseReqUserdataHooked = false;
         bool fuseBpfInstallHooked = false;
+        // Diagnostic: which match method was used for each symbol
+        MatchMethod startsWithMethod = MATCH_NONE;
+        MatchMethod containsMountMethod = MATCH_NONE;
+        MatchMethod isFuseBpfEnabledMethod = MATCH_NONE;
+        MatchMethod fuseReqUserdataMethod = MATCH_NONE;
+        MatchMethod fuseBpfInstallMethod = MATCH_NONE;
     };
 
     struct EmbeddedHookTarget {
-        const char *symbol;
+        const char *symbol;        // exact mangled name (for strcmp)
+        const char *shortName;     // unqualified function name for fuzzy match (NULL = exact-only)
+        const char *namespaceName; // expected C++ namespace for fuzzy match (NULL = global/C symbol)
+        int paramCount;            // expected param count (-1 = don't check)
         void *replacement;
         void **original;
         bool *hooked;
+        MatchMethod *method;       // [out] which method matched (diagnostics)
     };
 
     static bool PatchGotSlot(ElfW(Addr) slotAddress, void *replacement, void **original) {
@@ -185,6 +202,310 @@ namespace bpf_hook {
 
     static bool IsRuntimeAddress(ElfW(Addr) value, ElfW(Addr) base) {
         return value >= base;
+    }
+
+    struct MangledNameComponent {
+        const char *name = nullptr;
+        size_t length = 0;
+    };
+
+    static bool IsDigit(char value) {
+        return value >= '0' && value <= '9';
+    }
+
+    static bool ReadLengthPrefixedName(const char **cursor,
+                                       MangledNameComponent *component = nullptr) {
+        if (cursor == nullptr || *cursor == nullptr || !IsDigit(**cursor)) {
+            return false;
+        }
+        const char *p = *cursor;
+        size_t length = 0;
+        while (IsDigit(*p)) {
+            length = length * 10 + static_cast<size_t>(*p - '0');
+            p++;
+        }
+        if (length == 0 || strlen(p) < length) {
+            return false;
+        }
+        if (component != nullptr) {
+            component->name = p;
+            component->length = length;
+        }
+        *cursor = p + length;
+        return true;
+    }
+
+    static bool ParseMangledNameComponents(const char *mangled,
+                                           MangledNameComponent *components,
+                                           size_t maxComponents,
+                                           size_t *componentCount,
+                                           const char **nameEnd) {
+        if (mangled == nullptr || components == nullptr || componentCount == nullptr
+                || maxComponents == 0) {
+            return false;
+        }
+        *componentCount = 0;
+        if (nameEnd != nullptr) {
+            *nameEnd = nullptr;
+        }
+
+        if (mangled[0] != '_' || mangled[1] != 'Z') {
+            components[0].name = mangled;
+            components[0].length = strlen(mangled);
+            *componentCount = 1;
+            if (nameEnd != nullptr) {
+                *nameEnd = mangled + components[0].length;
+            }
+            return components[0].length > 0;
+        }
+
+        const char *p = mangled + 2;
+        const bool nested = *p == 'N';
+        if (nested) {
+            p++;
+        }
+
+        while (IsDigit(*p)) {
+            if (*componentCount >= maxComponents) {
+                return false;
+            }
+            if (!ReadLengthPrefixedName(&p, &components[*componentCount])) {
+                return false;
+            }
+            (*componentCount)++;
+        }
+
+        if (*componentCount == 0) {
+            return false;
+        }
+        if (nested) {
+            if (*p != 'E') {
+                return false;
+            }
+            p++;
+        }
+        if (nameEnd != nullptr) {
+            *nameEnd = p;
+        }
+        return true;
+    }
+
+    static bool ComponentEquals(const MangledNameComponent &component, const char *expected) {
+        return expected != nullptr
+               && strlen(expected) == component.length
+               && strncmp(component.name, expected, component.length) == 0;
+    }
+
+    static bool NamespaceMatches(const MangledNameComponent *components, size_t componentCount,
+                                 const char *expectedNamespace) {
+        if (expectedNamespace == nullptr || *expectedNamespace == '\0') {
+            return componentCount == 1;
+        }
+        if (componentCount < 2) {
+            return false;
+        }
+
+        size_t componentIndex = 0;
+        const char *segment = expectedNamespace;
+        while (*segment != '\0') {
+            const char *segmentEnd = strstr(segment, "::");
+            const size_t segmentLength = segmentEnd == nullptr
+                                         ? strlen(segment)
+                                         : static_cast<size_t>(segmentEnd - segment);
+            if (componentIndex >= componentCount - 1
+                    || components[componentIndex].length != segmentLength
+                    || strncmp(components[componentIndex].name, segment, segmentLength) != 0) {
+                return false;
+            }
+            componentIndex++;
+            if (segmentEnd == nullptr) {
+                break;
+            }
+            segment = segmentEnd + 2;
+        }
+        return componentIndex == componentCount - 1;
+    }
+
+    /**
+     * Extract the unqualified function name from an Itanium C++ ABI mangled symbol.
+     *
+     * For `_ZN7android4base10StartsWithE...` → "StartsWith"
+     * For `_ZN13mediaprovider4fuse13containsMountE...` → "containsMount"
+     * For C symbols (like `fuse_req_userdata`) → returned as-is.
+     *
+     * Async-signal-safe, no heap allocation, no external dependencies.
+     */
+    static bool ExtractFunctionName(const char *mangled, char *out, size_t out_size) {
+        if (!mangled || !out || out_size == 0) return false;
+
+        MangledNameComponent components[8];
+        size_t componentCount = 0;
+        if (!ParseMangledNameComponents(mangled, components,
+                                        sizeof(components) / sizeof(components[0]),
+                                        &componentCount, nullptr)) {
+            return false;
+        }
+
+        const auto &lastName = components[componentCount - 1];
+        const size_t copyLen = lastName.length < out_size - 1 ? lastName.length : out_size - 1;
+        memcpy(out, lastName.name, copyLen);
+        out[copyLen] = '\0';
+        return true;
+    }
+
+    static const char *SkipType(const char *sig);
+
+    static const char *SkipSubstitution(const char *sig) {
+        if (sig == nullptr || *sig != 'S') {
+            return nullptr;
+        }
+        sig++;
+        if (*sig == 't') {
+            return sig + 1; // St = std::
+        }
+        while (IsDigit(*sig)) {
+            sig++;
+        }
+        return *sig == '_' ? sig + 1 : nullptr;
+    }
+
+    static const char *SkipTemplateArgs(const char *sig) {
+        if (sig == nullptr || *sig != 'I') {
+            return nullptr;
+        }
+        sig++;
+        while (*sig != '\0' && *sig != 'E') {
+            sig = SkipType(sig);
+            if (sig == nullptr) {
+                return nullptr;
+            }
+        }
+        return *sig == 'E' ? sig + 1 : nullptr;
+    }
+
+    static const char *SkipNestedName(const char *sig) {
+        if (sig == nullptr || *sig != 'N') {
+            return nullptr;
+        }
+        sig++;
+        while (*sig != '\0' && *sig != 'E') {
+            if (*sig == 'S') {
+                sig = SkipSubstitution(sig);
+            } else if (IsDigit(*sig)) {
+                if (!ReadLengthPrefixedName(&sig)) {
+                    return nullptr;
+                }
+                if (*sig == 'I') {
+                    sig = SkipTemplateArgs(sig);
+                }
+            } else {
+                return nullptr;
+            }
+            if (sig == nullptr) {
+                return nullptr;
+            }
+        }
+        return *sig == 'E' ? sig + 1 : nullptr;
+    }
+
+    static const char *SkipType(const char *sig) {
+        if (sig == nullptr || *sig == '\0') {
+            return nullptr;
+        }
+        while (*sig == 'R' || *sig == 'O' || *sig == 'P' || *sig == 'K'
+               || *sig == 'V' || *sig == 'r') {
+            sig++;
+        }
+        if (*sig == 'N') {
+            return SkipNestedName(sig);
+        }
+        if (*sig == 'S') {
+            return SkipSubstitution(sig);
+        }
+        if (IsDigit(*sig)) {
+            if (!ReadLengthPrefixedName(&sig)) {
+                return nullptr;
+            }
+            return *sig == 'I' ? SkipTemplateArgs(sig) : sig;
+        }
+        if (*sig == 'F') {
+            sig++;
+            while (*sig != '\0' && *sig != 'E') {
+                sig = SkipType(sig);
+                if (sig == nullptr) {
+                    return nullptr;
+                }
+            }
+            return *sig == 'E' ? sig + 1 : nullptr;
+        }
+        return sig + 1; // builtin or vendor extended one-letter type code
+    }
+
+    /**
+     * Count top-level parameter types in an Itanium ABI signature suffix.
+     *
+     * Walks the signature string (the part after the function name's closing 'E')
+     * tracking depth through nested names ('N'), template args ('I'), and
+     * substitution back-references ('S{digits}_').  Each top-level type encoding
+     * at depth 0 increments the count.
+     *
+     * Used for overload disambiguation — currently only `containsMount`
+     * has two variants (1-arg for API 31+, 2-arg for API 30).
+     */
+    static int CountTopLevelParams(const char *sig) {
+        if (!sig || !*sig) return 0;
+        if (sig[0] == 'v' && sig[1] == '\0') return 0;
+        int count = 0;
+        while (*sig != '\0') {
+            const char *next = SkipType(sig);
+            if (next == nullptr || next <= sig) {
+                return -1;
+            }
+            count++;
+            sig = next;
+        }
+        return count;
+    }
+
+    /**
+     * Given an Itanium ABI mangled function name, return a pointer to the
+     * signature suffix (the part after the function name's closing 'E').
+     *
+     * For `_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk1...` → pointer to `RKNSt6__ndk1...`
+     * For C symbols (non-mangled) → nullptr.
+     */
+    static const char* FindSignatureSuffix(const char *mangled) {
+        if (!mangled || mangled[0] != '_' || mangled[1] != 'Z') return nullptr;
+        MangledNameComponent components[8];
+        size_t componentCount = 0;
+        const char *nameEnd = nullptr;
+        if (!ParseMangledNameComponents(mangled, components,
+                                        sizeof(components) / sizeof(components[0]),
+                                        &componentCount, &nameEnd)) {
+            return nullptr;
+        }
+        return (nameEnd != nullptr && *nameEnd != '\0') ? nameEnd : nullptr;
+    }
+
+    static bool FuzzyMatchesTarget(const char *symbolName, const EmbeddedHookTarget &target) {
+        MangledNameComponent components[8];
+        size_t componentCount = 0;
+        if (!ParseMangledNameComponents(symbolName, components,
+                                        sizeof(components) / sizeof(components[0]),
+                                        &componentCount, nullptr)) {
+            return false;
+        }
+        if (!ComponentEquals(components[componentCount - 1], target.shortName)) {
+            return false;
+        }
+        if (!NamespaceMatches(components, componentCount, target.namespaceName)) {
+            return false;
+        }
+        if (target.paramCount < 0) {
+            return true;
+        }
+        const char *sig = FindSignatureSuffix(symbolName);
+        return sig != nullptr && CountTopLevelParams(sig) == target.paramCount;
     }
 
     static ElfW(Addr) ResolveDynamicAddress(ElfW(Addr) value, ElfW(Addr) base) {
@@ -260,23 +581,46 @@ namespace bpf_hook {
                 "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_");
         const char *containsMount31Symbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE");
+        const char *containsMount30Symbol = AY_OBFUSCATE(
+                "_ZN13mediaprovider4fuse13containsMountERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEES9_");
         const char *isFuseBpfEnabledSymbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse16IsFuseBpfEnabledEv");
         const char *fuseReqUserdataSymbol = AY_OBFUSCATE("fuse_req_userdata");
         const char *fuseBpfInstallSymbol = AY_OBFUSCATE(
                 "_ZN13mediaprovider4fuse16fuse_bpf_installEP4fuseP16fuse_entry_paramRKNSt6__ndk112basic_stringIcNS5_11char_traitsIcEENS5_9allocatorIcEEEERi");
 
+        // Targets:
+        //   symbol          shortName           namespace             paramCount  replacement              original                   hooked flag              method out
         EmbeddedHookTarget targets[] = {
-                {startsWithSymbol,       reinterpret_cast<void *>(new_StartsWith),
-                        reinterpret_cast<void **>(&old_StartsWith), &result->startsWithHooked},
-                {containsMount31Symbol,  reinterpret_cast<void *>(new_containsMount_31),
-                        reinterpret_cast<void **>(&old_containsMount_31), &result->containsMountHooked},
-                {isFuseBpfEnabledSymbol, reinterpret_cast<void *>(new_IsFuseBpfEnabled),
-                        reinterpret_cast<void **>(&old_IsFuseBpfEnabled), &result->isFuseBpfEnabledHooked},
-                {fuseReqUserdataSymbol,  reinterpret_cast<void *>(new_fuse_req_userdata),
-                        reinterpret_cast<void **>(&old_fuse_req_userdata), &result->fuseReqUserdataHooked},
-                {fuseBpfInstallSymbol,   reinterpret_cast<void *>(new_fuse_bpf_install),
-                        reinterpret_cast<void **>(&old_fuse_bpf_install), &result->fuseBpfInstallHooked},
+                {startsWithSymbol,       AY_OBFUSCATE("StartsWith"),
+                        AY_OBFUSCATE("android::base"), -1,
+                        reinterpret_cast<void *>(new_StartsWith),
+                        reinterpret_cast<void **>(&old_StartsWith), &result->startsWithHooked,
+                        &result->startsWithMethod},
+                {containsMount31Symbol,  AY_OBFUSCATE("containsMount"),
+                        AY_OBFUSCATE("mediaprovider::fuse"), 1,
+                        reinterpret_cast<void *>(new_containsMount_31),
+                        reinterpret_cast<void **>(&old_containsMount_31), &result->containsMountHooked,
+                        &result->containsMountMethod},
+                {containsMount30Symbol,  AY_OBFUSCATE("containsMount"),
+                        AY_OBFUSCATE("mediaprovider::fuse"), 2,
+                        reinterpret_cast<void *>(new_containsMount_30),
+                        reinterpret_cast<void **>(&old_containsMount_30), &result->containsMountHooked,
+                        &result->containsMountMethod},
+                {isFuseBpfEnabledSymbol, AY_OBFUSCATE("IsFuseBpfEnabled"),
+                        AY_OBFUSCATE("mediaprovider::fuse"), -1,
+                        reinterpret_cast<void *>(new_IsFuseBpfEnabled),
+                        reinterpret_cast<void **>(&old_IsFuseBpfEnabled), &result->isFuseBpfEnabledHooked,
+                        &result->isFuseBpfEnabledMethod},
+                {fuseReqUserdataSymbol,  AY_OBFUSCATE("fuse_req_userdata"), nullptr, -1,
+                        reinterpret_cast<void *>(new_fuse_req_userdata),
+                        reinterpret_cast<void **>(&old_fuse_req_userdata), &result->fuseReqUserdataHooked,
+                        &result->fuseReqUserdataMethod},
+                {fuseBpfInstallSymbol,   AY_OBFUSCATE("fuse_bpf_install"),
+                        AY_OBFUSCATE("mediaprovider::fuse"), -1,
+                        reinterpret_cast<void *>(new_fuse_bpf_install),
+                        reinterpret_cast<void **>(&old_fuse_bpf_install), &result->fuseBpfInstallHooked,
+                        &result->fuseBpfInstallMethod},
         };
 
         const auto count = pltrelsz / sizeof(ElfW(Rela));
@@ -284,12 +628,26 @@ namespace bpf_hook {
             const auto &relocation = jmprel[i];
             const auto symbolIndex = MC_ELF_R_SYM(relocation.r_info);
             const char *symbolName = strtab + symtab[symbolIndex].st_name;
+
             for (auto &target: targets) {
-                if (*target.hooked || strcmp(symbolName, target.symbol) != 0) {
-                    continue;
+                if (*target.hooked) continue;
+
+                // --- Phase 1: Exact match (strcmp) ---
+                bool matched = (strcmp(symbolName, target.symbol) == 0);
+                MatchMethod method = MATCH_EXACT;
+
+                // --- Phase 2: Fuzzy match via Itanium name extraction ---
+                if (!matched && target.shortName != nullptr && FuzzyMatchesTarget(symbolName, target)) {
+                    matched = true;
+                    method = MATCH_FUZZY;
                 }
+
+                // --- Apply GOT patch if matched ---
+                if (!matched) continue;
+
                 const auto slotAddress = info->dlpi_addr + relocation.r_offset;
                 *target.hooked = PatchGotSlot(slotAddress, target.replacement, target.original);
+                *target.method = method;
             }
         }
         return 1;
@@ -346,13 +704,23 @@ namespace bpf_hook {
             out << ",";
             AppendJsonBool(out, "startsWithHooked", startsWithHooked);
             out << ",";
+            AppendJsonString(out, "startsWithMethod", embeddedResult.startsWithMethod == MATCH_EXACT ? "exact" : (embeddedResult.startsWithMethod == MATCH_FUZZY ? "fuzzy" : "none"));
+            out << ",";
             AppendJsonBool(out, "containsMountHooked", containsMountHooked);
+            out << ",";
+            AppendJsonString(out, "containsMountMethod", embeddedResult.containsMountMethod == MATCH_EXACT ? "exact" : (embeddedResult.containsMountMethod == MATCH_FUZZY ? "fuzzy" : "none"));
             out << ",";
             AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
             out << ",";
+            AppendJsonString(out, "isFuseBpfEnabledMethod", embeddedResult.isFuseBpfEnabledMethod == MATCH_EXACT ? "exact" : (embeddedResult.isFuseBpfEnabledMethod == MATCH_FUZZY ? "fuzzy" : "none"));
+            out << ",";
             AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
             out << ",";
+            AppendJsonString(out, "fuseReqUserdataMethod", embeddedResult.fuseReqUserdataMethod == MATCH_EXACT ? "exact" : (embeddedResult.fuseReqUserdataMethod == MATCH_FUZZY ? "fuzzy" : "none"));
+            out << ",";
             AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
+            out << ",";
+            AppendJsonString(out, "fuseBpfInstallMethod", embeddedResult.fuseBpfInstallMethod == MATCH_EXACT ? "exact" : (embeddedResult.fuseBpfInstallMethod == MATCH_FUZZY ? "fuzzy" : "none"));
             out << ",";
             AppendJsonBool(out, "xhookRefreshCalled", false);
             out << ",";
@@ -439,15 +807,53 @@ namespace bpf_hook {
         xhook_refresh(0);
         xhookRefreshCalled = true;
 
+        // If any symbol failed exact xhook match, try GOT Patch as fallback
+        bool xhookAllSucceeded = startsWithHooked && containsMountHooked
+                               && isFuseBpfEnabledHooked && fuseReqUserdataHooked
+                               && fuseBpfInstallHooked;
+
+        // Match method strings for diagnostic output
+        const char *startsWithMethod = "exact";
+        const char *containsMountMethod = "exact";
+        const char *isFuseBpfEnabledMethod = "exact";
+        const char *fuseReqUserdataMethod = "exact";
+        const char *fuseBpfInstallMethod = "exact";
+
+        if (!xhookAllSucceeded) {
+            auto embeddedResult = HookEmbeddedFuseJni();
+            // Merge: GOT Patch succeeded where xhook failed
+            if (!startsWithHooked && embeddedResult.startsWithHooked) {
+                startsWithHooked = true;
+                startsWithMethod = "fuzzy";
+            }
+            if (!containsMountHooked && embeddedResult.containsMountHooked) {
+                containsMountHooked = true;
+                containsMountMethod = "fuzzy";
+            }
+            if (!isFuseBpfEnabledHooked && embeddedResult.isFuseBpfEnabledHooked) {
+                isFuseBpfEnabledHooked = true;
+                isFuseBpfEnabledMethod = "fuzzy";
+            }
+            if (!fuseReqUserdataHooked && embeddedResult.fuseReqUserdataHooked) {
+                fuseReqUserdataHooked = true;
+                fuseReqUserdataMethod = "fuzzy";
+            }
+            if (!fuseBpfInstallHooked && embeddedResult.fuseBpfInstallHooked) {
+                fuseBpfInstallHooked = true;
+                fuseBpfInstallMethod = "fuzzy";
+            }
+            lastError = "some symbols resolved via GOT patch fallback";
+        }
+
         std::ostringstream out;
         out << "{";
         AppendJsonBool(out, "fuseAvailable", true);
         out << ",";
         AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
         out << ",";
-        AppendJsonString(out, "fuseLibraryName", handle == nullptr ? "MediaProvider.apk" : "libfuse_jni.so");
+        AppendJsonString(out, "fuseLibraryName", "libfuse_jni.so");
         out << ",";
-        AppendJsonString(out, "hookMode", "XHOOK");
+        AppendJsonString(out, "hookMode", xhookAllSucceeded ? "XHOOK" : "XHOOK_WITH_GOT_FALLBACK");
         out << ",";
         AppendJsonString(out, "fuseJniLoadMode", "SYSTEM_LIB");
         out << ",";
@@ -455,13 +861,23 @@ namespace bpf_hook {
         out << ",";
         AppendJsonBool(out, "startsWithHooked", startsWithHooked);
         out << ",";
+        AppendJsonString(out, "startsWithMethod", startsWithMethod);
+        out << ",";
         AppendJsonBool(out, "containsMountHooked", containsMountHooked);
+        out << ",";
+        AppendJsonString(out, "containsMountMethod", containsMountMethod);
         out << ",";
         AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
         out << ",";
+        AppendJsonString(out, "isFuseBpfEnabledMethod", isFuseBpfEnabledMethod);
+        out << ",";
         AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
         out << ",";
+        AppendJsonString(out, "fuseReqUserdataMethod", fuseReqUserdataMethod);
+        out << ",";
         AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
+        out << ",";
+        AppendJsonString(out, "fuseBpfInstallMethod", fuseBpfInstallMethod);
         out << ",";
         AppendJsonBool(out, "xhookRefreshCalled", xhookRefreshCalled);
         out << ",";
