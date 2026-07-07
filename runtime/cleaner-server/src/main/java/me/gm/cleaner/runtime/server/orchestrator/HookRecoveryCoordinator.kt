@@ -22,6 +22,20 @@ class HookRecoveryCoordinator(
     private val hooksRetryDelays = longArrayOf(1_000L, 2_000L, 5_000L, 10_000L, 30_000L)
     private var lastNativeHookCheckGeneration: Long = 0L
 
+    data class RecoverySnapshot(
+        val hooksRetryCount: Int = 0,
+        val hooksReconnectScheduled: Boolean = false,
+        val maxHookRetries: Int = 0,
+        val lastNativeHookCheckGeneration: Long = 0L,
+    )
+
+    fun snapshot(): RecoverySnapshot = RecoverySnapshot(
+        hooksRetryCount = hooksRetryCount,
+        hooksReconnectScheduled = hooksReconnectScheduled,
+        maxHookRetries = hooksRetryDelays.size * 2,
+        lastNativeHookCheckGeneration = lastNativeHookCheckGeneration,
+    )
+
     fun onHooksBinderDied() {
         Log.w(TAG, "onHooksBinderDied: MEDIA_PROVIDER_JAVA_HOOK -> UNAVAILABLE, " +
                 "FUSE_NATIVE_HOOK -> UNAVAILABLE (binderDied = process death)")

@@ -32,6 +32,28 @@ class MediaProviderRecoveryStrategy(
     private var lastMediaProviderRecoveryAt: Long = 0L
     private var mediaProviderWakeScheduled: Boolean = false
 
+    data class RecoverySnapshot(
+        val consecutiveHookMissing: Int = 0,
+        val lastRecoveryAt: Long = 0L,
+        val recoveryCooldownRemainingMs: Long = 0L,
+        val mediaProviderWakeScheduled: Boolean = false,
+    )
+
+    fun snapshot(now: Long = System.currentTimeMillis()): RecoverySnapshot {
+        val cooldownRemaining = if (lastMediaProviderRecoveryAt <= 0L) {
+            0L
+        } else {
+            (MEDIA_PROVIDER_RECOVERY_COOLDOWN_MS - (now - lastMediaProviderRecoveryAt))
+                .coerceAtLeast(0L)
+        }
+        return RecoverySnapshot(
+            consecutiveHookMissing = consecutiveMediaProviderHookMissing,
+            lastRecoveryAt = lastMediaProviderRecoveryAt,
+            recoveryCooldownRemainingMs = cooldownRemaining,
+            mediaProviderWakeScheduled = mediaProviderWakeScheduled,
+        )
+    }
+
     fun recoverIfHookRegistrationMissing(): Boolean {
         if (MediaProviderHookGateway.isMediaProviderHookConnected()) {
             if (consecutiveMediaProviderHookMissing > 0) {

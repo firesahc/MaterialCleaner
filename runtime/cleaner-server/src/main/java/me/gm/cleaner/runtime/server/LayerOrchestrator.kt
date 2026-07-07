@@ -9,6 +9,7 @@ import me.gm.cleaner.runtime.server.orchestrator.EventConsumerScheduler
 import me.gm.cleaner.runtime.server.orchestrator.HookRecoveryCoordinator
 import me.gm.cleaner.runtime.server.orchestrator.MediaProviderRecoveryStrategy
 import me.gm.cleaner.runtime.server.orchestrator.RuntimeStatusAggregator
+import me.gm.cleaner.runtime.server.orchestrator.RuntimeRecoverySnapshot
 
 /**
  * 三层编排器。
@@ -25,7 +26,6 @@ class LayerOrchestrator(
         private const val TAG = "LayerOrchestrator"
     }
 
-    private val statusAggregator = RuntimeStatusAggregator(server)
     private val eventConsumerScheduler = EventConsumerScheduler(server)
     private val mediaProviderRecoveryStrategy = MediaProviderRecoveryStrategy(server)
     private val hookRecoveryCoordinator = HookRecoveryCoordinator(
@@ -36,6 +36,12 @@ class LayerOrchestrator(
             eventConsumerScheduler.start()
         },
     )
+    private val statusAggregator = RuntimeStatusAggregator(server) {
+        RuntimeRecoverySnapshot(
+            hook = hookRecoveryCoordinator.snapshot(),
+            mediaProvider = mediaProviderRecoveryStrategy.snapshot(),
+        )
+    }
 
     init {
         eventConsumerScheduler.onHeartbeat = {

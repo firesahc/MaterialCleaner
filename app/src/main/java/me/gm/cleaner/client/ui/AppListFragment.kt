@@ -486,13 +486,34 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private fun hookSummary(layer: OrchestratedLayerStatus): String {
         val connected = layer.metrics["binderConnected"]?.toBooleanStrictOrNull()
         val mediaProviderConnected = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
+        val reconnectScheduled = layer.metrics["hooksReconnectScheduled"]?.toBooleanStrictOrNull()
+        val wakeScheduled = layer.metrics["mediaProviderWakeScheduled"]?.toBooleanStrictOrNull()
+        val missingChecks = layer.metrics["consecutiveMediaProviderHookMissing"]?.toIntOrNull() ?: 0
+        val cooldownMs = layer.metrics["mediaProviderRecoveryCooldownRemainingMs"]?.toLongOrNull() ?: 0L
+        val retryCount = layer.metrics["hooksRetryCount"]?.toIntOrNull() ?: 0
+        val maxRetries = layer.metrics["maxHookRetries"]?.toIntOrNull() ?: 0
+        val retryLabel = if (maxRetries > 0) {
+            "第 ${retryCount + 1}/$maxRetries 次"
+        } else {
+            "第 ${retryCount + 1} 次"
+        }
         return when (connected) {
             true -> if (mediaProviderConnected == true) {
                 "MediaProvider Hook 已连接"
+            } else if (wakeScheduled == true) {
+                "正在唤醒 MediaProvider"
+            } else if (cooldownMs > 0L) {
+                "恢复冷却中 · 剩余 ${formatDurationSeconds(cooldownMs)}"
+            } else if (missingChecks > 0) {
+                "桥接已连接，MediaProvider 连续 $missingChecks 次未注册"
             } else {
                 "桥接已连接，等待 MediaProvider Hook"
             }
-            false -> "Hook Binder 未连接"
+            false -> if (reconnectScheduled == true) {
+                "Hook 桥重连中 · $retryLabel"
+            } else {
+                "Hook Binder 未连接"
+            }
             null -> ""
         }
     }
@@ -563,11 +584,22 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val appBinder = layer.metrics["appBinderRegistered"]?.toBooleanStrictOrNull()
         val hooksBridge = layer.metrics["hooksBridgeConnected"]?.toBooleanStrictOrNull()
         val mediaProviderHook = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
+        val reconnectScheduled = layer.metrics["hooksReconnectScheduled"]?.toBooleanStrictOrNull()
+        val wakeScheduled = layer.metrics["mediaProviderWakeScheduled"]?.toBooleanStrictOrNull()
+        val cooldownMs = layer.metrics["mediaProviderRecoveryCooldownRemainingMs"]?.toLongOrNull() ?: 0L
         val parts = mutableListOf<String>()
         if (appBinder != null) parts += if (appBinder) "App Binder 已注册" else "App Binder 未注册"
         if (hooksBridge != null) parts += if (hooksBridge) "Hook 桥已连接" else "Hook 桥未连接"
         if (mediaProviderHook != null) parts += if (mediaProviderHook) "MediaProvider 已注册" else "MediaProvider 未注册"
+        if (reconnectScheduled == true) parts += "重连已调度"
+        if (wakeScheduled == true) parts += "唤醒已调度"
+        if (cooldownMs > 0L) parts += "冷却 ${formatDurationSeconds(cooldownMs)}"
         return parts.joinToString(" · ")
+    }
+
+    private fun formatDurationSeconds(durationMs: Long): String {
+        val seconds = ((durationMs + 999L) / 1000L).coerceAtLeast(1L)
+        return "${seconds}s"
     }
 
     private fun firstProblem(status: OrchestratedRuntimeStatus): String? {

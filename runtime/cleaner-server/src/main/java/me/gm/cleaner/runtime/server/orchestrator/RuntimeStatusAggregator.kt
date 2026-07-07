@@ -14,6 +14,9 @@ import me.gm.cleaner.model.OrchestratedStatus as IpcOrchestratedStatus
  */
 class RuntimeStatusAggregator(
     private val server: CleanerServer,
+    private val recoverySnapshotProvider: () -> RuntimeRecoverySnapshot = {
+        RuntimeRecoverySnapshot()
+    },
 ) {
     private val statusGeneration = AtomicLong(0)
     private val layerStartedAt = ConcurrentHashMap<LayerId, Long>()
@@ -59,25 +62,13 @@ class RuntimeStatusAggregator(
         } else {
             false
         }
-        val hookReport = LayerReport(
-            id = LayerId.MEDIA_PROVIDER_JAVA_HOOK,
-            state = when {
-                mediaProviderHookConnected -> LayerState.HEALTHY
-                hooksBridgeConnected -> LayerState.UNAVAILABLE
-                else -> LayerState.UNAVAILABLE
-            },
+        val recoverySnapshot = recoverySnapshotProvider()
+        val hookReport = MediaProviderHookLayerReporter.collect(
             generation = gen,
-            lastHeartbeatAt = if (mediaProviderHookConnected) now else 0L,
-            lastErrorAt = if (mediaProviderHookConnected) 0L else now,
-            lastError = when {
-                mediaProviderHookConnected -> null
-                hooksBridgeConnected -> "MediaProvider Hook unavailable"
-                else -> "Hook bridge Binder unavailable"
-            },
-            metrics = mapOf(
-                "binderConnected" to hooksBridgeConnected.toString(),
-                "mediaProviderHookConnected" to mediaProviderHookConnected.toString(),
-            ),
+            now = now,
+            hooksBridgeConnected = hooksBridgeConnected,
+            mediaProviderHookConnected = mediaProviderHookConnected,
+            recovery = recoverySnapshot,
         )
 
         val nativeReport = NativeHookLayerReporter.collect(
@@ -88,16 +79,13 @@ class RuntimeStatusAggregator(
 
         val busReport = DataBusLayerReporter.collect(gen, now)
 
-        val controlReport = LayerReport(
-            id = LayerId.CONTROL_PLANE,
-            state = if (hooksBridgeConnected) LayerState.HEALTHY else LayerState.DEGRADED,
+        val controlReport = ControlPlaneLayerReporter.collect(
+            server = server,
             generation = gen,
-            lastHeartbeatAt = now,
-            metrics = mapOf(
-                "appBinderRegistered" to (server.cleanerService != null).toString(),
-                "hooksBridgeConnected" to hooksBridgeConnected.toString(),
-                "mediaProviderHookConnected" to mediaProviderHookConnected.toString(),
-            ),
+            now = now,
+            hooksBridgeConnected = hooksBridgeConnected,
+            mediaProviderHookConnected = mediaProviderHookConnected,
+            recovery = recoverySnapshot,
         )
 
         return OrchestratedStatus.evaluate(
