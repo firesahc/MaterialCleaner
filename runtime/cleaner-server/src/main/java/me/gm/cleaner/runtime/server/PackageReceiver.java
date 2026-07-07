@@ -48,7 +48,7 @@ public class PackageReceiver {
                         switch (intent.getAction()) {
                             case Intent.ACTION_PACKAGE_ADDED:
                                 if (mInstalledPackages.add(packageName)) {
-                                    mServer.broadcastIntentDelayed(broadcastIntent -> broadcastIntent
+                                    mServer.noticeDispatcher.broadcastIntentDelayed(broadcastIntent -> broadcastIntent
                                             .setAction(ServerConstants.ACTION_PACKAGE_ADDED)
                                             .putExtra(Intent.EXTRA_PACKAGE_NAME, SystemService
                                                     .getPackageInfoNoThrow(packageName, 0, 0)));
@@ -56,7 +56,7 @@ public class PackageReceiver {
                                 break;
                             case Intent.ACTION_PACKAGE_REPLACED:
                                 if (ServerConstants.APPLICATION_ID.equals(packageName)) {
-                                    mServer.broadcastIntentDelayed(broadcastIntent -> broadcastIntent
+                                    mServer.noticeDispatcher.broadcastIntentDelayed(broadcastIntent -> broadcastIntent
                                             .setAction(ServerConstants.ACTION_MY_PACKAGE_REPLACED)
                                     );
                                 }

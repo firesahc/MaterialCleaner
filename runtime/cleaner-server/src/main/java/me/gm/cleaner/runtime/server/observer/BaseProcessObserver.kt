@@ -17,16 +17,6 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     protected fun isMounterActiveForUid(uid: Int): Boolean = isMounterActiveForUser(uid.toUserId())
 
-    fun waitMount(packageName: String, pid: Int, uid: Int): Boolean {
-        if (!isMounterActiveForUid(uid)) {
-            return true
-        }
-        if (VfsRuntimeConfigStore.getPackageRuleCount(packageName) > 0) {
-            return mounter.bindMount(packageName, pid, uid)
-        }
-        return true
-    }
-
     private fun getRunningAppProcesses(packageNames: Array<String>): List<ActivityManager.RunningAppProcessInfo> =
         SystemService.getRunningAppProcessesNoThrow().filter { procInfo ->
             isMounterActiveForUid(procInfo.uid) && procInfo.pkgList.any { packageNames.contains(it) }

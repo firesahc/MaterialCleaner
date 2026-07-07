@@ -292,7 +292,7 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
             } catch (final IOException | InterruptedException e) {
                 Log.e("ActivityManagerLogsObserver", "Logcat reading loop exited unexpectedly", e);
             } finally {
-                mServer.broadcastIntent(broadcastIntent ->
+                mServer.noticeDispatcher.broadcastIntent(broadcastIntent ->
                         broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)
                 );
                 if (process != null) {

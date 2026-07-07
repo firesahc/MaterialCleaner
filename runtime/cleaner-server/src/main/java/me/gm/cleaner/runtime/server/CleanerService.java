@@ -1,9 +1,7 @@
 package me.gm.cleaner.runtime.server;
 
 import static hidden.HiddenApiBridge.PackageInfo_isOverlayPackage;
-import android.annotation.SuppressLint;
 import android.app.AppOpsManager;
-import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -15,14 +13,11 @@ import android.os.RemoteException;
 import android.system.Os;
 import android.util.Log;
 
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
@@ -35,7 +30,6 @@ import kotlin.io.path.PathsKt;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
 import me.gm.cleaner.core.common.RuntimeFileUtils;
-import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.model.BulkCursor;
 import me.gm.cleaner.model.FileModel;
 import me.gm.cleaner.model.FileSystemEvent;
@@ -50,7 +44,6 @@ import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.runtime.server.observer.ActivityManagerLogsObserver;
 import me.gm.cleaner.runtime.server.observer.FileSystemObserver;
 import me.gm.cleaner.runtime.server.observer.ObserverManager;
-import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
 import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate;
 import me.gm.cleaner.runtime.server.observer.StorageMountObserver;
 
@@ -59,10 +52,12 @@ public class CleanerService extends ICleanerService.Stub {
     private final CleanerServer mServer;
     private final int mManagerAid;
     private final RemoteCallbackList<IFileChangeObserver> mFileChangeObservers = new RemoteCallbackList<>();
+    private final StorageRedirectConfigController mStorageRedirectConfigController;
 
     public CleanerService(final CleanerServer service, final int uid) {
         mServer = service;
         mManagerAid = uid;
+        mStorageRedirectConfigController = new StorageRedirectConfigController(service);
     }
 
     private void enforceManager(final Object func) {
@@ -72,23 +67,6 @@ public class CleanerService extends ICleanerService.Stub {
             return;
         }
         throw new SecurityException(String.valueOf(func));
-    }
-
-    private LinkedHashSet<String> currentStorageRedirectPackages() {
-        return new LinkedHashSet<>(
-                VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages()
-        );
-    }
-
-    private void remountAffectedStorageRedirectPackages(Set<String> previousPackages) {
-        final var affectedPackages = new LinkedHashSet<String>();
-        if (previousPackages != null) {
-            affectedPackages.addAll(previousPackages);
-        }
-        affectedPackages.addAll(VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages());
-        if (!affectedPackages.isEmpty()) {
-            mServer.vfsLayerController.remount(affectedPackages.toArray(new String[0]));
-        }
     }
 
     @Override
@@ -195,7 +173,7 @@ public class CleanerService extends ICleanerService.Stub {
             } catch (NoSuchMethodError e) {
                 // Android 15+ 上 IPermissionManager 接口方法签名可能已变更
                 // 跳过 runtime 权限操作，仅设置 AppOps 模式
-                Log.w("CleanerService", "setPackagePermission: runtime permission API not available, " +
+                Log.w(TAG, "setPackagePermission: runtime permission API not available, " +
                         "falling back to AppOps only", e);
             }
         }
@@ -228,58 +206,22 @@ public class CleanerService extends ICleanerService.Stub {
         return mServer.vfsLayerController.getMountedDirs();
     }
 
-    /**
-     * Cautious: {@link SharedPreferences.Editor} uses {@link SharedPreferences.Editor#apply()}
-     * by default, which may cause this reload method called before the preferences are written to
-     * the disk and the values before writing is read.
-     */
-    @SuppressLint({"PrivateApi", "SoonBlockedPrivateApi"})
     @Override
     public void notifyPreferencesChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyPreferencesChanged" : 12);
-        final var previousPackages = currentStorageRedirectPackages();
-        try {
-            final var sps = new SharedPreferences[]{
-                    ServicePreferences.INSTANCE.getPreferences()
-            };
-            final var spImplCls = Class.forName("android.app.SharedPreferencesImpl");
-            final var method = spImplCls.getDeclaredMethod("startLoadFromDisk");
-            method.setAccessible(true);
-            for (final var sp : sps) {
-                method.invoke(sp);
-            }
-        } catch (final ClassNotFoundException | NoSuchMethodException | IllegalAccessException |
-                       InvocationTargetException e) {
-            Log.w(TAG, "Failed to reload SharedPreferences", e);
-        }
-        // 发布偏好变更快照到 DataBus（偏好变更可能影响策略）
-        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
-        SnapshotPublisher.INSTANCE.publishRedirectPolicy();
-        MediaProviderHookGateway.refreshPolicyFromDataBus();
-        remountAffectedStorageRedirectPackages(previousPackages);
+        mStorageRedirectConfigController.onPreferencesChanged();
     }
 
     @Override
     public void notifySrChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 13);
-        final var previousPackages = currentStorageRedirectPackages();
-        ServicePreferences.INSTANCE.invalidateSrCache();
-        PackageInfoMapper.invalidate();
-        // 发布规则变更快照到 DataBus，控制面只触发 Hook 侧刷新。
-        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
-        SnapshotPublisher.INSTANCE.publishStorageRedirectPolicySet();
-        MediaProviderHookGateway.refreshPolicyFromDataBus();
-        remountAffectedStorageRedirectPackages(previousPackages);
+        mStorageRedirectConfigController.onStorageRedirectChanged();
     }
 
     @Override
     public void notifyReadOnlyChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 14);
-        ServicePreferences.INSTANCE.invalidateReadOnlyCache();
-        // 发布只读变更快照到 DataBus
-        // DataBus 是唯一的配置分发通道；旧 Binder fallback 路径已移除。
-        SnapshotPublisher.INSTANCE.publishReadOnly();
-        MediaProviderHookGateway.refreshPolicyFromDataBus();
+        mStorageRedirectConfigController.onReadOnlyChanged();
     }
 
     @Override

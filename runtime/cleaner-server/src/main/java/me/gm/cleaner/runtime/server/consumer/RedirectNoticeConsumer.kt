@@ -10,7 +10,7 @@ import org.json.JSONObject
  * 重定向提示事件消费者（边界修正 + 游标持久化版）。
  *
  * - 只负责解析、TTL 检查、denylist 过滤、诊断日志
- * - 实际的 UI 广播通过控制面方法 [CleanerServer.showRedirectNotice] 触发
+ * - 实际的 UI 广播通过 [CleanerServer.noticeDispatcher] 触发
  * - 不直接操作 android.content.Intent（避免 Kotlin stub 遮蔽问题）
  * - 消费游标持久化，server 重启后可续消费
  */
@@ -93,7 +93,7 @@ object RedirectNoticeConsumer {
                             advanceCursor(eventFile)
                             continue
                         }
-                        srv.showMediaNotFoundNotice(
+                        srv.noticeDispatcher.showMediaNotFoundNotice(
                             packageName,
                             path,
                             reason == "MEDIA_NOT_FOUND_AGGRESSIVE",
@@ -106,7 +106,7 @@ object RedirectNoticeConsumer {
                             advanceCursor(eventFile)
                             continue
                         }
-                        srv.showRedirectNotice(packageName, originalPath, mountedPath, type)
+                        srv.noticeDispatcher.showRedirectNotice(packageName, originalPath, mountedPath, type)
                     }
                 }
                 consumed++
