@@ -2,6 +2,7 @@ package me.gm.cleaner.core.storage.redirect.databus
 
 import android.os.Process
 import android.util.Log
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicLong
@@ -94,6 +95,36 @@ object DataBus {
     // 每进程事件序列号
     private val eventSeqCounter = AtomicLong(0)
 
+    data class SnapshotHealth(
+        val name: String,
+        val exists: Boolean,
+        val validJson: Boolean,
+        val error: String? = null,
+    )
+
+    data class HealthReport(
+        val initialized: Boolean,
+        val missingDirectories: List<String>,
+        val permissionIssues: List<String>,
+        val snapshots: List<SnapshotHealth>,
+        val eventQueueCounts: Map<String, Int>,
+        val leaseCounts: Map<String, Int>,
+    ) {
+        fun hasSnapshot(name: String): Boolean =
+            snapshots.any { it.name == name && it.exists && it.validJson }
+
+        val criticalSnapshotsReady: Boolean
+            get() = hasSnapshot(SNAPSHOT_REDIRECT_POLICY) &&
+                    hasSnapshot(SNAPSHOT_READ_ONLY) &&
+                    hasSnapshot(SNAPSHOT_CONFIGURED_MOUNT_POINTS)
+
+        val healthy: Boolean
+            get() = initialized &&
+                    missingDirectories.isEmpty() &&
+                    permissionIssues.isEmpty() &&
+                    criticalSnapshotsReady
+    }
+
     data class EventFile(
         val name: String,
         val content: String,
@@ -108,18 +139,7 @@ object DataBus {
         if (initialized) return true
 
         try {
-            val dirs = listOf(
-                BUS_ROOT,
-                "$BUS_ROOT/$DIR_SNAPSHOTS",
-                "$BUS_ROOT/$DIR_SIGNALS",
-                "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
-                "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
-                "$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED",
-                "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS",
-                "$BUS_ROOT/$DIR_CURSORS",
-                "$BUS_ROOT/$DIR_TMP",
-            )
-            for (dir in dirs) {
+            for (dir in requiredDirectories()) {
                 val f = File(dir)
                 if (!f.exists()) {
                     if (!f.mkdirs()) {
@@ -129,11 +149,9 @@ object DataBus {
                             return false
                         }
                     }
-                    // 设置跨进程可读写权限
-                    f.setReadable(true, false)
-                    f.setWritable(true, false)
-                    f.setExecutable(true, false)
                 }
+                // 设置跨进程可读写权限；目录已存在时也要修复，避免重启后继承坏权限。
+                makeWorldAccessible(f, executable = true)
             }
             initialized = true
             Log.i(TAG, "DataBus initialized at $BUS_ROOT")
@@ -147,6 +165,7 @@ object DataBus {
     // ── 快照读写 ──
 
     fun writeSnapshot(name: String, content: String): Boolean {
+        if (!ensureInitialized()) return false
         val targetFile = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         val pid = Process.myPid()
         val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
@@ -166,7 +185,7 @@ object DataBus {
                 return false
             }
             // 确保 MediaProvider 进程可读取
-            targetFile.setReadable(true, false)
+            makeWorldAccessible(targetFile, executable = false)
             Log.d(TAG, "Snapshot written: $name (${content.length} bytes)")
             true
         } catch (e: Exception) {
@@ -204,7 +223,7 @@ object DataBus {
             if (!file.exists()) return null
             val content = file.readText(Charsets.UTF_8)
             // 验证 JSON 格式有效性
-            org.json.JSONObject(content)
+            JSONObject(content)
             content
         } catch (e: org.json.JSONException) {
             Log.e(TAG, "Corrupted snapshot detected: $name, quarantining")
@@ -225,11 +244,12 @@ object DataBus {
     // ── 信号 ──
 
     fun signal(name: String): Boolean {
+        if (!ensureInitialized()) return false
         val signalFile = File("$BUS_ROOT/$DIR_SIGNALS/$name")
         return try {
             if (!signalFile.exists()) signalFile.createNewFile()
             else signalFile.setLastModified(System.currentTimeMillis())
-            signalFile.setReadable(true, false)
+            makeWorldAccessible(signalFile, executable = false)
             Log.d(TAG, "Signal sent: $name")
             true
         } catch (e: Exception) {
@@ -259,7 +279,7 @@ object DataBus {
      * @return 事件序列号（成功），-1（失败）
      */
     fun writeEvent(queue: String, content: String): Long {
-        ensureInitialized()
+        if (!ensureInitialized()) return -1L
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists() && !eventDir.mkdirs()) {
             Log.e(TAG, "Failed to create event dir: $queue")
@@ -286,7 +306,7 @@ object DataBus {
                 tmpFile.delete()
                 return -1L
             }
-            targetFile.setReadable(true, false)
+            makeWorldAccessible(targetFile, executable = false)
             Log.d(TAG, "Event written: $queue/$filename")
             seq
         } catch (e: Exception) {
@@ -345,6 +365,7 @@ object DataBus {
      * 原子写：tmp → fsync → rename。
      */
     fun writeCursor(queue: String, cursor: String): Boolean {
+        if (!ensureInitialized()) return false
         val cursorDir = File("$BUS_ROOT/$DIR_CURSORS")
         if (!cursorDir.exists()) cursorDir.mkdirs()
 
@@ -384,15 +405,13 @@ object DataBus {
      * 内容仍由调用方使用 JSON 表达，并在 payload 中包含 expiresAt。
      */
     fun writeLease(category: String, key: String, content: String): Boolean {
-        ensureInitialized()
+        if (!ensureInitialized()) return false
         val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
         if (!leaseDir.exists() && !leaseDir.mkdirs()) {
             Log.e(TAG, "Failed to create lease dir: $category")
             return false
         }
-        leaseDir.setReadable(true, false)
-        leaseDir.setWritable(true, false)
-        leaseDir.setExecutable(true, false)
+        makeWorldAccessible(leaseDir, executable = true)
 
         val filename = "${sanitizeFileName(key)}.json"
         val pid = Process.myPid()
@@ -411,8 +430,7 @@ object DataBus {
                 tmpFile.delete()
                 return false
             }
-            targetFile.setReadable(true, false)
-            targetFile.setWritable(true, false)
+            makeWorldAccessible(targetFile, executable = false)
             Log.d(TAG, "Lease written: $category/$filename")
             true
         } catch (e: Exception) {
@@ -464,4 +482,105 @@ object DataBus {
 
     private fun sanitizeFileName(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(180).ifBlank { "lease" }
+
+    /**
+     * 检查 DataBus 是否具备跨进程工作所需的目录、权限与关键快照。
+     *
+     * @param repair true 时会尝试创建缺失目录并修复权限。
+     */
+    fun checkHealth(repair: Boolean = false): HealthReport {
+        val init = if (repair) ensureInitialized() else initialized || File(BUS_ROOT).exists()
+        val missingDirs = mutableListOf<String>()
+        val permissionIssues = mutableListOf<String>()
+
+        for (dir in requiredDirectories()) {
+            val file = File(dir)
+            if (!file.exists() || !file.isDirectory) {
+                if (repair) {
+                    file.mkdirs()
+                }
+                if (!file.exists() || !file.isDirectory) {
+                    missingDirs += dir
+                }
+            }
+            if (file.exists()) {
+                if (repair) {
+                    makeWorldAccessible(file, executable = true)
+                }
+                if (!file.canRead()) permissionIssues += "$dir:read"
+                if (!file.canWrite()) permissionIssues += "$dir:write"
+                if (!file.canExecute()) permissionIssues += "$dir:execute"
+            }
+        }
+
+        return HealthReport(
+            initialized = init && missingDirs.isEmpty(),
+            missingDirectories = missingDirs,
+            permissionIssues = permissionIssues,
+            snapshots = snapshotNames().map { inspectSnapshot(it) },
+            eventQueueCounts = mapOf(
+                EVENT_FILESYSTEM to countJsonFiles("$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM"),
+                EVENT_REDIRECT_NOTICE to countJsonFiles("$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE"),
+                DIR_CONSUMED to countJsonFiles("$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED"),
+            ),
+            leaseCounts = mapOf(
+                LEASE_QUERY_SESSIONS to countJsonFiles("$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS"),
+            ),
+        )
+    }
+
+    private fun requiredDirectories(): List<String> = listOf(
+        BUS_ROOT,
+        "$BUS_ROOT/$DIR_SNAPSHOTS",
+        "$BUS_ROOT/$DIR_SIGNALS",
+        "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
+        "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
+        "$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED",
+        "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS",
+        "$BUS_ROOT/$DIR_CURSORS",
+        "$BUS_ROOT/$DIR_TMP",
+    )
+
+    private fun snapshotNames(): List<String> = listOf(
+        SNAPSHOT_REDIRECT_POLICY,
+        SNAPSHOT_READ_ONLY,
+        SNAPSHOT_CONFIGURED_MOUNT_POINTS,
+        SNAPSHOT_PLATFORM_CAPABILITIES,
+        SNAPSHOT_ORCHESTRATED_STATUS,
+        SNAPSHOT_NATIVE_HOOK_STATUS,
+    )
+
+    private fun inspectSnapshot(name: String): SnapshotHealth {
+        val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
+        if (!file.exists()) {
+            return SnapshotHealth(name, exists = false, validJson = false)
+        }
+        return try {
+            JSONObject(file.readText(Charsets.UTF_8))
+            SnapshotHealth(name, exists = true, validJson = true)
+        } catch (e: Exception) {
+            SnapshotHealth(
+                name = name,
+                exists = true,
+                validJson = false,
+                error = e.message ?: e.javaClass.name,
+            )
+        }
+    }
+
+    private fun countJsonFiles(path: String): Int {
+        val dir = File(path)
+        if (!dir.exists()) return 0
+        return dir.listFiles()
+            ?.count { it.isFile && it.name.endsWith(".json") }
+            ?: 0
+    }
+
+    private fun makeWorldAccessible(file: File, executable: Boolean) {
+        file.setReadable(true, false)
+        file.setWritable(true, false)
+        if (executable) {
+            file.setExecutable(true, false)
+        }
+    }
 }
