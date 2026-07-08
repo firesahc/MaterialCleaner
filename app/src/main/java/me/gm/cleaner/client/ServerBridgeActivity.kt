@@ -29,12 +29,13 @@ class ServerBridgeActivity : Activity() {
             NotificationService.ACTION_REDIRECTED_TO_INTERNAL,
             NotificationService.ACTION_MEDIA_NOT_FOUND -> {
                 val packageInfo =
-                    intent.getParcelableExtraCompat<PackageInfo>(Intent.EXTRA_PACKAGE_NAME)!!
+                    intent.getParcelableExtraCompat<PackageInfo>(Intent.EXTRA_PACKAGE_NAME)
+                        ?: return finish()
                 val label = AppLabelCache.getPackageLabel(packageInfo)
-                val mountedPath = intent.getStringExtra(Intent.EXTRA_TEXT)
+                val mountedPath = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
                 val prompt = when (intent.action) {
                     NotificationService.ACTION_REDIRECTED_TO_INTERNAL ->
-                        when (intent.type?.toInt() ?: TYPE_BROADCAST) {
+                        when (intent.type?.toIntOrNull() ?: TYPE_BROADCAST) {
                             TYPE_INSERT -> getString(
                                 R.string.prompt_redirect_to_internal_not_allowed, label, mountedPath
                             )
