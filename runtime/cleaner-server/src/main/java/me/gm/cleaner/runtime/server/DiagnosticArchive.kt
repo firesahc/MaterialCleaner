@@ -95,6 +95,14 @@ object DiagnosticArchive {
         runCatching {
             addText(zip, "status/server_exception.txt", server.cleanerService.serverException.toString())
         }
+        addSnapshotIfExists(zip, DataBus.SNAPSHOT_NATIVE_HOOK_STATUS,
+            "status/native_hook_status_pretty.json")
+        addNativeHookSectionIfExists(zip, "fuseJavaGate",
+            "status/fuse_java_gate_status.json")
+        addSnapshotIfExists(zip, DataBus.SNAPSHOT_PLATFORM_CAPABILITIES,
+            "status/platform_capabilities.json")
+        addSnapshotIfExists(zip, DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS,
+            "status/configured_mount_points.json")
     }
 
     private fun addDataBus(zip: ZipOutputStream) {
@@ -114,6 +122,8 @@ object DiagnosticArchive {
             "databus/events/${DataBus.EVENT_FILESYSTEM}", MAX_EVENT_FILES)
         addDirectoryFiles(zip, File(busRoot, "events/${DataBus.EVENT_REDIRECT_NOTICE}"),
             "databus/events/${DataBus.EVENT_REDIRECT_NOTICE}", MAX_EVENT_FILES)
+        addDirectoryFiles(zip, File(busRoot, "events/consumed"),
+            "databus/events/consumed", MAX_EVENT_FILES)
         addDirectoryFiles(zip, File(busRoot, "leases/${DataBus.LEASE_QUERY_SESSIONS}"),
             "databus/leases/${DataBus.LEASE_QUERY_SESSIONS}", MAX_EVENT_FILES)
     }
@@ -178,6 +188,8 @@ object DiagnosticArchive {
             "commands/id.txt" to "id; getenforce 2>/dev/null; getprop ro.build.version.sdk; getprop ro.product.model",
             "commands/processes_cleaner.txt" to "ps -A | grep -E 'cleaner|material|gm.cleaner' || true",
             "commands/processes_mediaprovider.txt" to "ps -A | grep -E 'media.provider|providers.media|MediaProvider' || true",
+            "commands/media_provider_maps.txt" to "for p in ${'$'}(pidof com.android.providers.media.module com.google.android.providers.media.module com.android.providers.media 2>/dev/null); do echo === pid=${'$'}p ===; grep -E 'MediaProvider|libfuse_jni|libinline|com.android.mediaprovider' /proc/${'$'}p/maps 2>&1; done",
+            "commands/media_provider_mountinfo.txt" to "for p in ${'$'}(pidof com.android.providers.media.module com.google.android.providers.media.module com.android.providers.media 2>/dev/null); do echo === pid=${'$'}p ===; grep -E '/storage|/mnt/runtime|/Android/data|fuse' /proc/${'$'}p/mountinfo 2>&1 | head -200; done",
             "commands/mount_storage.txt" to "mount | grep -E '/storage|/mnt/runtime|/Android/data|fuse' || true",
             "commands/databus_tree.txt" to "ls -laR ${DataBus.BUS_ROOT} 2>&1 | head -400",
             "commands/auto_logs_tree.txt" to "ls -laR $AUTO_LOG_DIR 2>&1 | head -200",
@@ -221,6 +233,26 @@ object DiagnosticArchive {
             appendLine()
             append(result.output)
         })
+    }
+
+    private fun addSnapshotIfExists(zip: ZipOutputStream, snapshotName: String, entryName: String) {
+        val content = DataBus.readSnapshotSafe(snapshotName) ?: return
+        val pretty = runCatching {
+            JSONObject(content).toString(2)
+        }.getOrDefault(content)
+        addText(zip, entryName, pretty)
+    }
+
+    private fun addNativeHookSectionIfExists(
+        zip: ZipOutputStream,
+        sectionName: String,
+        entryName: String,
+    ) {
+        val content = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS) ?: return
+        val section = runCatching {
+            JSONObject(content).optJSONObject(sectionName)
+        }.getOrNull() ?: return
+        addText(zip, entryName, section.toString(2))
     }
 
     private fun runCommand(command: String): CommandResult {

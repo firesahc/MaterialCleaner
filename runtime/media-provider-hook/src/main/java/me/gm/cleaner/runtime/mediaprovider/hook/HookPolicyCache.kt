@@ -63,8 +63,10 @@ object HookPolicyCache {
     /** 已推送到 native 的 configured_mount_points generation（用于诊断） */
     val nativeMountPointsGeneration: Long get() = configuredMountPointsGeneration
 
+    val redirectPolicyGeneration: Long get() = policyGeneration
+
     fun getNativeHookStatusJson(): String =
-        NativeHookStatus.toJson(configuredMountPointsGeneration)
+        NativeHookStatus.toJson()
 
     // ── Denylist ──
     @Volatile
@@ -83,6 +85,10 @@ object HookPolicyCache {
     private var cachedIsFuseBpfEnabled: Boolean = false
     @Volatile
     private var cachedFuseAvailable: Boolean = false
+    @Volatile
+    private var cachedFuseJniLoadMode: String = "UNKNOWN"
+    @Volatile
+    private var cachedSupportedNativeHookMode: String = "NONE"
 
     /** 缓存的 FUSE BPF 状态，供 MediaProvider Hook 使用 */
     val isFuseBpfEnabledFromCache: Boolean get() = cachedIsFuseBpfEnabled
@@ -92,6 +98,8 @@ object HookPolicyCache {
     val platformCapabilitiesLoaded: Boolean get() = capabilitiesGeneration > 0
     /** 缓存的 SDK 版本，仅用于诊断日志 */
     val sdkVersionIntFromCache: Int get() = cachedSdkVersionInt
+    val fuseJniLoadModeFromCache: String get() = cachedFuseJniLoadMode
+    val supportedNativeHookModeFromCache: String get() = cachedSupportedNativeHookMode
 
     // ── 偏好标记 ──
     @Volatile
@@ -139,13 +147,14 @@ object HookPolicyCache {
             Log.w(TAG, "initFromDataBus: no read_only snapshot available")
         }
 
-        // 读取 configured_mount_points.json → 推送到 native
-        if (loadAndPushConfiguredMountPoints()) {
-            lastMountSignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
-        }
-
         // 读取 platform_capabilities.json → 缓存关键能力
         loadPlatformCapabilities()
+        lastCapabilitiesSignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+
+        // 读取 configured_mount_points.json → 推送到 native
+        if (loadAndPushConfiguredMountPoints(force = false)) {
+            lastMountSignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+        }
     }
 
     /**
@@ -192,10 +201,14 @@ object HookPolicyCache {
             cachedSdkVersionInt = root.optInt("sdkVersionInt", 0)
             cachedIsFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false)
             cachedFuseAvailable = root.optBoolean("fuseAvailable", false)
+            cachedFuseJniLoadMode = root.optString("fuseJniLoadMode", "UNKNOWN")
+            cachedSupportedNativeHookMode = root.optString("supportedNativeHookMode", "NONE")
             capabilitiesGeneration = generation
             capabilitiesPublisherEpoch = publisherEpoch
             Log.i(TAG, "loadPlatformCapabilities: sdk=$cachedSdkVersionInt, " +
                     "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable, " +
+                    "fuseJniLoadMode=$cachedFuseJniLoadMode, " +
+                    "nativeHookMode=$cachedSupportedNativeHookMode, " +
                     "epoch=$capabilitiesPublisherEpoch, generation=$capabilitiesGeneration")
         } catch (e: Exception) {
             Log.e(TAG, "loadPlatformCapabilities: failed", e)
@@ -243,14 +256,16 @@ object HookPolicyCache {
             }
         }
 
-        tryRefreshNativeMountPoints()
-
         // platform_capabilities 变更（极少发生，但仍支持运行时重检测）
         val capsSignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+        var forceMountRefresh = false
         if (capsSignalTime > lastCapabilitiesSignalTimestamp) {
             loadPlatformCapabilities()
             lastCapabilitiesSignalTimestamp = capsSignalTime
+            forceMountRefresh = true
         }
+
+        tryRefreshNativeMountPoints(force = forceMountRefresh)
     }
 
     /**
@@ -258,12 +273,12 @@ object HookPolicyCache {
      * 先比较 signal timestamp（上次通知时间），如果未变化则跳过；
      * 如果变化则读取 snapshot，内部再比较 snapshot generation（策略代数）。
      */
-    fun tryRefreshNativeMountPoints() {
+    fun tryRefreshNativeMountPoints(force: Boolean = false) {
         val mountSignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
-        if (mountSignalTime <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0) {
+        if (!force && mountSignalTime <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0) {
             return  // signal 未变更
         }
-        if (loadAndPushConfiguredMountPoints()) {
+        if (loadAndPushConfiguredMountPoints(force)) {
             lastMountSignalTimestamp = mountSignalTime
         }
     }
@@ -277,7 +292,7 @@ object HookPolicyCache {
      * 解析 points 数组，并通过 [InlineHookConfig.setMountPoint] 推送到 native。
      * 此路径是 native 挂载点配置的唯一分发路径。
      */
-    private fun loadAndPushConfiguredMountPoints(): Boolean {
+    private fun loadAndPushConfiguredMountPoints(force: Boolean): Boolean {
         val json = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
         if (json == null) {
             Log.d(TAG, "loadConfiguredMountPoints: no snapshot available")
@@ -288,7 +303,7 @@ object HookPolicyCache {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
             val publisherEpoch = root.optString("publisherEpoch", "")
-            if (!shouldAcceptSnapshot(
+            if (!force && !shouldAcceptSnapshot(
                     publisherEpoch,
                     generation,
                     configuredMountPointsPublisherEpoch,

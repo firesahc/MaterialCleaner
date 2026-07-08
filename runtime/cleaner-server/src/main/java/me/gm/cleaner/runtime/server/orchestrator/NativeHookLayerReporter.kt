@@ -2,6 +2,7 @@ package me.gm.cleaner.runtime.server.orchestrator
 
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway
+import org.json.JSONArray
 import org.json.JSONObject
 
 object NativeHookLayerReporter {
@@ -20,57 +21,75 @@ object NativeHookLayerReporter {
             )
         } else {
             NativeHookRuntimeStatus(
-                mediaProviderHookLoaded = false,
-                mountPointsGeneration = 0L,
+                mediaProviderLoaded = false,
+                inlineState = "NOT_LOADED",
                 lastError = "MediaProvider Hook unavailable",
                 statusSource = "unavailable",
             )
         }
         val nativeStatusAvailable = nativeStatusFromDataBus != null || mediaProviderHookConnected
-        val nativeGen = if (nativeStatus.mountPointsGeneration > 0) {
-            nativeStatus.mountPointsGeneration
-        } else if (mediaProviderHookConnected) {
-            MediaProviderHookGateway.nativeMountPointsGeneration()
-        } else {
-            0L
-        }
         val snapshotGen = MediaProviderHookGateway.configuredMountPointsSnapshotGeneration()
+        val nativeGen = nativeStatus.mountPointsGeneration
+        val policySynced = nativeStatus.lastApplySuccess &&
+                (snapshotGen <= 0L || nativeGen >= snapshotGen)
+        val platformNativeHookMode = readPlatformSupportedNativeHookMode()
+        val nativeHookModeMismatch = isHookModeMismatch(platformNativeHookMode, nativeStatus.hookMode)
         val nativeState = when {
             !nativeStatusAvailable -> LayerState.UNAVAILABLE
-            !nativeStatus.inlineLibraryLoaded -> LayerState.DEGRADED
-            nativeStatus.nativeLibraryKnownUnavailable -> LayerState.DISABLED
-            nativeStatus.nativeHookPartiallyAvailable -> LayerState.DEGRADED
-            nativeGen > 0 && nativeGen >= snapshotGen -> LayerState.HEALTHY
-            nativeGen > 0 || snapshotGen > 0 -> LayerState.STALE
+            nativeStatus.inlineState == "DISABLED" -> LayerState.DISABLED
+            nativeStatus.inlineState == "FUSE_WAITING" ||
+                    nativeStatus.inlineState == "INLINE_LOADED" -> LayerState.RECOVERING
+            nativeStatus.coreAvailable && !policySynced -> LayerState.STALE
+            nativeStatus.inlineState == "HOOK_READY_FULL" && policySynced -> LayerState.HEALTHY
+            nativeStatus.inlineState == "HOOK_READY_CORE" && policySynced -> LayerState.HEALTHY
+            nativeStatus.inlineState == "HOOK_DEGRADED" && policySynced -> LayerState.DEGRADED
+            nativeStatus.coreAvailable && policySynced -> LayerState.DEGRADED
+            nativeStatus.fuseLibraryLoaded -> LayerState.UNAVAILABLE
             else -> LayerState.UNAVAILABLE
         }
         val nativeError = when {
             nativeState == LayerState.HEALTHY -> null
-            nativeStatus.lastMountPointsApplyError.isNotBlank() -> nativeStatus.lastMountPointsApplyError
-            nativeStatus.lastInlineError.isNotBlank() -> nativeStatus.lastInlineError
+            nativeStatus.lastApplyError.isNotBlank() -> nativeStatus.lastApplyError
+            nativeStatus.inlineLastError.isNotBlank() -> nativeStatus.inlineLastError
             nativeStatus.nativeLastError.isNotBlank() -> nativeStatus.nativeLastError
+            nativeStatus.lastError.isNotBlank() -> nativeStatus.lastError
             !nativeStatusAvailable -> "MediaProvider Hook unavailable"
-            !nativeStatus.inlineLibraryLoaded -> "Inline native library unavailable"
-            nativeStatus.nativeLibraryKnownUnavailable -> "FUSE native library unavailable"
-            nativeStatus.nativeHookPartiallyAvailable -> "FUSE native symbols partially available"
-            else -> "Native mount points stale or unavailable"
+            nativeState == LayerState.STALE -> "Native mount points stale"
+            nativeState == LayerState.RECOVERING -> "Native hook initialization pending"
+            nativeState == LayerState.DISABLED -> "Native hook disabled"
+            !nativeStatus.coreAvailable -> "Native core symbol containsMount unavailable"
+            else -> "Native hook degraded"
         }
+
         return LayerReport(
             id = LayerId.FUSE_NATIVE_HOOK,
             state = nativeState,
             generation = generation,
-            lastHeartbeatAt = if (nativeState == LayerState.HEALTHY) now else 0L,
+            lastHeartbeatAt = if (nativeState == LayerState.HEALTHY ||
+                nativeState == LayerState.DEGRADED
+            ) now else 0L,
             lastErrorAt = if (nativeState == LayerState.HEALTHY) 0L else now,
             lastError = nativeError,
-            metrics = mapOf(
+            metrics = linkedMapOf(
+                "nativeHookState" to nativeStatus.inlineState,
+                "nativeCapabilityLevel" to nativeStatus.capabilityLevel,
+                "nativeCoreAvailable" to nativeStatus.coreAvailable.toString(),
+                "nativeMissingSymbols" to nativeStatus.missingSymbols,
                 "configuredMountPointsGeneration" to nativeGen.toString(),
                 "snapshotConfiguredMountPointsGeneration" to snapshotGen.toString(),
+                "nativePolicySynced" to policySynced.toString(),
+                "nativeHookModeMismatch" to nativeHookModeMismatch.toString(),
+                "platformSupportedNativeHookMode" to platformNativeHookMode,
                 "nativeStatusSource" to nativeStatus.statusSource,
                 "nativeStatusAgeMs" to nativeStatus.statusAgeMs.toString(),
-                "mediaProviderHookLoaded" to nativeStatus.mediaProviderHookLoaded.toString(),
+                "mediaProviderHookLoaded" to nativeStatus.mediaProviderLoaded.toString(),
                 "policyCacheInitialized" to nativeStatus.policyCacheInitialized.toString(),
-                "inlineLibraryLoaded" to nativeStatus.inlineLibraryLoaded.toString(),
-                "inlineHookInitialized" to nativeStatus.inlineHookInitialized.toString(),
+                "inlineLibraryLoaded" to nativeStatus.inlineLoaded.toString(),
+                "inlineHookInitialized" to nativeStatus.inlineInitialized.toString(),
+                "inlineRetryCount" to nativeStatus.inlineRetryCount.toString(),
+                "inlineNextRetryAt" to nativeStatus.inlineNextRetryAt.toString(),
+                "inlineRetryExhausted" to nativeStatus.inlineRetryExhausted.toString(),
+                "inlineDisabledByPlatform" to nativeStatus.inlineDisabledByPlatform.toString(),
                 "fuseLibraryLoaded" to nativeStatus.fuseLibraryLoaded.toString(),
                 "fuseLibraryName" to nativeStatus.fuseLibraryName,
                 "hookMode" to nativeStatus.hookMode,
@@ -81,11 +100,32 @@ object NativeHookLayerReporter {
                 "isFuseBpfEnabledHooked" to nativeStatus.isFuseBpfEnabledHooked.toString(),
                 "fuseReqUserdataHooked" to nativeStatus.fuseReqUserdataHooked.toString(),
                 "fuseBpfInstallHooked" to nativeStatus.fuseBpfInstallHooked.toString(),
-                "lastMountPointsApplySuccess" to nativeStatus.lastMountPointsApplySuccess.toString(),
-                "lastMountPointsApplyGeneration" to nativeStatus.lastMountPointsApplyGeneration.toString(),
-                "lastMountPointsApplyCount" to nativeStatus.lastMountPointsApplyCount.toString(),
+                "lastMountPointsApplySuccess" to nativeStatus.lastApplySuccess.toString(),
+                "lastMountPointsApplyGeneration" to nativeStatus.lastApplyGeneration.toString(),
+                "lastMountPointsApplyCount" to nativeStatus.lastApplyCount.toString(),
+                "fuseJavaGateDiscoveredCount" to nativeStatus.fuseJavaGateDiscoveredCount.toString(),
+                "fuseJavaGateHookedCount" to nativeStatus.fuseJavaGateHookedCount.toString(),
+                "fuseJavaGateUnknownCount" to nativeStatus.fuseJavaGateUnknownCount.toString(),
+                "fuseJavaGateFailedCount" to nativeStatus.fuseJavaGateFailedCount.toString(),
             ),
         )
+    }
+
+    private fun readPlatformSupportedNativeHookMode(): String {
+        val json = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES)
+            ?: return "UNKNOWN"
+        return runCatching {
+            JSONObject(json).optString("supportedNativeHookMode", "UNKNOWN")
+        }.getOrDefault("UNKNOWN")
+    }
+
+    private fun isHookModeMismatch(platformMode: String, runtimeMode: String): Boolean {
+        if (platformMode == "UNKNOWN" || platformMode == "NONE") return false
+        if (runtimeMode == "UNKNOWN" || runtimeMode == "NONE") return false
+        return when (platformMode) {
+            "XHOOK" -> !runtimeMode.startsWith("XHOOK")
+            else -> runtimeMode != platformMode
+        }
     }
 
     private fun readNativeHookStatusFromDataBus(now: Long): NativeHookRuntimeStatus? {
@@ -119,29 +159,50 @@ object NativeHookLayerReporter {
         }
         return try {
             val root = JSONObject(json)
+            val mediaProvider = root.optJSONObject("mediaProvider")
+            val policyCache = root.optJSONObject("policyCache")
+            val inline = root.optJSONObject("inline")
             val native = root.optJSONObject("native")
+            val symbols = native?.optJSONObject("symbols")
+            val policy = root.optJSONObject("policy")
+            val fuseJavaGate = root.optJSONObject("fuseJavaGate")
             NativeHookRuntimeStatus(
-                mediaProviderHookLoaded = root.optBoolean("mediaProviderHookLoaded", false),
-                policyCacheInitialized = root.optBoolean("policyCacheInitialized", false),
-                inlineLibraryLoaded = root.optBoolean("inlineLibraryLoaded", false),
-                inlineHookInitialized = root.optBoolean("inlineHookInitialized", false),
-                lastInlineError = root.optString("lastInlineError", ""),
-                mountPointsGeneration = root.optLong("mountPointsGeneration", 0L),
-                lastMountPointsApplySuccess = root.optBoolean("lastMountPointsApplySuccess", false),
-                lastMountPointsApplyGeneration = root.optLong("lastMountPointsApplyGeneration", 0L),
-                lastMountPointsApplyCount = root.optInt("lastMountPointsApplyCount", 0),
-                lastMountPointsApplyError = root.optString("lastMountPointsApplyError", ""),
+                mediaProviderLoaded = mediaProvider?.optBoolean("loaded", false) ?: false,
+                policyCacheInitialized = policyCache?.optBoolean("initialized", false) ?: false,
+                inlineState = inline?.optString("state", "NOT_LOADED") ?: "NOT_LOADED",
+                inlineLoaded = inline?.optBoolean("loaded", false) ?: false,
+                inlineInitialized = inline?.optBoolean("initialized", false) ?: false,
+                inlineRetryCount = inline?.optInt("retryCount", 0) ?: 0,
+                inlineNextRetryAt = inline?.optLong("nextRetryAt", 0L) ?: 0L,
+                inlineRetryExhausted = inline?.optBoolean("retryExhausted", false) ?: false,
+                inlineDisabledByPlatform =
+                    inline?.optBoolean("disabledByPlatform", false) ?: false,
+                inlineLastError = inline?.optString("lastError", "") ?: "",
+                mountPointsGeneration = policy?.optLong("mountPointsGeneration", 0L) ?: 0L,
+                lastApplySuccess = policy?.optBoolean("lastApplySuccess", false) ?: false,
+                lastApplyGeneration = policy?.optLong("lastApplyGeneration", 0L) ?: 0L,
+                lastApplyCount = policy?.optInt("lastApplyCount", 0) ?: 0,
+                lastApplyError = policy?.optString("lastApplyError", "") ?: "",
                 fuseLibraryLoaded = native?.optBoolean("fuseLibraryLoaded", false) ?: false,
                 fuseLibraryName = native?.optString("fuseLibraryName", "") ?: "",
                 hookMode = native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN",
                 fuseJniLoadMode = native?.optString("fuseJniLoadMode", "UNKNOWN") ?: "UNKNOWN",
                 embeddedFuseJniFound = native?.optBoolean("embeddedFuseJniFound", false) ?: false,
-                containsMountHooked = native?.optBoolean("containsMountHooked", false) ?: false,
-                startsWithHooked = native?.optBoolean("startsWithHooked", false) ?: false,
-                isFuseBpfEnabledHooked = native?.optBoolean("isFuseBpfEnabledHooked", false) ?: false,
-                fuseReqUserdataHooked = native?.optBoolean("fuseReqUserdataHooked", false) ?: false,
-                fuseBpfInstallHooked = native?.optBoolean("fuseBpfInstallHooked", false) ?: false,
+                containsMountHooked = symbols?.optBoolean("containsMount", false) ?: false,
+                startsWithHooked = symbols?.optBoolean("startsWith", false) ?: false,
+                isFuseBpfEnabledHooked = symbols?.optBoolean("isFuseBpfEnabled", false) ?: false,
+                fuseReqUserdataHooked = symbols?.optBoolean("fuseReqUserdata", false) ?: false,
+                fuseBpfInstallHooked = symbols?.optBoolean("fuseBpfInstall", false) ?: false,
+                missingSymbols = native?.optJSONArray("missingSymbols").toCsv(),
                 nativeLastError = native?.optString("lastError", "") ?: "",
+                fuseJavaGateDiscoveredCount =
+                    fuseJavaGate?.optInt("discoveredCount", 0) ?: 0,
+                fuseJavaGateHookedCount =
+                    fuseJavaGate?.optInt("hookedCount", 0) ?: 0,
+                fuseJavaGateUnknownCount =
+                    fuseJavaGate?.optInt("unknownCount", 0) ?: 0,
+                fuseJavaGateFailedCount =
+                    fuseJavaGate?.optInt("failedCount", 0) ?: 0,
                 statusSource = source,
                 statusAgeMs = statusAgeMs,
             )
@@ -154,17 +215,31 @@ object NativeHookLayerReporter {
         }
     }
 
+    private fun JSONArray?.toCsv(): String {
+        if (this == null || length() == 0) return ""
+        return buildList {
+            for (i in 0 until length()) {
+                add(optString(i, ""))
+            }
+        }.filter { it.isNotBlank() }.joinToString(",")
+    }
+
     private data class NativeHookRuntimeStatus(
-        val mediaProviderHookLoaded: Boolean = false,
+        val mediaProviderLoaded: Boolean = false,
         val policyCacheInitialized: Boolean = false,
-        val inlineLibraryLoaded: Boolean = false,
-        val inlineHookInitialized: Boolean = false,
-        val lastInlineError: String = "",
+        val inlineState: String = "NOT_LOADED",
+        val inlineLoaded: Boolean = false,
+        val inlineInitialized: Boolean = false,
+        val inlineRetryCount: Int = 0,
+        val inlineNextRetryAt: Long = 0L,
+        val inlineRetryExhausted: Boolean = false,
+        val inlineDisabledByPlatform: Boolean = false,
+        val inlineLastError: String = "",
         val mountPointsGeneration: Long = 0L,
-        val lastMountPointsApplySuccess: Boolean = false,
-        val lastMountPointsApplyGeneration: Long = 0L,
-        val lastMountPointsApplyCount: Int = 0,
-        val lastMountPointsApplyError: String = "",
+        val lastApplySuccess: Boolean = false,
+        val lastApplyGeneration: Long = 0L,
+        val lastApplyCount: Int = 0,
+        val lastApplyError: String = "",
         val fuseLibraryLoaded: Boolean = false,
         val fuseLibraryName: String = "",
         val hookMode: String = "UNKNOWN",
@@ -175,19 +250,29 @@ object NativeHookLayerReporter {
         val isFuseBpfEnabledHooked: Boolean = false,
         val fuseReqUserdataHooked: Boolean = false,
         val fuseBpfInstallHooked: Boolean = false,
+        val missingSymbols: String = "",
         val nativeLastError: String = "",
+        val fuseJavaGateDiscoveredCount: Int = 0,
+        val fuseJavaGateHookedCount: Int = 0,
+        val fuseJavaGateUnknownCount: Int = 0,
+        val fuseJavaGateFailedCount: Int = 0,
         val lastError: String = "",
         val statusSource: String = "unknown",
         val statusAgeMs: Long = 0L,
     ) {
-        val nativeLibraryKnownUnavailable: Boolean
-            get() = inlineLibraryLoaded && nativeLastError.contains("dlopen libfuse_jni.so failed")
+        val coreAvailable: Boolean
+            get() = containsMountHooked
 
-        val nativeHookPartiallyAvailable: Boolean
-            get() = inlineLibraryLoaded && fuseLibraryLoaded && when (hookMode) {
-                "EMBEDDED_GOT_PATCH" -> !embeddedFuseJniFound || !containsMountHooked
-                "XHOOK" -> !containsMountHooked || !startsWithHooked || !isFuseBpfEnabledHooked
-                else -> false
+        val capabilityLevel: String
+            get() = when {
+                containsMountHooked &&
+                        startsWithHooked &&
+                        isFuseBpfEnabledHooked &&
+                        fuseReqUserdataHooked &&
+                        fuseBpfInstallHooked -> "FULL"
+                containsMountHooked && startsWithHooked -> "CORE"
+                containsMountHooked -> "DEGRADED"
+                else -> "UNAVAILABLE"
             }
     }
 }

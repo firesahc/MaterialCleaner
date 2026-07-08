@@ -84,7 +84,7 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         mCleanerServerBinder = iinterface;
         HookDataBusBridge.INSTANCE.setCallback(iinterface);
         if (iinterface == null) {
-            HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints();
+            HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints(false);
             return;
         }
         try {

@@ -31,8 +31,17 @@ static std::string xhook_init() {
     if (fuseLibraryMapped) {
         return bpf_hook::Hook(handle, true);
     }
-    return "{\"fuseLibraryLoaded\":false,\"fuseLibraryName\":\"libfuse_jni.so\","
-           "\"xhookRefreshCalled\":false,\"lastError\":\"dlopen libfuse_jni.so failed\"}";
+    return "{\"fuseAvailable\":true,\"fuseLibraryLoaded\":false,"
+           "\"fuseLibraryName\":\"libfuse_jni.so\",\"hookMode\":\"NONE\","
+           "\"fuseJniLoadMode\":\"UNKNOWN\",\"embeddedFuseJniFound\":false,"
+           "\"xhookRefreshCalled\":false,"
+           "\"symbols\":{\"containsMount\":false,\"startsWith\":false,"
+           "\"isFuseBpfEnabled\":false,\"fuseReqUserdata\":false,"
+           "\"fuseBpfInstall\":false},"
+           "\"symbolMethods\":{\"containsMount\":\"none\",\"startsWith\":\"none\","
+           "\"isFuseBpfEnabled\":\"none\",\"fuseReqUserdata\":\"none\","
+           "\"fuseBpfInstall\":\"none\"},"
+           "\"lastError\":\"dlopen libfuse_jni.so failed\"}";
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]]

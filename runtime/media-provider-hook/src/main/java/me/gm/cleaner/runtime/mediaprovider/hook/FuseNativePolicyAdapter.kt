@@ -1,9 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
 import android.util.Log
-import me.gm.cleaner.core.storage.redirect.databus.DataBus
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * FUSE Native Hook 的策略适配器。
@@ -18,10 +15,10 @@ import org.json.JSONObject
  *       → InlineHookConfig.setMountPoint() [JNI → native]
  * ```
  *
- * ## 独立刷新路径
- * [refreshFromDataBus] 可被 HookPolicyRefreshScheduler 定时调用，
- * 不依赖 Binder 推送。这实现了"Native 侧通过 Java 中介读取 DataBus"
- * 的架构。未来优化方向：Native 侧直接读取 DataBus（跳过 Java 层）。
+ * ## 刷新路径
+ * [HookPolicyCache] 是 configured_mount_points 的唯一分发入口；
+ * [HookPolicyRefreshScheduler] 只负责触发 cache 刷新和 native 初始化重试，
+ * 不再保留第二条直接读取 DataBus 的分发路径。
  *
  * ## 降级行为
  * - DataBus 快照不可用 → keep 上次有效值（不主动清空 native mountPoint）
@@ -29,57 +26,26 @@ import org.json.JSONObject
  */
 object FuseNativePolicyAdapter {
     private const val TAG = "FuseNativePolicyAdapter"
+    private const val MAX_INLINE_RETRY_COUNT = 10
+    private val RETRY_DELAYS_MS = longArrayOf(5_000L, 10_000L, 30_000L, 60_000L)
 
-    /**
-     * 从 DataBus 读取 configured_mount_points.json 并推送到 native。
-     * 由 HookPolicyCache 或定时刷新调度器调用。
-     *
-     * @param currentGeneration 当前已缓存的 generation，用于跳过未变更的快照
-     * @param signalTimestamp 上次 signal 时间戳，用于跳过未变更的信号
-     * @return Pair(是否成功, 新的 generation)
-     */
-    fun refreshFromDataBus(
-        currentGeneration: Long,
-        signalTimestamp: Long
-    ): Pair<Boolean, Long> {
-        // 先检查 signal 是否变更
-        val mountSignalTime = HookDataBusBridge.getSignalTimestamp(
-            DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED
-        )
-        if (mountSignalTime <= signalTimestamp && signalTimestamp > 0) {
-            return Pair(true, currentGeneration) // 未变更
-        }
-
-        // 读取快照
-        val json = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS)
-            ?: return Pair(false, currentGeneration)
-
-        return try {
-            val root = JSONObject(json)
-            val generation = root.optLong("generation", 0L)
-            if (generation <= currentGeneration && currentGeneration > 0) {
-                return Pair(true, currentGeneration) // generation 未更新
-            }
-
-            val pointsArr = root.optJSONArray("points")
-            if (pointsArr == null || pointsArr.length() == 0) {
-                // 空数组：显式清空 native mountPoint
-                applyConfiguredMountPoints(emptyArray(), generation)
-                return Pair(true, generation)
-            }
-
-            val points = Array(pointsArr.length()) { pointsArr.getString(it) }
-            applyConfiguredMountPoints(points, generation)
-            Pair(true, generation)
-        } catch (e: Throwable) {
-            Log.e(TAG, "refreshFromDataBus: failed", e)
-            Pair(false, currentGeneration)
-        }
-    }
+    @Volatile
+    private var inlineLibraryLoaded = false
 
     fun applyConfiguredMountPoints(points: Array<String>, generation: Long) {
         try {
-            retryInlineHookInitialization()
+            if (disableInlineIfUnsupportedByPlatform()) {
+                throw IllegalStateException(
+                    "Native hook disabled by PlatformCapabilities, state=" +
+                            NativeHookStatus.currentInlineState()
+                )
+            }
+            if (!retryInlineHookInitialization()) {
+                throw IllegalStateException(
+                    "Native hook not ready, state=" + NativeHookStatus.currentInlineState()
+                )
+            }
+            applyRecordExternalAppSpecificStorage(HookPolicyCache.recordExternalAppSpecificStorage)
             InlineHookConfig.setMountPoint(points)
             NativeHookStatus.markMountPointsApplySucceeded(generation, points.size)
             Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
@@ -90,21 +56,123 @@ object FuseNativePolicyAdapter {
         }
     }
 
-    fun applyRecordExternalAppSpecificStorage(value: Boolean) {
-        try {
+    fun applyRecordExternalAppSpecificStorage(value: Boolean): Boolean {
+        if (!NativeHookStatus.isInlinePolicyBridgeAvailable()) {
+            return false
+        }
+        return try {
             InlineHookConfig.setRecordExternalAppSpecificStorage(value)
+            true
         } catch (t: Throwable) {
             Log.w(TAG, "applyRecordExternalAppSpecificStorage ignored because native hook is unavailable", t)
+            false
         }
     }
 
-    private fun retryInlineHookInitialization() {
+    fun retryInlineHookInitializationIfDue() {
+        if (disableInlineIfUnsupportedByPlatform()) {
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (!NativeHookStatus.shouldRetryInlineInitialization(now)) {
+            return
+        }
+        val retryCount = NativeHookStatus.currentInlineRetryCount()
+        if (retryCount >= MAX_INLINE_RETRY_COUNT) {
+            NativeHookStatus.markInlineRetryExhausted(
+                "Inline hook initialization retry exhausted, state=" +
+                        NativeHookStatus.currentInlineState()
+            )
+            return
+        }
         try {
-            val nativeStatus = InlineHookConfig.initializeXHook()
+            val nativeStatus = initializeInlineHook()
             NativeHookStatus.markInlineLoadSucceeded(nativeStatus)
+            if (NativeHookStatus.isInlinePolicyBridgeAvailable()) {
+                applyRecordExternalAppSpecificStorage(
+                    HookPolicyCache.recordExternalAppSpecificStorage
+                )
+                HookPolicyCache.tryRefreshNativeMountPoints(force = true)
+            } else {
+                scheduleNextInlineRetry(now, retryCount)
+            }
         } catch (t: Throwable) {
             NativeHookStatus.markInlineLoadFailed(t)
-            Log.w(TAG, "retryInlineHookInitialization failed", t)
+            val delay = scheduleNextInlineRetry(now, retryCount)
+            Log.w(TAG, "retryInlineHookInitializationIfDue failed, nextRetry=${delay}ms", t)
         }
+    }
+
+    fun initializeInlineHook(): String {
+        ensureInlineLibraryLoaded()
+        return InlineHookConfig.initializeXHook()
+    }
+
+    @Synchronized
+    private fun ensureInlineLibraryLoaded() {
+        if (inlineLibraryLoaded) {
+            return
+        }
+        System.loadLibrary("inline")
+        inlineLibraryLoaded = true
+    }
+
+    private fun retryInlineHookInitialization(): Boolean {
+        if (NativeHookStatus.isInlinePolicyBridgeAvailable()) {
+            return true
+        }
+        return try {
+            val nativeStatus = initializeInlineHook()
+            NativeHookStatus.markInlineLoadSucceeded(nativeStatus)
+            if (!NativeHookStatus.isInlinePolicyBridgeAvailable()) {
+                val now = System.currentTimeMillis()
+                if (NativeHookStatus.shouldRetryInlineInitialization(now)) {
+                    scheduleNextInlineRetry(now, NativeHookStatus.currentInlineRetryCount())
+                }
+            }
+            NativeHookStatus.isInlinePolicyBridgeAvailable()
+        } catch (t: Throwable) {
+            NativeHookStatus.markInlineLoadFailed(t)
+            scheduleNextInlineRetry(System.currentTimeMillis(), NativeHookStatus.currentInlineRetryCount())
+            Log.w(TAG, "retryInlineHookInitialization failed", t)
+            false
+        }
+    }
+
+    private fun disableInlineIfUnsupportedByPlatform(): Boolean {
+        if (!HookPolicyCache.platformCapabilitiesLoaded) {
+            return false
+        }
+        val fuseAvailable = HookPolicyCache.fuseAvailableFromCache
+        val reason = when {
+            !fuseAvailable -> "PlatformCapabilities reports FUSE unavailable"
+            HookPolicyCache.supportedNativeHookModeFromCache == "NONE" ->
+                "PlatformCapabilities reports native hook unsupported, " +
+                        "fuseJniLoadMode=${HookPolicyCache.fuseJniLoadModeFromCache}"
+            else -> null
+        }
+        if (reason == null) {
+            if (NativeHookStatus.isInlineDisabledByPlatform()) {
+                NativeHookStatus.markInlinePlatformSupported()
+            }
+            return false
+        }
+        if (!NativeHookStatus.isInlineDisabled()) {
+            NativeHookStatus.markInlineDisabled(
+                reason = reason,
+                fuseAvailable = fuseAvailable,
+                fuseJniLoadMode = HookPolicyCache.fuseJniLoadModeFromCache,
+            )
+        }
+        return true
+    }
+
+    private fun scheduleNextInlineRetry(now: Long, retryCount: Int): Long {
+        val nextRetryCount = retryCount + 1
+        val delay = RETRY_DELAYS_MS[
+                retryCount.coerceAtMost(RETRY_DELAYS_MS.size - 1)
+        ]
+        NativeHookStatus.markInlineRetryScheduled(nextRetryCount, now + delay)
+        return delay
     }
 }

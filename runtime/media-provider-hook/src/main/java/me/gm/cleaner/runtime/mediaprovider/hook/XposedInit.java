@@ -50,8 +50,7 @@ public class XposedInit implements IXposedHookLoadPackage {
         }
         Log.i("MC_REDIRECT", "[XposedInit] Loading inline lib for package: " + packageName);
         try {
-            System.loadLibrary("inline");
-            final var nativeStatus = InlineHookConfig.INSTANCE.initializeXHook();
+            final var nativeStatus = FuseNativePolicyAdapter.INSTANCE.initializeInlineHook();
             NativeHookStatus.INSTANCE.markInlineLoadSucceeded(nativeStatus);
             mInlineHookInitialized = isNativeHookReady(nativeStatus);
             Log.i("MC_REDIRECT", "[XposedInit] libinline loaded and xhook initialized");
@@ -62,7 +61,7 @@ public class XposedInit implements IXposedHookLoadPackage {
     }
 
     private boolean isNativeHookReady(String nativeStatus) {
-        return nativeStatus != null && nativeStatus.contains("\"containsMountHooked\":true");
+        return nativeStatus != null && nativeStatus.contains("\"containsMount\":true");
     }
 
     // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）

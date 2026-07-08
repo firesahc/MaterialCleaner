@@ -149,6 +149,10 @@ namespace bpf_hook {
         MATCH_FUZZY = 2,
     };
 
+    static const char *MatchMethodName(MatchMethod method) {
+        return method == MATCH_EXACT ? "exact" : (method == MATCH_FUZZY ? "fuzzy" : "none");
+    }
+
     struct EmbeddedFuseHookResult {
         bool foundFuseJni = false;
         bool startsWithHooked = false;
@@ -174,6 +178,65 @@ namespace bpf_hook {
         bool *hooked;
         MatchMethod *method;       // [out] which method matched (diagnostics)
     };
+
+    static std::string BuildHookStatusJson(bool fuseAvailable,
+                                           bool fuseLibraryLoaded,
+                                           const char *fuseLibraryName,
+                                           const char *hookMode,
+                                           const char *fuseJniLoadMode,
+                                           bool embeddedFuseJniFound,
+                                           bool startsWithHooked,
+                                           bool containsMountHooked,
+                                           bool isFuseBpfEnabledHooked,
+                                           bool fuseReqUserdataHooked,
+                                           bool fuseBpfInstallHooked,
+                                           const char *startsWithMethod,
+                                           const char *containsMountMethod,
+                                           const char *isFuseBpfEnabledMethod,
+                                           const char *fuseReqUserdataMethod,
+                                           const char *fuseBpfInstallMethod,
+                                           bool xhookRefreshCalled,
+                                           const char *lastError) {
+        std::ostringstream out;
+        out << "{";
+        AppendJsonBool(out, "fuseAvailable", fuseAvailable);
+        out << ",";
+        AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryLoaded);
+        out << ",";
+        AppendJsonString(out, "fuseLibraryName", fuseLibraryName);
+        out << ",";
+        AppendJsonString(out, "hookMode", hookMode);
+        out << ",";
+        AppendJsonString(out, "fuseJniLoadMode", fuseJniLoadMode);
+        out << ",";
+        AppendJsonBool(out, "embeddedFuseJniFound", embeddedFuseJniFound);
+        out << ",";
+        AppendJsonBool(out, "xhookRefreshCalled", xhookRefreshCalled);
+        out << ",\"symbols\":{";
+        AppendJsonBool(out, "containsMount", containsMountHooked);
+        out << ",";
+        AppendJsonBool(out, "startsWith", startsWithHooked);
+        out << ",";
+        AppendJsonBool(out, "isFuseBpfEnabled", isFuseBpfEnabledHooked);
+        out << ",";
+        AppendJsonBool(out, "fuseReqUserdata", fuseReqUserdataHooked);
+        out << ",";
+        AppendJsonBool(out, "fuseBpfInstall", fuseBpfInstallHooked);
+        out << "},\"symbolMethods\":{";
+        AppendJsonString(out, "containsMount", containsMountMethod);
+        out << ",";
+        AppendJsonString(out, "startsWith", startsWithMethod);
+        out << ",";
+        AppendJsonString(out, "isFuseBpfEnabled", isFuseBpfEnabledMethod);
+        out << ",";
+        AppendJsonString(out, "fuseReqUserdata", fuseReqUserdataMethod);
+        out << ",";
+        AppendJsonString(out, "fuseBpfInstall", fuseBpfInstallMethod);
+        out << "},";
+        AppendJsonString(out, "lastError", lastError);
+        out << "}";
+        return out.str();
+    }
 
     static bool PatchGotSlot(ElfW(Addr) slotAddress, void *replacement, void **original) {
         auto slot = reinterpret_cast<void **>(slotAddress);
@@ -667,14 +730,20 @@ namespace bpf_hook {
         bool fuseBpfInstallHooked = false;
         bool xhookRefreshCalled = false;
         std::string lastError;
+        const bool startsWithRequired = GetApiLevel() >= 31;
+        const char *startsWithMethod = "none";
+        const char *containsMountMethod = "none";
+        const char *isFuseBpfEnabledMethod = "none";
+        const char *fuseReqUserdataMethod = "none";
+        const char *fuseBpfInstallMethod = "none";
 
         if (!IsFuse()) {
             LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str()); // "FUSE not available, skipping hook"
-            return "{\"fuseAvailable\":false,\"fuseLibraryLoaded\":true,"
-                   "\"fuseLibraryName\":\"libfuse_jni.so\",\"xhookRefreshCalled\":false,"
-                   "\"hookMode\":\"NONE\",\"fuseJniLoadMode\":\"UNKNOWN\","
-                   "\"embeddedFuseJniFound\":false,"
-                   "\"lastError\":\"FUSE not available\"}";
+            return BuildHookStatusJson(false, true, "libfuse_jni.so",
+                                       "NONE", "UNKNOWN", false,
+                                       false, false, false, false, false,
+                                       "none", "none", "none", "none", "none",
+                                       false, "FUSE not available");
         }
         LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
         if (handle == nullptr) {
@@ -688,53 +757,30 @@ namespace bpf_hook {
             if (embeddedResult.foundFuseJni) {
                 lastError = containsMountHooked ? "" : "embedded libfuse_jni.so found but GOT hook failed";
             }
-            std::ostringstream out;
-            out << "{";
-            AppendJsonBool(out, "fuseAvailable", true);
-            out << ",";
-            AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
-            out << ",";
-            AppendJsonString(out, "fuseLibraryName", "MediaProvider.apk/libfuse_jni.so");
-            out << ",";
-            AppendJsonString(out, "hookMode", "EMBEDDED_GOT_PATCH");
-            out << ",";
-            AppendJsonString(out, "fuseJniLoadMode", "APEX_APK_EMBEDDED");
-            out << ",";
-            AppendJsonBool(out, "embeddedFuseJniFound", embeddedResult.foundFuseJni);
-            out << ",";
-            AppendJsonBool(out, "startsWithHooked", startsWithHooked);
-            out << ",";
-            AppendJsonString(out, "startsWithMethod", embeddedResult.startsWithMethod == MATCH_EXACT ? "exact" : (embeddedResult.startsWithMethod == MATCH_FUZZY ? "fuzzy" : "none"));
-            out << ",";
-            AppendJsonBool(out, "containsMountHooked", containsMountHooked);
-            out << ",";
-            AppendJsonString(out, "containsMountMethod", embeddedResult.containsMountMethod == MATCH_EXACT ? "exact" : (embeddedResult.containsMountMethod == MATCH_FUZZY ? "fuzzy" : "none"));
-            out << ",";
-            AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
-            out << ",";
-            AppendJsonString(out, "isFuseBpfEnabledMethod", embeddedResult.isFuseBpfEnabledMethod == MATCH_EXACT ? "exact" : (embeddedResult.isFuseBpfEnabledMethod == MATCH_FUZZY ? "fuzzy" : "none"));
-            out << ",";
-            AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
-            out << ",";
-            AppendJsonString(out, "fuseReqUserdataMethod", embeddedResult.fuseReqUserdataMethod == MATCH_EXACT ? "exact" : (embeddedResult.fuseReqUserdataMethod == MATCH_FUZZY ? "fuzzy" : "none"));
-            out << ",";
-            AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
-            out << ",";
-            AppendJsonString(out, "fuseBpfInstallMethod", embeddedResult.fuseBpfInstallMethod == MATCH_EXACT ? "exact" : (embeddedResult.fuseBpfInstallMethod == MATCH_FUZZY ? "fuzzy" : "none"));
-            out << ",";
-            AppendJsonBool(out, "xhookRefreshCalled", false);
-            out << ",";
-            AppendJsonString(out, "lastError", lastError.c_str());
-            out << "}";
-            return out.str();
+            return BuildHookStatusJson(true, fuseLibraryMapped,
+                                       "MediaProvider.apk/libfuse_jni.so",
+                                       "EMBEDDED_GOT_PATCH", "APEX_APK_EMBEDDED",
+                                       embeddedResult.foundFuseJni,
+                                       startsWithHooked, containsMountHooked,
+                                       isFuseBpfEnabledHooked, fuseReqUserdataHooked,
+                                       fuseBpfInstallHooked,
+                                       MatchMethodName(embeddedResult.startsWithMethod),
+                                       MatchMethodName(embeddedResult.containsMountMethod),
+                                       MatchMethodName(embeddedResult.isFuseBpfEnabledMethod),
+                                       MatchMethodName(embeddedResult.fuseReqUserdataMethod),
+                                       MatchMethodName(embeddedResult.fuseBpfInstallMethod),
+                                       false, lastError.c_str());
         }
-        if (GetApiLevel() >= 31) {
+        if (startsWithRequired) {
             const char *startsWithSymbol = AY_OBFUSCATE(
                     "_ZN7android4base10StartsWithENSt6__ndk117basic_string_viewIcNS1_11char_traitsIcEEEES5_");
             auto startsWith = handle == nullptr ? nullptr : dlsym(handle, startsWithSymbol);
             auto startsWithRegistered = RegisterHook(startsWithSymbol, (void *) new_StartsWith,
                                                      (void **) &old_StartsWith);
             startsWithHooked = startsWith != nullptr && startsWithRegistered;
+            if (startsWithHooked) {
+                startsWithMethod = "exact";
+            }
             if (!startsWithHooked) {
                 LOGE("%s", std::string(AY_OBFUSCATE("failed to find StartsWith")).c_str()); // "failed to find StartsWith"
                 if (handle != nullptr) {
@@ -757,6 +803,9 @@ namespace bpf_hook {
                                                           (void **) &old_containsMount_30);
             containsMountHooked = containsMount_30 != nullptr && containsMount30Registered;
         }
+        if (containsMountHooked) {
+            containsMountMethod = "exact";
+        }
         if (!containsMountHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find containsMount")).c_str()); // "failed to find containsMount"
             if (handle != nullptr) {
@@ -770,6 +819,9 @@ namespace bpf_hook {
                                                        (void *) new_IsFuseBpfEnabled,
                                                        (void **) &old_IsFuseBpfEnabled);
         isFuseBpfEnabledHooked = IsFuseBpfEnabled != nullptr && isFuseBpfEnabledRegistered;
+        if (isFuseBpfEnabledHooked) {
+            isFuseBpfEnabledMethod = "exact";
+        }
         if (!isFuseBpfEnabledHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find IsFuseBpfEnabled")).c_str()); // "failed to find IsFuseBpfEnabled"
             if (handle != nullptr) {
@@ -783,6 +835,9 @@ namespace bpf_hook {
                                                       (void *) new_fuse_req_userdata,
                                                       (void **) &old_fuse_req_userdata);
         fuseReqUserdataHooked = fuse_req_userdata != nullptr && fuseReqUserdataRegistered;
+        if (fuseReqUserdataHooked) {
+            fuseReqUserdataMethod = "exact";
+        }
         if (!fuseReqUserdataHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_req_userdata")).c_str()); // "failed to find fuse_req_userdata"
             if (handle != nullptr) {
@@ -797,6 +852,9 @@ namespace bpf_hook {
                                                      (void *) new_fuse_bpf_install,
                                                      (void **) &old_fuse_bpf_install);
         fuseBpfInstallHooked = fuse_bpf_install != nullptr && fuseBpfInstallRegistered;
+        if (fuseBpfInstallHooked) {
+            fuseBpfInstallMethod = "exact";
+        }
         if (!fuseBpfInstallHooked) {
             LOGE("%s", std::string(AY_OBFUSCATE("failed to find fuse_bpf_install")).c_str()); // "failed to find fuse_bpf_install"
             if (handle != nullptr) {
@@ -808,82 +866,65 @@ namespace bpf_hook {
         xhookRefreshCalled = true;
 
         // If any symbol failed exact xhook match, try GOT Patch as fallback
-        bool xhookAllSucceeded = startsWithHooked && containsMountHooked
+        const bool xhookAllSucceeded = (!startsWithRequired || startsWithHooked) && containsMountHooked
                                && isFuseBpfEnabledHooked && fuseReqUserdataHooked
                                && fuseBpfInstallHooked;
 
-        // Match method strings for diagnostic output
-        const char *startsWithMethod = "exact";
-        const char *containsMountMethod = "exact";
-        const char *isFuseBpfEnabledMethod = "exact";
-        const char *fuseReqUserdataMethod = "exact";
-        const char *fuseBpfInstallMethod = "exact";
-
+        bool fallbackResolvedAny = false;
         if (!xhookAllSucceeded) {
             auto embeddedResult = HookEmbeddedFuseJni();
             // Merge: GOT Patch succeeded where xhook failed
             if (!startsWithHooked && embeddedResult.startsWithHooked) {
                 startsWithHooked = true;
-                startsWithMethod = "fuzzy";
+                startsWithMethod = MatchMethodName(embeddedResult.startsWithMethod);
+                fallbackResolvedAny = true;
             }
             if (!containsMountHooked && embeddedResult.containsMountHooked) {
                 containsMountHooked = true;
-                containsMountMethod = "fuzzy";
+                containsMountMethod = MatchMethodName(embeddedResult.containsMountMethod);
+                fallbackResolvedAny = true;
             }
             if (!isFuseBpfEnabledHooked && embeddedResult.isFuseBpfEnabledHooked) {
                 isFuseBpfEnabledHooked = true;
-                isFuseBpfEnabledMethod = "fuzzy";
+                isFuseBpfEnabledMethod = MatchMethodName(embeddedResult.isFuseBpfEnabledMethod);
+                fallbackResolvedAny = true;
             }
             if (!fuseReqUserdataHooked && embeddedResult.fuseReqUserdataHooked) {
                 fuseReqUserdataHooked = true;
-                fuseReqUserdataMethod = "fuzzy";
+                fuseReqUserdataMethod = MatchMethodName(embeddedResult.fuseReqUserdataMethod);
+                fallbackResolvedAny = true;
             }
             if (!fuseBpfInstallHooked && embeddedResult.fuseBpfInstallHooked) {
                 fuseBpfInstallHooked = true;
-                fuseBpfInstallMethod = "fuzzy";
+                fuseBpfInstallMethod = MatchMethodName(embeddedResult.fuseBpfInstallMethod);
+                fallbackResolvedAny = true;
             }
-            lastError = "some symbols resolved via GOT patch fallback";
+            const bool hookAvailableAfterFallback =
+                    (!startsWithRequired || startsWithHooked) && containsMountHooked
+                    && isFuseBpfEnabledHooked && fuseReqUserdataHooked
+                    && fuseBpfInstallHooked;
+            if (hookAvailableAfterFallback && fallbackResolvedAny) {
+                lastError = "some symbols resolved via GOT patch fallback";
+            } else if (!hookAvailableAfterFallback) {
+                lastError = "native symbols missing after xhook/GOT fallback";
+            }
         }
 
-        std::ostringstream out;
-        out << "{";
-        AppendJsonBool(out, "fuseAvailable", true);
-        out << ",";
-        AppendJsonBool(out, "fuseLibraryLoaded", fuseLibraryMapped);
-        out << ",";
-        AppendJsonString(out, "fuseLibraryName", "libfuse_jni.so");
-        out << ",";
-        AppendJsonString(out, "hookMode", xhookAllSucceeded ? "XHOOK" : "XHOOK_WITH_GOT_FALLBACK");
-        out << ",";
-        AppendJsonString(out, "fuseJniLoadMode", "SYSTEM_LIB");
-        out << ",";
-        AppendJsonBool(out, "embeddedFuseJniFound", false);
-        out << ",";
-        AppendJsonBool(out, "startsWithHooked", startsWithHooked);
-        out << ",";
-        AppendJsonString(out, "startsWithMethod", startsWithMethod);
-        out << ",";
-        AppendJsonBool(out, "containsMountHooked", containsMountHooked);
-        out << ",";
-        AppendJsonString(out, "containsMountMethod", containsMountMethod);
-        out << ",";
-        AppendJsonBool(out, "isFuseBpfEnabledHooked", isFuseBpfEnabledHooked);
-        out << ",";
-        AppendJsonString(out, "isFuseBpfEnabledMethod", isFuseBpfEnabledMethod);
-        out << ",";
-        AppendJsonBool(out, "fuseReqUserdataHooked", fuseReqUserdataHooked);
-        out << ",";
-        AppendJsonString(out, "fuseReqUserdataMethod", fuseReqUserdataMethod);
-        out << ",";
-        AppendJsonBool(out, "fuseBpfInstallHooked", fuseBpfInstallHooked);
-        out << ",";
-        AppendJsonString(out, "fuseBpfInstallMethod", fuseBpfInstallMethod);
-        out << ",";
-        AppendJsonBool(out, "xhookRefreshCalled", xhookRefreshCalled);
-        out << ",";
-        AppendJsonString(out, "lastError", lastError.c_str());
-        out << "}";
-        return out.str();
+        const char *hookMode = xhookAllSucceeded
+                               ? "XHOOK"
+                               : (fallbackResolvedAny
+                                  ? "XHOOK_WITH_GOT_FALLBACK"
+                                  : "XHOOK_PARTIAL");
+        return BuildHookStatusJson(true, fuseLibraryMapped, "libfuse_jni.so",
+                                   hookMode,
+                                   "SYSTEM_LIB", false,
+                                   startsWithHooked, containsMountHooked,
+                                   isFuseBpfEnabledHooked, fuseReqUserdataHooked,
+                                   fuseBpfInstallHooked,
+                                   startsWithMethod, containsMountMethod,
+                                   isFuseBpfEnabledMethod, fuseReqUserdataMethod,
+                                   fuseBpfInstallMethod,
+                                   xhookRefreshCalled, lastError.c_str());
     }
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value) {
