@@ -100,7 +100,25 @@ static bool is_storage_path(const char *path) {
     if (path == nullptr) {
         return false;
     }
-    return strncmp(path, "/storage/"_iobfs.c_str(), strlen("/storage/"_iobfs.c_str())) == 0;
+    const char *storage = "/storage/"_iobfs.c_str();
+    if (strncmp(path, storage, strlen(storage)) != 0) {
+        return false;
+    }
+    for (const char *p = path; *p != '\0'; ++p) {
+        if (*p != '/') {
+            continue;
+        }
+        if (p[1] == '/') {
+            return false;
+        }
+        if (p[1] == '.' && (p[2] == '/' || p[2] == '\0')) {
+            return false;
+        }
+        if (p[1] == '.' && p[2] == '.' && (p[3] == '/' || p[3] == '\0')) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void fail_child(int sock, const char *stage, int err, int index = -1,
