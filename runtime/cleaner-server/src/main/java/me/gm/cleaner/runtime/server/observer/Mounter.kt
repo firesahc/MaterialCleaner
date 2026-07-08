@@ -7,7 +7,6 @@ import android.util.ArrayMap
 import android.util.ArraySet
 import android.util.Log
 import androidx.core.os.postDelayed
-import api.SystemService
 import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 import me.gm.cleaner.core.common.RuntimeFileUtils
@@ -25,7 +24,7 @@ class Mounter {
 
     private val pidRecords: SetMultimap<String, Int> =
         Multimaps.newSetMultimap(ArrayMap()) { ArraySet() }
-    private val mountFailedPids: MutableList<Int> = mutableListOf()
+    private val mountFailedPids: MutableSet<Int> = mutableSetOf()
     private val mkdirRecords: SetMultimap<String, String> =
         Multimaps.newSetMultimap(ArrayMap()) { ArraySet() }
 
@@ -38,6 +37,7 @@ class Mounter {
     val failureCount: AtomicInteger = AtomicInteger(0)
     /** 每 pid 重试计数，达到 MAX_MOUNT_RETRIES 后放弃 */
     private val mountRetryCount = mutableMapOf<Int, Int>()
+    private var lastMountFailure: MountFailure? = null
 
     fun mountForAllPackages(): Boolean =
         VfsRuntimeConfigStore.shouldMountForAllPackages()
@@ -95,6 +95,13 @@ class Mounter {
         } else {
             mountFailedPids.add(pid)
             failureCount.incrementAndGet()
+            lastMountFailure = MountFailure(
+                timeMillis = System.currentTimeMillis(),
+                packageName = packageName,
+                pid = pid,
+                uid = uid,
+                reason = "bind_mount returned false",
+            )
             scheduleMountRetryLocked(packageName, pid, uid)
         }
         return ret
@@ -119,9 +126,23 @@ class Mounter {
                 "pkg=$packageName in ${delay}ms")
         handler.postDelayed(delay) {
             synchronized(lock) {
-                bindMountLocked(packageName, pid, uid)
+                if (shouldRunMountRetryLocked(packageName, pid)) {
+                    bindMountLocked(packageName, pid, uid)
+                }
             }
         }
+    }
+
+    private fun shouldRunMountRetryLocked(packageName: String, pid: Int): Boolean {
+        if (!mountRetryCount.containsKey(pid)) {
+            return false
+        }
+        if (File("/proc", pid.toString()).exists()) {
+            return true
+        }
+        Log.i("MC_REDIRECT", "[Mounter] skip mount retry for dead pid=$pid pkg=$packageName")
+        notifyProcessKilledLocked(packageName, pid)
+        return false
     }
 
     private fun record(mkdirRecord: MutableSet<String>, dir: String) {
@@ -193,7 +214,7 @@ class Mounter {
     private fun remountLocked(procList: List<ActivityManager.RunningAppProcessInfo>) {
         for (procInfo in procList) {
             procInfo.pkgList.forEach { packageName ->
-                removeMountDirsLocked(packageName, procInfo.uid)
+                removeMountDirsLocked(packageName)
             }
         }
         for (procInfo in procList) {
@@ -203,15 +224,15 @@ class Mounter {
         }
     }
 
-    fun notifyProcessKilled(packageName: String, pid: Int, uid: Int) {
+    fun notifyProcessKilled(packageName: String, pid: Int) {
         handler.post {
             synchronized(lock) {
-                notifyProcessKilledLocked(packageName, pid, uid)
+                notifyProcessKilledLocked(packageName, pid)
             }
         }
     }
 
-    private fun notifyProcessKilledLocked(packageName: String, pid: Int, uid: Int) {
+    private fun notifyProcessKilledLocked(packageName: String, pid: Int) {
         pidRecords.remove(packageName, pid)
         mountFailedPids.remove(pid)
         mountRetryCount.remove(pid)
@@ -229,7 +250,7 @@ class Mounter {
             }
         } else {
             rmdirPackages.remove(packageName)
-            removeMountDirsLocked(packageName, uid)
+            removeMountDirsLocked(packageName)
         }
     }
 
@@ -254,13 +275,12 @@ class Mounter {
             val oldValues = pidRecords.replaceValues(packageName, validValue)
             mountFailedPids.removeAll(oldValues - validValue.toSet())
             if (validValue.isEmpty()) {
-                val uid = SystemService.getApplicationInfo(packageName, 0, 0)?.uid ?: -1
-                removeMountDirsLocked(packageName, uid)
+                removeMountDirsLocked(packageName)
             }
         }
     }
 
-    private fun removeMountDirsLocked(packageName: String, uid: Int) {
+    private fun removeMountDirsLocked(packageName: String) {
         if (!mkdirRecords.containsKey(packageName)) {
             return
         }
@@ -302,6 +322,10 @@ class Mounter {
 
     fun getFailureCount(): Int = failureCount.get()
 
+    fun getLastMountFailure(): MountFailure? = synchronized(lock) {
+        lastMountFailure
+    }
+
     fun onDestroy() {
         thread.quit()
     }
@@ -316,4 +340,12 @@ class Mounter {
         /** mount 失败重试延迟序列（毫秒）：2s → 5s → 15s */
         private val RETRY_DELAYS_MS = longArrayOf(2000, 5000, 15000)
     }
+
+    data class MountFailure(
+        val timeMillis: Long,
+        val packageName: String,
+        val pid: Int,
+        val uid: Int,
+        val reason: String,
+    )
 }

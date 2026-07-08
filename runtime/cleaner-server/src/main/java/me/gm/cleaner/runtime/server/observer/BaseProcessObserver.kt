@@ -71,6 +71,8 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun getMountedDirs(): List<String> = mounter.getMountedDirs()
 
+    fun getLastMountFailure(): Mounter.MountFailure? = mounter.getLastMountFailure()
+
     @CallSuper
     override fun onDestroy() {
         super.onDestroy()

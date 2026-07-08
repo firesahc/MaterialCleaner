@@ -276,7 +276,7 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                                 final var packageName = PackageInfoMapper.getPackageName(uid, processName);
                                 if (!TextUtils.isEmpty(packageName)) {
                                     final var pid = Integer.parseInt(StringUtils.substring(killing, 0, killing.indexOf(':')));
-                                    getMounter().notifyProcessKilled(packageName, pid, uid);
+                                    getMounter().notifyProcessKilled(packageName, pid);
                                 }
                             }
                         } catch (StringIndexOutOfBoundsException e) {
