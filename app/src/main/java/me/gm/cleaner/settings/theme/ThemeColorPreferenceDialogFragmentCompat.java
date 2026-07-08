@@ -3,6 +3,7 @@ package me.gm.cleaner.settings.theme;
 import android.app.Dialog;
 import android.content.DialogInterface;
 import android.os.Bundle;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.preference.PreferenceDialogFragmentCompat;
@@ -16,6 +17,7 @@ import me.gm.cleaner.util.RecyclerViewKt;
 
 public class ThemeColorPreferenceDialogFragmentCompat extends PreferenceDialogFragmentCompat
         implements OnColorSelectedListener {
+    private static final String TAG = "ThemeColorPreference";
 
     ThemeUtil.CustomThemeColors[] themeColors;
     private int pickedColor;
@@ -62,7 +64,7 @@ public class ThemeColorPreferenceDialogFragmentCompat extends PreferenceDialogFr
                 }
             }
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to customize color palette layout", e);
         }
         return dialog;
     }

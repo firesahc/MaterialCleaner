@@ -28,6 +28,9 @@
     <string name="diagnostics_archive">导出诊断包</string>
     <string name="share_diagnostics_archive">分享诊断包</string>
     <string name="diagnostics_archive_failed">导出诊断包失败：</string>
+    <string name="diagnostics_archive_privacy_title">导出诊断包？</string>
+    <string name="diagnostics_archive_privacy_message">诊断包可能包含设备信息、进程和挂载状态、logcat 输出、DataBus 快照、重定向规则和文件路径。系统会进行基础脱敏，但请只分享给可信任的人。</string>
+    <string name="diagnostics_archive_privacy_confirm">导出</string>
     <string name="menu_add_to_hide_list">加入隐藏列表</string>
     <string name="delete">删除</string>
     <string name="delete_all_mount_rules">删除所有挂载规则</string>

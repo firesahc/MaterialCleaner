@@ -45,6 +45,7 @@ object DiagnosticArchive {
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val archive = File(outDir, "material-cleaner-diagnostics-$timestamp.zip")
         ZipOutputStream(FileOutputStream(archive)).use { zip ->
+            addText(zip, "privacy.txt", privacyNotice())
             addText(zip, "manifest.txt", buildManifest(server))
             addStatus(zip, server)
             addDataBus(zip)
@@ -56,8 +57,19 @@ object DiagnosticArchive {
         return archive
     }
 
+    private fun privacyNotice(): String = buildString {
+        appendLine("This diagnostics package is intended for troubleshooting Material Cleaner.")
+        appendLine("It may include device details, process and mount state, logcat output,")
+        appendLine("DataBus snapshots, redirect rules, and file paths.")
+        appendLine("Basic identifiers such as build fingerprint, APK source paths,")
+        appendLine("and long hex-like tokens are redacted before export.")
+        appendLine("File paths and package names are preserved because they are required")
+        appendLine("to diagnose storage redirection issues.")
+    }
+
     private fun buildManifest(server: CleanerServer): String = buildString {
         appendLine("createdAt=${System.currentTimeMillis()}")
+        appendLine("redacted=true")
         appendLine("serverPid=${Os.getpid()}")
         appendLine("serverUid=${Os.getuid()}")
         appendLine("versionCode=${BuildConfig.VERSION_CODE}")
@@ -260,7 +272,7 @@ object DiagnosticArchive {
 
     private fun addFileTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
         runCatching {
-            val header = buildString {
+            val content = buildString {
                 appendLine("path=${file.path}")
                 appendLine("size=${file.length()}")
                 appendLine("modified=${file.lastModified()}")
@@ -268,34 +280,53 @@ object DiagnosticArchive {
                     appendLine("truncated=head omitted, tailBytes=$maxBytes")
                 }
                 appendLine()
-            }.toByteArray(Charsets.UTF_8)
-            zip.putNextEntry(ZipEntry(safeEntryName(entryName)))
-            zip.write(header)
-            if (file.length() <= maxBytes) {
-                FileInputStream(file).use { it.copyTo(zip) }
-            } else {
-                RandomAccessFile(file, "r").use { raf ->
-                    raf.seek(file.length() - maxBytes)
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    var remaining = maxBytes
-                    while (remaining > 0) {
-                        val read = raf.read(buffer, 0, minOf(buffer.size, remaining))
-                        if (read < 0) break
-                        zip.write(buffer, 0, read)
-                        remaining -= read
-                    }
-                }
+                append(readFileTail(file, maxBytes))
             }
-            zip.closeEntry()
+            addText(zip, entryName, content)
         }.onFailure {
             addText(zip, "$entryName.error.txt", it.stackTraceToString())
         }
     }
 
+    private fun readFileTail(file: File, maxBytes: Int): String {
+        val output = ByteArrayOutputStream()
+        if (file.length() <= maxBytes) {
+            FileInputStream(file).use { input ->
+                input.copyTo(output)
+            }
+        } else {
+            RandomAccessFile(file, "r").use { raf ->
+                raf.seek(file.length() - maxBytes)
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var remaining = maxBytes
+                while (remaining > 0) {
+                    val read = raf.read(buffer, 0, minOf(buffer.size, remaining))
+                    if (read < 0) break
+                    output.write(buffer, 0, read)
+                    remaining -= read
+                }
+            }
+        }
+        return output.toString(StandardCharsets.UTF_8.name())
+    }
+
     private fun addText(zip: ZipOutputStream, entryName: String, content: String) {
         zip.putNextEntry(ZipEntry(safeEntryName(entryName)))
-        zip.write(content.toByteArray(Charsets.UTF_8))
+        zip.write(redact(content).toByteArray(Charsets.UTF_8))
         zip.closeEntry()
+    }
+
+    private fun redact(content: String): String {
+        var redacted = content
+        val fingerprint = Build.FINGERPRINT
+        if (fingerprint.isNotBlank()) {
+            redacted = redacted.replace(fingerprint, "<build-fingerprint>")
+        }
+        redacted = redacted
+            .replace(Regex("/data/app/[^\\s\\n\\r]+"), "/data/app/<redacted>")
+            .replace(Regex("/mnt/expand/[0-9A-Fa-f-]+"), "/mnt/expand/<volume>")
+            .replace(Regex("(?i)\\b[0-9a-f]{24,}\\b"), "<hex-id>")
+        return redacted
     }
 
     private fun safeEntryName(name: String): String =

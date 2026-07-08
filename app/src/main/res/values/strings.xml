@@ -28,6 +28,9 @@
     <string name="diagnostics_archive">Export diagnostics package</string>
     <string name="share_diagnostics_archive">Share diagnostics package</string>
     <string name="diagnostics_archive_failed">Failed to export diagnostics package:</string>
+    <string name="diagnostics_archive_privacy_title">Export diagnostics package?</string>
+    <string name="diagnostics_archive_privacy_message">The package may contain device details, process and mount state, logcat output, DataBus snapshots, redirect rules, and file paths. Basic identifiers are redacted, but please share it only with people you trust.</string>
+    <string name="diagnostics_archive_privacy_confirm">Export</string>
     <string name="new_mount">新建挂载</string>
     <string name="mounted_apps_title">已挂载应用</string>
     <string name="menu_add_to_hide_list">Add to hide list</string>

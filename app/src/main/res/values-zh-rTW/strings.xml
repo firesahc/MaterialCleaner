@@ -28,6 +28,9 @@
     <string name="diagnostics_archive">匯出診斷包</string>
     <string name="share_diagnostics_archive">分享診斷包</string>
     <string name="diagnostics_archive_failed">匯出診斷包失敗：</string>
+    <string name="diagnostics_archive_privacy_title">匯出診斷包？</string>
+    <string name="diagnostics_archive_privacy_message">診斷包可能包含設備資訊、進程和掛載狀態、logcat 輸出、DataBus 快照、重定向規則和檔案路徑。系統會進行基礎脫敏，但請只分享給可信任的人。</string>
+    <string name="diagnostics_archive_privacy_confirm">匯出</string>
     <string name="menu_add_to_hide_list">加入隱藏列表</string>
     <string name="delete">刪除</string>
     <string name="delete_all_mount_rules">刪除所有掛載規則</string>
