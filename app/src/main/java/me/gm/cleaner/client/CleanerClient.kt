@@ -62,7 +62,9 @@ object CleanerClient {
     }
 
     fun pingBinder(): Boolean {
-        Log.d("MC/Test", "pingBinder: binder=${binder != null}, result=${binder?.pingBinder()}")
+        if (BuildConfig.DEBUG) {
+            Log.d("MC/Test", "pingBinder: binder=${binder != null}, result=${binder?.pingBinder()}")
+        }
         val result = binder?.pingBinder() == true
         if (BuildConfig.DEBUG) Log.d("CleanerTest", "pingBinder: result=$result")
         return result
@@ -113,7 +115,9 @@ object CleanerClient {
 
     fun getInstalledPackages(flags: Int): List<PackageInfo> {
         val result = service?.getInstalledPackages(flags)?.list ?: emptyList()
-        Log.d("MC/Test", "getInstalledPackages: service=${service != null}, count=${result.size}")
+        if (BuildConfig.DEBUG) {
+            Log.d("MC/Test", "getInstalledPackages: service=${service != null}, count=${result.size}")
+        }
         return result
     }
 

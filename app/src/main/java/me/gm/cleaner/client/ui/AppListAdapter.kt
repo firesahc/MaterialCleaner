@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getSharedProcessPackages
@@ -37,7 +38,9 @@ class AppListAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
         val model = getItem(position)
-        Log.i("MC/Test", "onBindViewHolder: position=$position, package=${model.packageInfo.packageName}")
+        if (BuildConfig.DEBUG) {
+            Log.i("MC/Test", "onBindViewHolder: position=$position, package=${model.packageInfo.packageName}")
+        }
         binding.icon.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(fragment.requireContext().packageManager))
         binding.title.text = model.label
         binding.summary.text = run {
