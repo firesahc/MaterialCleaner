@@ -89,6 +89,32 @@ object DataBus {
     // ── Lease 子目录 ──
     const val LEASE_QUERY_SESSIONS = "query_sessions"
 
+    private val validSnapshotNames = setOf(
+        SNAPSHOT_REDIRECT_POLICY,
+        SNAPSHOT_READ_ONLY,
+        SNAPSHOT_CONFIGURED_MOUNT_POINTS,
+        SNAPSHOT_PLATFORM_CAPABILITIES,
+        SNAPSHOT_ORCHESTRATED_STATUS,
+        SNAPSHOT_NATIVE_HOOK_STATUS,
+    )
+    private val validSignalNames = setOf(
+        SIGNAL_REDIRECT_POLICY_CHANGED,
+        SIGNAL_READ_ONLY_CHANGED,
+        SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED,
+        SIGNAL_PLATFORM_CAPABILITIES_CHANGED,
+        SIGNAL_NATIVE_HOOK_STATUS_CHANGED,
+        SIGNAL_FILESYSTEM_EVENTS_CHANGED,
+        SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED,
+        SIGNAL_QUERY_SESSION_LEASES_CHANGED,
+    )
+    private val validEventQueues = setOf(
+        EVENT_FILESYSTEM,
+        EVENT_REDIRECT_NOTICE,
+    )
+    private val validLeaseCategories = setOf(
+        LEASE_QUERY_SESSIONS,
+    )
+
     @Volatile
     private var initialized = false
 
@@ -165,6 +191,7 @@ object DataBus {
     // ── 快照读写 ──
 
     fun writeSnapshot(name: String, content: String): Boolean {
+        if (!isValidSnapshotName(name)) return false
         if (!ensureInitialized()) return false
         val targetFile = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         val pid = Process.myPid()
@@ -196,6 +223,7 @@ object DataBus {
     }
 
     fun readSnapshot(name: String): String? {
+        if (!isValidSnapshotName(name)) return null
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         return try {
             if (!file.exists()) null else file.readText(Charsets.UTF_8)
@@ -218,6 +246,7 @@ object DataBus {
      * - 热路径且自身有 JSON 解析保护的 → [readSnapshot]
      */
     fun readSnapshotSafe(name: String): String? {
+        if (!isValidSnapshotName(name)) return null
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         return try {
             if (!file.exists()) return null
@@ -244,6 +273,7 @@ object DataBus {
     // ── 信号 ──
 
     fun signal(name: String): Boolean {
+        if (!isValidSignalName(name)) return false
         if (!ensureInitialized()) return false
         val signalFile = File("$BUS_ROOT/$DIR_SIGNALS/$name")
         return try {
@@ -259,6 +289,7 @@ object DataBus {
     }
 
     fun getSignalTimestamp(name: String): Long {
+        if (!isValidSignalName(name)) return 0L
         val signalFile = File("$BUS_ROOT/$DIR_SIGNALS/$name")
         return if (signalFile.exists()) signalFile.lastModified() else 0L
     }
@@ -279,6 +310,7 @@ object DataBus {
      * @return 事件序列号（成功），-1（失败）
      */
     fun writeEvent(queue: String, content: String): Long {
+        if (!isValidEventQueue(queue)) return -1L
         if (!ensureInitialized()) return -1L
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists() && !eventDir.mkdirs()) {
@@ -331,6 +363,7 @@ object DataBus {
      * 读取游标之后的所有事件，并保留文件名供消费者精确推进游标。
      */
     fun readEventFiles(queue: String, afterCursor: String): List<EventFile> {
+        if (!isValidEventQueue(queue)) return emptyList()
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists()) return emptyList()
 
@@ -350,6 +383,7 @@ object DataBus {
      * 获取事件队列中最后一个事件的文件名（用作游标）。
      */
     fun getLastEventFilename(queue: String): String {
+        if (!isValidEventQueue(queue)) return ""
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists()) return ""
         return eventDir.listFiles()
@@ -365,6 +399,7 @@ object DataBus {
      * 原子写：tmp → fsync → rename。
      */
     fun writeCursor(queue: String, cursor: String): Boolean {
+        if (!isValidEventQueue(queue)) return false
         if (!ensureInitialized()) return false
         val cursorDir = File("$BUS_ROOT/$DIR_CURSORS")
         if (!cursorDir.exists()) cursorDir.mkdirs()
@@ -405,6 +440,7 @@ object DataBus {
      * 内容仍由调用方使用 JSON 表达，并在 payload 中包含 expiresAt。
      */
     fun writeLease(category: String, key: String, content: String): Boolean {
+        if (!isValidLeaseCategory(category)) return false
         if (!ensureInitialized()) return false
         val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
         if (!leaseDir.exists() && !leaseDir.mkdirs()) {
@@ -441,6 +477,7 @@ object DataBus {
     }
 
     fun readLeaseFiles(category: String): List<EventFile> {
+        if (!isValidLeaseCategory(category)) return emptyList()
         val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
         if (!leaseDir.exists()) return emptyList()
 
@@ -457,6 +494,7 @@ object DataBus {
     }
 
     fun deleteLeaseFile(category: String, name: String): Boolean {
+        if (!isValidLeaseCategory(category)) return false
         val file = File("$BUS_ROOT/$DIR_LEASES/$category/${sanitizeFileName(name)}")
         return try {
             !file.exists() || file.delete()
@@ -471,6 +509,7 @@ object DataBus {
      * @return 游标值（上次消费的最后文件名），"" 表示未消费过
      */
     fun readCursor(queue: String): String {
+        if (!isValidEventQueue(queue)) return ""
         val cursorFile = File("$BUS_ROOT/$DIR_CURSORS/$queue.cursor")
         return try {
             if (cursorFile.exists()) cursorFile.readText(Charsets.UTF_8).trim() else ""
@@ -482,6 +521,26 @@ object DataBus {
 
     private fun sanitizeFileName(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(180).ifBlank { "lease" }
+
+    private fun isValidSnapshotName(name: String): Boolean =
+        isValidName("snapshot", name, validSnapshotNames)
+
+    private fun isValidSignalName(name: String): Boolean =
+        isValidName("signal", name, validSignalNames)
+
+    private fun isValidEventQueue(queue: String): Boolean =
+        isValidName("event queue", queue, validEventQueues)
+
+    private fun isValidLeaseCategory(category: String): Boolean =
+        isValidName("lease category", category, validLeaseCategories)
+
+    private fun isValidName(kind: String, value: String, allowed: Set<String>): Boolean {
+        if (value in allowed) {
+            return true
+        }
+        Log.w(TAG, "Rejected invalid DataBus $kind: $value")
+        return false
+    }
 
     /**
      * 检查 DataBus 是否具备跨进程工作所需的目录、权限与关键快照。
