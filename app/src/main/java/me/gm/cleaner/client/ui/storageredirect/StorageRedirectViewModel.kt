@@ -30,6 +30,7 @@ import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.OnlineAppCategory
+import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.FileUtils.toUserId
 import me.gm.cleaner.widget.recyclerview.DiffArrayList
 
@@ -93,6 +94,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 add(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
             }
+            addAll(PermissionUtils.mediaStoragePermissions)
         }.filter {
             pi.requestedPermissions.contains(it)
         }
@@ -352,7 +354,8 @@ class StorageRedirectViewModel(private val application: Application, state: Save
 
     fun isRuntime(permission: String): Boolean = when {
         permission == Manifest.permission.READ_EXTERNAL_STORAGE ||
-                permission == Manifest.permission.WRITE_EXTERNAL_STORAGE -> {
+                permission == Manifest.permission.WRITE_EXTERNAL_STORAGE ||
+                permission in PermissionUtils.mediaStoragePermissions -> {
             true
         }
 

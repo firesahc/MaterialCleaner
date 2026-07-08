@@ -46,7 +46,8 @@ public class QueryHooker extends XC_MethodHook {
 
         final var callingPackage = mHook.getCallingPackage(param.thisObject);
         if ("com.android.providers.media".equals(callingPackage) ||
-                "com.android.providers.media.module".equals(callingPackage)) {
+                "com.android.providers.media.module".equals(callingPackage) ||
+                "com.google.android.providers.media.module".equals(callingPackage)) {
             // Scanning files and internal queries.
             return;
         }

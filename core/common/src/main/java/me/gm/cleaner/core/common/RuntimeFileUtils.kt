@@ -5,6 +5,7 @@ import android.os.Environment
 import android.util.Log
 import androidx.core.text.isDigitsOnly
 import me.gm.cleaner.core.common.AndroidFilesystemConfig.AID_USER_OFFSET
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.nio.file.LinkOption
@@ -193,8 +194,66 @@ object RuntimeFileUtils {
         fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
     ): Boolean
 
+    private external fun c(
+        pid: Int, uid: Int, unmountDataRestriction: Boolean,
+        fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
+    ): String
+
     fun bind_mount(
         pid: Int, uid: Int, unmountDataRestriction: Boolean,
         fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
     ): Boolean = a(pid, uid, unmountDataRestriction, fuseBypass, sources, targets)
+
+    fun bind_mount_result(
+        pid: Int, uid: Int, unmountDataRestriction: Boolean,
+        fuseBypass: Boolean, sources: Array<String>, targets: Array<String>
+    ): BindMountResult = try {
+        BindMountResult.fromJson(c(pid, uid, unmountDataRestriction, fuseBypass, sources, targets))
+    } catch (e: Exception) {
+        BindMountResult(
+            success = false,
+            stage = "jni_exception",
+            errno = 0,
+            error = e.message.orEmpty(),
+        )
+    }
+
+    data class BindMountResult(
+        val success: Boolean,
+        val stage: String,
+        val errno: Int,
+        val error: String,
+        val failedIndex: Int = -1,
+        val source: String = "",
+        val target: String = "",
+    ) {
+        val reason: String
+            get() = if (success) {
+                "success"
+            } else {
+                buildList {
+                    add("stage=$stage")
+                    if (errno != 0) add("errno=$errno")
+                    if (error.isNotBlank()) add("error=$error")
+                    if (failedIndex >= 0) add("index=$failedIndex")
+                    if (source.isNotBlank()) add("source=$source")
+                    if (target.isNotBlank()) add("target=$target")
+                }.joinToString(", ")
+            }
+
+        companion object {
+            fun fromJson(json: String): BindMountResult {
+                val root = JSONObject(json)
+                return BindMountResult(
+                    success = root.optBoolean("success", false),
+                    stage = root.optString("stage", ""),
+                    errno = root.optInt("errno", 0),
+                    error = root.optString("error", ""),
+                    failedIndex = root.optInt("failedIndex", -1),
+                    source = root.optString("source", ""),
+                    target = root.optString("target", ""),
+                )
+            }
+        }
+    }
 }

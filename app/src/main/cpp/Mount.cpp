@@ -1,7 +1,11 @@
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
 #include <fcntl.h>
 #include <ios>
 #include <jni.h>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
@@ -13,11 +17,97 @@
 #include "android_filesystem_config.h"
 #include "linux_syscall_support.h"
 #include "logging.h"
+#include "misc.h"
 #include "obfs-string.h"
 #include "socket.h"
 #include "Mount.h"
 
 using android::base::StringPrintf;
+
+struct MountStatus {
+    int ok;
+    int err;
+    int index;
+    char stage[32];
+    char source[PATH_MAX];
+    char target[PATH_MAX];
+};
+
+static MountStatus make_mount_status(int ok, const char *stage, int err = 0, int index = -1,
+                                     const char *source = nullptr, const char *target = nullptr) {
+    MountStatus status{};
+    status.ok = ok;
+    status.err = err;
+    status.index = index;
+    snprintf(status.stage, sizeof(status.stage), "%s", stage == nullptr ? "" : stage);
+    snprintf(status.source, sizeof(status.source), "%s", source == nullptr ? "" : source);
+    snprintf(status.target, sizeof(status.target), "%s", target == nullptr ? "" : target);
+    return status;
+}
+
+static bool write_mount_status(int fd, const MountStatus &status) {
+    return fd >= 0 && write_full(fd, &status, sizeof(status)) == 0;
+}
+
+static bool read_mount_status(int fd, MountStatus *status) {
+    return fd >= 0 && status != nullptr && read_full(fd, status, sizeof(*status)) == 0;
+}
+
+static std::string json_escape(const char *value) {
+    std::ostringstream out;
+    if (value == nullptr) {
+        return "";
+    }
+    for (const char *p = value; *p; ++p) {
+        switch (*p) {
+            case '\\':
+                out << "\\\\";
+                break;
+            case '"':
+                out << "\\\"";
+                break;
+            case '\n':
+                out << "\\n";
+                break;
+            case '\r':
+                out << "\\r";
+                break;
+            case '\t':
+                out << "\\t";
+                break;
+            default:
+                out << *p;
+        }
+    }
+    return out.str();
+}
+
+static std::string mount_status_to_json(const MountStatus &status, int pid, int uid) {
+    std::ostringstream out;
+    out << "{\"success\":" << (status.ok == 0 ? "true" : "false")
+        << ",\"stage\":\"" << json_escape(status.stage) << "\""
+        << ",\"errno\":" << status.err
+        << ",\"error\":\"" << json_escape(status.err == 0 ? "" : strerror(status.err)) << "\""
+        << ",\"failedIndex\":" << status.index
+        << ",\"pid\":" << pid
+        << ",\"uid\":" << uid
+        << ",\"source\":\"" << json_escape(status.source) << "\""
+        << ",\"target\":\"" << json_escape(status.target) << "\"}";
+    return out.str();
+}
+
+static bool is_storage_path(const char *path) {
+    if (path == nullptr) {
+        return false;
+    }
+    return strncmp(path, "/storage/"_iobfs.c_str(), strlen("/storage/"_iobfs.c_str())) == 0;
+}
+
+static void fail_child(int sock, const char *stage, int err, int index = -1,
+                       const char *source = nullptr, const char *target = nullptr) {
+    write_mount_status(sock, make_mount_status(-1, stage, err, index, source, target));
+    sys__exit(1);
+}
 
 /// wait for system mount
 static bool wait_zygote(int pid) {
@@ -132,9 +222,10 @@ static bool isFuse() {
 }
 
 namespace Mount {
-    jboolean bind_mount(JNIEnv *env, jclass clazz, jint pid, jint uid,
-                        jboolean unmountDataRestriction,
-                        jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets) {
+    static MountStatus bind_mount_internal(JNIEnv *env, jint pid, jint uid,
+                                           jboolean unmountDataRestriction,
+                                           jboolean fuseBypass, jobjectArray jsources,
+                                           jobjectArray jtargets) {
         /// @see /system/vold/Utils.cpp IsSdcardfsUsed()
         const bool useSdcardFs = !isFuse();
         const uid_t user_id = uid / AID_USER_OFFSET;
@@ -142,49 +233,53 @@ namespace Mount {
         const std::string storageSource = "/mnt/runtime/write"_iobfs.c_str();
         const std::string userSource = StringPrintf("/mnt/user/%d"_iobfs.c_str(), user_id);
 
+        if (jsources == nullptr || jtargets == nullptr ||
+            env->GetArrayLength(jsources) != env->GetArrayLength(jtargets)) {
+            return make_mount_status(-1, "invalid_args", EINVAL);
+        }
         if (!wait_zygote(pid)) {
-            return false;
+            return make_mount_status(-1, "wait_zygote", errno == 0 ? ETIMEDOUT : errno);
         }
         int sv[2];
         if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) != 0) {
             LOGE("%s"_iobfs.c_str(), "Failed to create Unix-domain socket pair"_iobfs.c_str());
-            return false;
+            return make_mount_status(-1, "socketpair", errno);
         }
         int child_pid = sys_fork();
         if (child_pid) {
             // In the parent process.
             if (child_pid == -1) {
+                const int saved_errno = errno;
                 close(sv[0]);
                 close(sv[1]);
-                return false;
+                return make_mount_status(-1, "fork", saved_errno);
             } else {
                 int sock = sv[0];
                 set_socket_timeout(sock, 1);
-                int mount_state = read_int(sock);
-                if (mount_state == -1) {
+                MountStatus status{};
+                if (!read_mount_status(sock, &status)) {
                     // Child stuck, kill it.
                     sys_kill(child_pid, SIGKILL);
+                    status = make_mount_status(-1, "child_result_timeout", errno == 0 ? ETIMEDOUT : errno);
                 }
                 close(sv[0]);
                 close(sv[1]);
                 // setns() may stuck the child, kill if this happen.
                 kill_child_if_stuck(child_pid);
-                return mount_state == 0;
+                return status;
             }
         }
         int sock = sv[1];
         // In the child process we switch to the new namespace and start mounting,
         // so that all mount operations will not affect parent process.
         if (!switch_mnt_ns(pid)) {
-            write_int(sock, -1);
-            sys__exit(1);
+            fail_child(sock, "setns", errno == 0 ? EPERM : errno);
         }
 #ifdef REMOUNT_STORAGE
         if (TEMP_FAILURE_RETRY(umount2("/storage/"_iobfs.c_str(), UMOUNT_NOFOLLOW | MNT_DETACH)) <
             0 && errno != EINVAL && errno != ENOENT) {
             LOGE("Failed to unmount /storage/: %s"_iobfs.c_str(), strerror(errno));
-            write_int(sock, -1);
-            sys__exit(1);
+            fail_child(sock, "unmount_storage", errno, -1, nullptr, "/storage/"_iobfs.c_str());
         }
         /// @see EmulatedVolume::doMount()
         if (useSdcardFs) {
@@ -194,23 +289,22 @@ namespace Mount {
                           nullptr))) {
                 LOGE("Failed to mount %s for %d: %s"_iobfs.c_str(), storageSource.c_str(), pid,
                      strerror(errno));
-                write_int(sock, -1);
-                sys__exit(1);
+                fail_child(sock, "remount_storage", errno, -1, storageSource.c_str(),
+                           storage.c_str());
             }
             if (TEMP_FAILURE_RETRY(
                     mount(nullptr, storage.c_str(), nullptr, MS_REC | MS_SLAVE, nullptr))) {
                 LOGE("Failed to set MS_SLAVE to /storage for %d: %s"_iobfs.c_str(), pid,
                      strerror(errno));
-                write_int(sock, -1);
-                sys__exit(1);
+                fail_child(sock, "remount_storage_slave", errno, -1, nullptr, storage.c_str());
             }
             if (TEMP_FAILURE_RETRY(
                     mount(userSource.c_str(), "/storage/self"_iobfs.c_str(), nullptr, MS_BIND,
                           nullptr))) {
                 LOGE("Failed to mount %s for %d: %s"_iobfs.c_str(), userSource.c_str(), pid,
                      strerror(errno));
-                write_int(sock, -1);
-                sys__exit(1);
+                fail_child(sock, "mount_storage_self", errno, -1, userSource.c_str(),
+                           "/storage/self"_iobfs.c_str());
             }
         } else {
             if (TEMP_FAILURE_RETRY(
@@ -218,8 +312,8 @@ namespace Mount {
                           nullptr))) {
                 LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                      userSource.c_str(), storage.c_str(), strerror(errno));
-                write_int(sock, -1);
-                sys__exit(1);
+                fail_child(sock, "remount_storage", errno, -1, userSource.c_str(),
+                           storage.c_str());
             }
         }
         // some little tricks on the system with FUSE enabled
@@ -249,8 +343,8 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidDataSourceDir.c_str(), androidDataFuseDir.c_str(), strerror(errno));
-                    write_int(sock, -1);
-                    sys__exit(1);
+                    fail_child(sock, "fuse_bypass_data_source", errno, -1,
+                               androidDataSourceDir.c_str(), androidDataFuseDir.c_str());
                 }
                 const std::string androidObbSourceDir = StringPrintf(
                         "/data/media/%d/Android/obb"_iobfs.c_str(), user_id);
@@ -261,8 +355,8 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidObbSourceDir.c_str(), androidObbFuseDir.c_str(), strerror(errno));
-                    write_int(sock, -1);
-                    sys__exit(1);
+                    fail_child(sock, "fuse_bypass_obb_source", errno, -1,
+                               androidObbSourceDir.c_str(), androidObbFuseDir.c_str());
                 }
 
                 const std::string androidDataDir = StringPrintf(
@@ -272,8 +366,8 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidDataFuseDir.c_str(), androidDataDir.c_str(), strerror(errno));
-                    write_int(sock, -1);
-                    sys__exit(1);
+                    fail_child(sock, "fuse_bypass_data_target", errno, -1,
+                               androidDataFuseDir.c_str(), androidDataDir.c_str());
                 }
                 const std::string androidObbDir = StringPrintf(
                         "/storage/emulated/%d/Android/obb"_iobfs.c_str(), user_id);
@@ -282,8 +376,8 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidObbFuseDir.c_str(), androidObbDir.c_str(), strerror(errno));
-                    write_int(sock, -1);
-                    sys__exit(1);
+                    fail_child(sock, "fuse_bypass_obb_target", errno, -1,
+                               androidObbFuseDir.c_str(), androidObbDir.c_str());
                 }
             }
         }
@@ -291,13 +385,27 @@ namespace Mount {
         // Mount as user wish.
         for (int i = 0, length = env->GetArrayLength(jsources); i < length; i++) {
             auto jsource = (jstring) env->GetObjectArrayElement(jsources, i);
-            if (jsource == nullptr) continue;
+            if (jsource == nullptr) {
+                fail_child(sock, "invalid_source", EINVAL, i);
+            }
             const char *source = env->GetStringUTFChars(jsource, nullptr);
-            if (source == nullptr) { env->DeleteLocalRef(jsource); continue; }
+            if (source == nullptr) {
+                fail_child(sock, "invalid_source", EINVAL, i);
+            }
             auto jtarget = (jstring) env->GetObjectArrayElement(jtargets, i);
-            if (jtarget == nullptr) { env->ReleaseStringUTFChars(jsource, source); env->DeleteLocalRef(jsource); continue; }
+            if (jtarget == nullptr) {
+                fail_child(sock, "invalid_target", EINVAL, i, source);
+            }
             const char *target = env->GetStringUTFChars(jtarget, nullptr);
-            if (target == nullptr) { env->ReleaseStringUTFChars(jsource, source); env->DeleteLocalRef(jsource); env->DeleteLocalRef(jtarget); continue; }
+            if (target == nullptr) {
+                fail_child(sock, "invalid_target", EINVAL, i, source);
+            }
+            if (!is_storage_path(source)) {
+                fail_child(sock, "invalid_source", EINVAL, i, source, target);
+            }
+            if (!is_storage_path(target)) {
+                fail_child(sock, "invalid_target", EINVAL, i, source, target);
+            }
             const std::string mnt_source = (useSdcardFs ? storageSource : userSource) +
                                            std::string(source).substr(storage.length(),
                                                                       strlen(source));
@@ -305,18 +413,33 @@ namespace Mount {
                     mount(mnt_source.c_str(), target, nullptr, MS_BIND | MS_REC, nullptr))) {
                 LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                      mnt_source.c_str(), target, strerror(errno));
-                write_int(sock, -1);
-                sys__exit(1);
+                fail_child(sock, "mount_rule", errno, i, mnt_source.c_str(), target);
             }
             env->ReleaseStringUTFChars(jsource, source);
             env->ReleaseStringUTFChars(jtarget, target);
             env->DeleteLocalRef(jsource);
             env->DeleteLocalRef(jtarget);
         }
-        write_int(sock, 0);
+        write_mount_status(sock, make_mount_status(0, "success"));
         close(sv[0]);
         close(sv[1]);
         sys__exit(0);
-        return true;
+        return make_mount_status(0, "success");
+    }
+
+    jboolean bind_mount(JNIEnv *env, jclass clazz, jint pid, jint uid,
+                        jboolean unmountDataRestriction,
+                        jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets) {
+        return bind_mount_internal(env, pid, uid, unmountDataRestriction, fuseBypass,
+                                   jsources, jtargets).ok == 0;
+    }
+
+    jstring bind_mount_status(JNIEnv *env, jclass clazz, jint pid, jint uid,
+                              jboolean unmountDataRestriction,
+                              jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets) {
+        const auto status = bind_mount_internal(env, pid, uid, unmountDataRestriction, fuseBypass,
+                                                jsources, jtargets);
+        const auto json = mount_status_to_json(status, pid, uid);
+        return env->NewStringUTF(json.c_str());
     }
 }  // namespace Mount

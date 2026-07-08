@@ -186,6 +186,11 @@ class VfsLayerController {
                     "lastMountFailurePid" to (lastFailure?.pid ?: 0).toString(),
                     "lastMountFailureUid" to (lastFailure?.uid ?: 0).toString(),
                     "lastMountFailureReason" to (lastFailure?.reason ?: ""),
+                    "lastMountFailureStage" to (lastFailure?.stage ?: ""),
+                    "lastMountFailureErrno" to (lastFailure?.errno ?: 0).toString(),
+                    "lastMountFailureIndex" to (lastFailure?.failedIndex ?: -1).toString(),
+                    "lastMountFailureSource" to (lastFailure?.source ?: ""),
+                    "lastMountFailureTarget" to (lastFailure?.target ?: ""),
                 ),
             )
         } else {

@@ -1,8 +1,11 @@
 package me.gm.cleaner.runtime.server
 
+import android.util.Log
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
 import me.gm.cleaner.core.storage.redirect.domain.RedirectRule
+import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
 
@@ -33,8 +36,11 @@ object RuntimeRedirectPolicyFactory {
             for (userId in userIds) {
                 val zipped = ServicePreferences.getPackageSrZipped(packageName, userId)
                 if (zipped.isNotEmpty()) {
-                    userRules[userId] = zipped.map { (source, target) ->
-                        RedirectRule(source = source, target = target)
+                    val validRules = zipped.mapNotNull { (source, target) ->
+                        buildRedirectRuleOrNull(packageName, userId, source, target)
+                    }
+                    if (validRules.isNotEmpty()) {
+                        userRules[userId] = validRules
                     }
                 }
             }
@@ -57,6 +63,48 @@ object RuntimeRedirectPolicyFactory {
             aggressivelyPromptForReadingMediaFiles = ServicePreferences.aggressivelyPromptForReadingMediaFiles,
             upsertRecords = ServicePreferences.upsert,
         )
+    }
+
+    private fun buildRedirectRuleOrNull(
+        packageName: String,
+        userId: Int,
+        source: String,
+        target: String,
+    ): RedirectRule? {
+        val normalizedSource = normalizeExternalStoragePath(source)
+        val normalizedTarget = normalizeExternalStoragePath(target)
+        if (normalizedSource == null || normalizedTarget == null) {
+            Log.w(
+                "MC_REDIRECT",
+                "[RuntimeRedirectPolicyFactory] drop invalid rule pkg=$packageName " +
+                        "user=$userId source=$source target=$target"
+            )
+            return null
+        }
+        if (normalizedSource == normalizedTarget) {
+            Log.w(
+                "MC_REDIRECT",
+                "[RuntimeRedirectPolicyFactory] drop no-op rule pkg=$packageName " +
+                        "user=$userId path=$normalizedSource"
+            )
+            return null
+        }
+        return RedirectRule(source = normalizedSource, target = normalizedTarget)
+    }
+
+    private fun normalizeExternalStoragePath(path: String): String? {
+        val trimmed = path.trim()
+        if (trimmed.isEmpty() || '\u0000' in trimmed || !trimmed.startsWith("/")) {
+            return null
+        }
+        val normalized = try {
+            File(trimmed).canonicalPath
+        } catch (e: Exception) {
+            File(trimmed).absolutePath
+        }
+        return normalized.takeIf {
+            RuntimeFileUtils.startsWith(RuntimeFileUtils.externalStorageDirParent, it)
+        }
     }
 
 }

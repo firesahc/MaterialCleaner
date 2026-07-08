@@ -192,6 +192,10 @@
     <string name="storage_redirect_storage_permissions_read">读取外部存储空间</string>
     <string name="storage_redirect_storage_permissions_write">写入外部存储空间</string>
     <string name="storage_redirect_storage_permissions_manage">管理外部存储空间</string>
+    <string name="storage_redirect_storage_permissions_read_media_images">读取图片</string>
+    <string name="storage_redirect_storage_permissions_read_media_video">读取视频</string>
+    <string name="storage_redirect_storage_permissions_read_media_audio">读取音频</string>
+    <string name="storage_redirect_storage_permissions_read_media_visual_user_selected">选定的照片和视频</string>
     <string name="storage_redirect_storage_permissions_granted">允许</string>
     <string name="storage_redirect_storage_permissions_denied">拒绝</string>
     <string name="storage_redirect_storage_permissions_ignored">忽略</string>

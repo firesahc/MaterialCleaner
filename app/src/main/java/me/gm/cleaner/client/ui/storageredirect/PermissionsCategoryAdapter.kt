@@ -19,6 +19,7 @@ import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.databinding.StorageRedirectCategoryStoragePermissionsHeaderBinding
 import me.gm.cleaner.databinding.StorageRedirectCategoryStoragePermissionsItemBinding
 import me.gm.cleaner.util.DividerViewHolder
+import me.gm.cleaner.util.PermissionUtils
 import rikka.preference.simplemenu.SimpleMenuPopupWindow
 
 @SuppressLint("RestrictedApi")
@@ -141,6 +142,28 @@ class PermissionsCategoryAdapter(
                 put(
                     Manifest.permission.MANAGE_EXTERNAL_STORAGE,
                     R.string.storage_redirect_storage_permissions_manage
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                put(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    R.string.storage_redirect_storage_permissions_read_media_images
+                )
+                put(
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    R.string.storage_redirect_storage_permissions_read_media_video
+                )
+                put(
+                    Manifest.permission.READ_MEDIA_AUDIO,
+                    R.string.storage_redirect_storage_permissions_read_media_audio
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED in PermissionUtils.mediaStoragePermissions
+            ) {
+                put(
+                    Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+                    R.string.storage_redirect_storage_permissions_read_media_visual_user_selected
                 )
             }
         }

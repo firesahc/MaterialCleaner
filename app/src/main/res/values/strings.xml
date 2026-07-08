@@ -222,6 +222,10 @@
     <string name="storage_redirect_storage_permissions_read">Read external storage</string>
     <string name="storage_redirect_storage_permissions_write">Write external storage</string>
     <string name="storage_redirect_storage_permissions_manage">Manage external storage</string>
+    <string name="storage_redirect_storage_permissions_read_media_images">Read images</string>
+    <string name="storage_redirect_storage_permissions_read_media_video">Read videos</string>
+    <string name="storage_redirect_storage_permissions_read_media_audio">Read audio</string>
+    <string name="storage_redirect_storage_permissions_read_media_visual_user_selected">Selected photos and videos</string>
     <string name="storage_redirect_storage_permissions_granted">Granted</string>
     <string name="storage_redirect_storage_permissions_denied">Denied</string>
     <string name="storage_redirect_storage_permissions_ignored">Ignored</string>

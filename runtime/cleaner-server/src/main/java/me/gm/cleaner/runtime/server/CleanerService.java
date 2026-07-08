@@ -124,6 +124,9 @@ public class CleanerService extends ICleanerService.Stub {
     private int getOpMode(final ApplicationInfo appInfo, final String permissionName)
             throws RemoteException {
         final var opCode = HiddenApiBridge.permissionToOpCode(permissionName);
+        if (opCode < 0) {
+            return AppOpsManager.MODE_DEFAULT;
+        }
         // minSdk=26 (Android 8.0/O)，getUidOps 在所有支持的设备上始终可用
         final var opToMode = SystemService.getUidOps(appInfo.uid, new int[]{opCode});
         if (opToMode == null) {
@@ -179,8 +182,12 @@ public class CleanerService extends ICleanerService.Stub {
             }
         }
         final var opCode = HiddenApiBridge.permissionToOpCode(permissionName);
-        final var mode = grant ? AppOpsManager.MODE_ALLOWED : AppOpsManager.MODE_IGNORED;
-        SystemService.setUidMode(opCode, appInfo.uid, mode);
+        if (opCode >= 0) {
+            final var mode = grant ? AppOpsManager.MODE_ALLOWED : AppOpsManager.MODE_IGNORED;
+            SystemService.setUidMode(opCode, appInfo.uid, mode);
+        } else {
+            Log.w(TAG, "setPackagePermission: no AppOps mapping for " + permissionName);
+        }
     }
 
     @Override

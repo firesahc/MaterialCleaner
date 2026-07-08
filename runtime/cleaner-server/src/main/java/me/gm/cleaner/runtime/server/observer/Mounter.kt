@@ -67,11 +67,14 @@ class Mounter {
         val rules = VfsRuntimeConfigStore.getMountRules(packageName, userId)
 
         if (rules == null || rules.isEmpty()) {
-            return RuntimeFileUtils.bind_mount(
+            val result = RuntimeFileUtils.bind_mount_result(
                 pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
                 emptyArray(), emptyArray()
             )
+            Log.i("MC_REDIRECT", "[Mounter] bindMount result=${result.success} " +
+                    "pkg=$packageName pid=$pid detail=${result.reason}")
+            return handleBindMountResultLocked(packageName, pid, uid, result)
         }
 
         pidRecords.put(packageName, pid)
@@ -82,14 +85,23 @@ class Mounter {
                 mkdirRecords.putAll(packageName, mkdirRecord)
             }
         }
-        val ret = RuntimeFileUtils.bind_mount(
+        val result = RuntimeFileUtils.bind_mount_result(
             pid, uid,
             !isFuseBpfEnabled && recordExternalAppSpecificStorage, isFuseBpfEnabled,
             rules.sources.toTypedArray(), rules.targets.toTypedArray()
         )
-        Log.i("MC_REDIRECT", "[Mounter] bindMount result=$ret pkg=$packageName pid=$pid " +
-                "sources=${rules.sources} targets=${rules.targets}")
-        if (ret) {
+        Log.i("MC_REDIRECT", "[Mounter] bindMount result=${result.success} pkg=$packageName " +
+                "pid=$pid sources=${rules.sources} targets=${rules.targets} detail=${result.reason}")
+        return handleBindMountResultLocked(packageName, pid, uid, result)
+    }
+
+    private fun handleBindMountResultLocked(
+        packageName: String,
+        pid: Int,
+        uid: Int,
+        result: RuntimeFileUtils.BindMountResult
+    ): Boolean {
+        if (result.success) {
             mountFailedPids.remove(pid)
             mountRetryCount.remove(pid)
         } else {
@@ -100,11 +112,16 @@ class Mounter {
                 packageName = packageName,
                 pid = pid,
                 uid = uid,
-                reason = "bind_mount returned false",
+                reason = result.reason,
+                stage = result.stage,
+                errno = result.errno,
+                failedIndex = result.failedIndex,
+                source = result.source,
+                target = result.target,
             )
             scheduleMountRetryLocked(packageName, pid, uid)
         }
-        return ret
+        return result.success
     }
 
     /**
@@ -347,5 +364,10 @@ class Mounter {
         val pid: Int,
         val uid: Int,
         val reason: String,
+        val stage: String = "",
+        val errno: Int = 0,
+        val failedIndex: Int = -1,
+        val source: String = "",
+        val target: String = "",
     )
 }

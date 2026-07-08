@@ -7,6 +7,10 @@ namespace Mount {
     jboolean bind_mount(JNIEnv *env, jclass clazz, jint pid, jint uid,
                         jboolean unmountDataRestriction,
                         jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets);
+
+    jstring bind_mount_status(JNIEnv *env, jclass clazz, jint pid, jint uid,
+                              jboolean unmountDataRestriction,
+                              jboolean fuseBypass, jobjectArray jsources, jobjectArray jtargets);
 }
 
 #endif // MOUNT_H

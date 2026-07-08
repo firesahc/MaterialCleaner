@@ -26,20 +26,44 @@ import me.gm.cleaner.app.BaseFragment
 
 object PermissionUtils {
 
-    fun containsStoragePermissions(pi: PackageInfo): Boolean = pi.requestedPermissions?.run {
-        (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
-                pi.applicationInfo.targetSdkVersion < Build.VERSION_CODES.R) &&
-                (contains(Manifest.permission.READ_EXTERNAL_STORAGE) ||
-                        contains(Manifest.permission.WRITE_EXTERNAL_STORAGE)) ||
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                contains(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
+    private val legacyStoragePermissions = setOf(
+        Manifest.permission.READ_EXTERNAL_STORAGE,
+        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+    )
+
+    val mediaStoragePermissions: List<String>
+        get() = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.READ_MEDIA_IMAGES)
+                add(Manifest.permission.READ_MEDIA_VIDEO)
+                add(Manifest.permission.READ_MEDIA_AUDIO)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+            }
+        }
+
+    fun containsStoragePermissions(pi: PackageInfo): Boolean = pi.requestedPermissions?.let {
+        val requested = it.toSet()
+        val hasLegacyStorage = (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                pi.applicationInfo.targetSdkVersion < Build.VERSION_CODES.TIRAMISU) &&
+                requested.any(legacyStoragePermissions::contains)
+        val hasAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                Manifest.permission.MANAGE_EXTERNAL_STORAGE in requested
+        val hasMediaStorage = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                requested.any(mediaStoragePermissions::contains)
+        hasLegacyStorage || hasAllFilesAccess || hasMediaStorage
     } == true
 
     fun checkSelfStoragePermissions(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.R && ContextCompat.checkSelfPermission(
             context, Manifest.permission.WRITE_EXTERNAL_STORAGE
         ) == PackageManager.PERMISSION_GRANTED ||
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager() ||
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                mediaStoragePermissions.any {
+                    ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+                }
 
     fun checkSelfPostNotificationPermission(context: Context, vararg channelIds: String): Boolean =
         NotificationManagerCompat.from(context).run {
