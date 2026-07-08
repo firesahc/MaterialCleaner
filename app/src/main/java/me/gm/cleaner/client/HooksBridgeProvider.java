@@ -2,12 +2,18 @@ package me.gm.cleaner.client;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Context;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Process;
 import android.os.RemoteException;
 import android.util.Log;
+
+import java.util.Arrays;
 
 import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
@@ -33,6 +39,17 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
  */
 public class HooksBridgeProvider extends ContentProvider {
     private static final String TAG = "HooksBridge";
+    private static final String METHOD_REGISTER_HOOKS_CALLBACK = "register_hooks_callback";
+    private static final String METHOD_GET_HOOKS_SERVICE = "get_hooks_service";
+    private static final String EXTRA_BINDER = "binder";
+    private static final int AID_USER_OFFSET = 100000;
+    private static final String[] MEDIA_PROVIDER_PACKAGES = {
+            "com.android.providers.media",
+            "com.android.providers.media.module",
+            "com.google.android.providers.media.module"
+    };
+
+    private static volatile Context sAppContext;
 
     /** Xposed-side service registered from MediaProvider process. */
     @GuardedBy("sMediaProviderLock")
@@ -56,6 +73,121 @@ public class HooksBridgeProvider extends ContentProvider {
             markMediaProviderDisconnected(service, "query version failed");
             return false;
         }
+    }
+
+    private static int toAppId(int uid) {
+        return uid % AID_USER_OFFSET;
+    }
+
+    private static boolean isSelfUid(int uid) {
+        return uid == Process.myUid();
+    }
+
+    private static boolean isPrivilegedServerUid(int uid) {
+        int appId = toAppId(uid);
+        return appId == Process.ROOT_UID
+                || appId == Process.SYSTEM_UID
+                || appId == Process.SHELL_UID;
+    }
+
+    private static boolean isKnownMediaProviderPackage(@Nullable String packageName) {
+        if (packageName == null) {
+            return false;
+        }
+        for (String candidate : MEDIA_PROVIDER_PACKAGES) {
+            if (candidate.equals(packageName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isKnownMediaProviderUid(@Nullable Context context, int uid) {
+        if (context == null) {
+            return false;
+        }
+        // Query with the provider app identity so Android 11+ package visibility is stable.
+        final long token = Binder.clearCallingIdentity();
+        try {
+            PackageManager packageManager = context.getPackageManager();
+            String[] packages = packageManager.getPackagesForUid(uid);
+            if (packages != null) {
+                for (String packageName : packages) {
+                    if (isKnownMediaProviderPackage(packageName)) {
+                        return true;
+                    }
+                }
+            }
+
+            int callerAppId = toAppId(uid);
+            for (String packageName : MEDIA_PROVIDER_PACKAGES) {
+                try {
+                    int packageUid = packageManager.getPackageUid(packageName, 0);
+                    if (toAppId(packageUid) == callerAppId) {
+                        return true;
+                    }
+                } catch (PackageManager.NameNotFoundException ignored) {
+                }
+            }
+            return false;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Failed to verify MediaProvider caller uid=" + uid, e);
+            return false;
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
+    private static boolean isAuthorizedGetHooksServiceCaller(int uid) {
+        return isSelfUid(uid) || isPrivilegedServerUid(uid);
+    }
+
+    private static boolean isAuthorizedRegisterHooksCallbackCaller(@Nullable Context context, int uid) {
+        return isSelfUid(uid) || isKnownMediaProviderUid(context, uid);
+    }
+
+    private static String describePackagesForUid(@Nullable Context context, int uid) {
+        if (context == null) {
+            return "context_unavailable";
+        }
+        final long token = Binder.clearCallingIdentity();
+        try {
+            String[] packages = context.getPackageManager().getPackagesForUid(uid);
+            return packages == null ? "[]" : Arrays.toString(packages);
+        } catch (RuntimeException e) {
+            return "query_failed:" + e.getClass().getSimpleName();
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
+    }
+
+    private static void rejectUnauthorizedCaller(
+            @NonNull String entryPoint,
+            @NonNull String method,
+            int uid,
+            int pid
+    ) {
+        Context context = sAppContext;
+        String packages = describePackagesForUid(context, uid);
+        Log.w(TAG, "Rejected unauthorized " + entryPoint + ": method=" + method
+                + " uid=" + uid + " pid=" + pid + " packages=" + packages);
+        throw new SecurityException("Unauthorized HooksBridge caller: " + method);
+    }
+
+    private static void enforceHooksServiceServerCaller(@NonNull String method) {
+        int uid = Binder.getCallingUid();
+        if (isAuthorizedGetHooksServiceCaller(uid)) {
+            return;
+        }
+        rejectUnauthorizedCaller("service", method, uid, Binder.getCallingPid());
+    }
+
+    private static void enforceHooksServiceMediaProviderCaller(@NonNull String method) {
+        int uid = Binder.getCallingUid();
+        if (isAuthorizedRegisterHooksCallbackCaller(sAppContext, uid)) {
+            return;
+        }
+        rejectUnauthorizedCaller("service", method, uid, Binder.getCallingPid());
     }
 
     @Nullable
@@ -116,6 +248,7 @@ public class HooksBridgeProvider extends ContentProvider {
     private static final ICleanerHooksService sHooksService = new ICleanerHooksService.Stub() {
         @Override
         public void setCleanerServerBinder(ICleanerServerCallback callback) {
+            enforceHooksServiceServerCaller("setCleanerServerBinder");
             sServerCallback = callback;
             sNeedsServerCallbackForward = true;
             // Forward to Xposed if registered
@@ -137,6 +270,7 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public void setMediaProviderBinder(IMediaProviderHooksService service) {
+            enforceHooksServiceMediaProviderCaller("setMediaProviderBinder");
             if (service == null) {
                 markMediaProviderDisconnected(null, "null binder registered");
                 return;
@@ -204,6 +338,7 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public void refreshPolicyFromDataBus() {
+            enforceHooksServiceServerCaller("refreshPolicyFromDataBus");
             IMediaProviderHooksService xposed = getAliveMediaProviderService();
             if (xposed != null) {
                 try {
@@ -217,6 +352,7 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public long getNativeMountPointsGeneration() {
+            enforceHooksServiceServerCaller("getNativeMountPointsGeneration");
             IMediaProviderHooksService xposed = getAliveMediaProviderService();
             if (xposed != null) {
                 try {
@@ -231,11 +367,13 @@ public class HooksBridgeProvider extends ContentProvider {
 
         @Override
         public boolean isMediaProviderHookConnected() {
+            enforceHooksServiceServerCaller("isMediaProviderHookConnected");
             return isMediaProviderConnected();
         }
 
         @Override
         public String getNativeHookStatusJson() {
+            enforceHooksServiceServerCaller("getNativeHookStatusJson");
             IMediaProviderHooksService xposed = getAliveMediaProviderService();
             if (xposed != null) {
                 try {
@@ -251,16 +389,40 @@ public class HooksBridgeProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        Context context = getContext();
+        if (context != null) {
+            sAppContext = context.getApplicationContext();
+        }
         return true;
+    }
+
+    private void enforceProviderCaller(@NonNull String method) {
+        int uid = Binder.getCallingUid();
+        boolean allowed;
+        switch (method) {
+            case METHOD_REGISTER_HOOKS_CALLBACK:
+                allowed = isAuthorizedRegisterHooksCallbackCaller(getContext(), uid);
+                break;
+            case METHOD_GET_HOOKS_SERVICE:
+                allowed = isAuthorizedGetHooksServiceCaller(uid);
+                break;
+            default:
+                allowed = false;
+                break;
+        }
+        if (!allowed) {
+            rejectUnauthorizedCaller("provider", method, uid, Binder.getCallingPid());
+        }
     }
 
     @Nullable
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
         switch (method) {
-            case "register_hooks_callback": {
+            case METHOD_REGISTER_HOOKS_CALLBACK: {
+                enforceProviderCaller(method);
                 if (extras == null) break;
-                IBinder binder = extras.getBinder("binder");
+                IBinder binder = extras.getBinder(EXTRA_BINDER);
                 if (binder != null) {
                     try {
                         sHooksService.setMediaProviderBinder(
@@ -271,9 +433,10 @@ public class HooksBridgeProvider extends ContentProvider {
                 }
                 break;
             }
-            case "get_hooks_service": {
+            case METHOD_GET_HOOKS_SERVICE: {
+                enforceProviderCaller(method);
                 Bundle result = new Bundle();
-                result.putBinder("binder", sHooksService.asBinder());
+                result.putBinder(EXTRA_BINDER, sHooksService.asBinder());
                 return result;
             }
         }
