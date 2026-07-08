@@ -81,6 +81,7 @@ public class FuseJavaGate {
         final List<DiscoveredMethod> discovered = scanFuseMethods();
         final List<String> hookedMethods = new ArrayList<>();
         final List<String> unknownMethods = new ArrayList<>();
+        final List<String> failedMethods = new ArrayList<>();
 
         for (final DiscoveredMethod dm : discovered) {
             final BehaviorHandler handler = registry.lookup(dm.method.getName());
@@ -94,8 +95,14 @@ public class FuseJavaGate {
                         + " (unanalyzable params)");
                 continue;
             }
-            installHook(dm.method, handler, roles);
-            hookedMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes()));
+            final String signature = dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes());
+            try {
+                installHook(dm.method, handler, roles);
+                hookedMethods.add(signature);
+            } catch (final Throwable t) {
+                failedMethods.add(signature + " (" + t.getClass().getName() + ": " + t.getMessage() + ")");
+                Log.e("MC_REDIRECT", "[FuseJavaGate] install failed " + signature, t);
+            }
         }
 
         // 汇总日志
@@ -105,8 +112,14 @@ public class FuseJavaGate {
         for (final String s : unknownMethods) {
             Log.w("MC_REDIRECT", "[FuseJavaGate] UNKNOWN FUSE method: " + s);
         }
+        for (final String s : failedMethods) {
+            Log.e("MC_REDIRECT", "[FuseJavaGate] FAILED FUSE method: " + s);
+        }
         Log.i("MC_REDIRECT", "[FuseJavaGate] initFuseHooks complete: "
-                + hookedMethods.size() + " hooked, " + unknownMethods.size() + " unknown");
+                + hookedMethods.size() + " hooked, " + unknownMethods.size()
+                + " unknown, " + failedMethods.size() + " failed");
+        NativeHookStatus.INSTANCE.markFuseJavaGateScanned(
+                discovered.size(), hookedMethods, unknownMethods, failedMethods);
     }
 
     /**
@@ -182,7 +195,7 @@ public class FuseJavaGate {
                 return;
             }
             final String packageName = getCallingPackageName(param.thisObject, uid);
-            dispatchFileSystemEvent(packageName, path, eventType);
+            dispatchFileSystemEvent(packageName, path, eventType, methodName, uid);
             final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
             if (mService.isReadOnly(mountedPath, uid)) {
                 param.setResult(OsConstants.EPERM);
@@ -206,8 +219,10 @@ public class FuseJavaGate {
             }
             final String packageName = getCallingPackageName(param.thisObject, uid);
             final int isDir = new File(oldPath).isFile() ? 0 : DIR;
-            dispatchFileSystemEvent(packageName, oldPath, FileObserver.MOVED_FROM | isDir);
-            dispatchFileSystemEvent(packageName, newPath, FileObserver.MOVED_TO | isDir);
+            dispatchFileSystemEvent(packageName, oldPath, FileObserver.MOVED_FROM | isDir,
+                    methodName, uid);
+            dispatchFileSystemEvent(packageName, newPath, FileObserver.MOVED_TO | isDir,
+                    methodName, uid);
             final String mountedOldPath = redirectFusePath(param, roles.pathIndex, uid, methodName + ".oldPath");
             final String mountedNewPath = redirectFusePath(param, roles.path2Index, uid, methodName + ".newPath");
             if (mService.isReadOnly(mountedOldPath, uid) || mService.isReadOnly(mountedNewPath, uid)) {
@@ -282,7 +297,8 @@ public class FuseJavaGate {
                     final String packageName = getCallingPackageName(param.thisObject, uid);
                     dispatchFileSystemEvent(packageName, path,
                             (accessType == DIRECTORY_ACCESS_FOR_CREATE
-                                    ? FileObserver.CREATE : FileObserver.DELETE) | DIR);
+                                    ? FileObserver.CREATE : FileObserver.DELETE) | DIR,
+                            methodName, uid);
                 }
                 final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
                 if (accessType != DIRECTORY_ACCESS_FOR_READ
@@ -294,7 +310,8 @@ public class FuseJavaGate {
                 final boolean forCreate = (boolean) extraArg;
                 final String packageName = getCallingPackageName(param.thisObject, uid);
                 dispatchFileSystemEvent(packageName, path,
-                        (forCreate ? FileObserver.CREATE : FileObserver.DELETE) | DIR);
+                        (forCreate ? FileObserver.CREATE : FileObserver.DELETE) | DIR,
+                        methodName, uid);
                 final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
                 if (mService.isReadOnly(mountedPath, uid)) {
                     param.setResult(OsConstants.EPERM);
@@ -422,15 +439,15 @@ public class FuseJavaGate {
 
         BehaviorRegistry() {
             // ── 注册表：精确方法名 → 行为模板 ──
-            exactRegistry.put("insertFileIfNecessaryForFuse", fileOp(FileObserver.CREATE));
-            exactRegistry.put("deleteFileForFuse", fileOp(FileObserver.DELETE));
-            exactRegistry.put("renameForFuse", renameOp());
-            exactRegistry.put("openWithFuse", simpleRedirect());
-            exactRegistry.put("onFileLookupForFuse", multiArgConsistency());
-            exactRegistry.put("onFileOpenForFuse", multiArgConsistency());
-            exactRegistry.put("isDirAccessAllowedForFuse", accessCheck());
-            exactRegistry.put("isDirectoryCreationOrDeletionAllowedForFuse", accessCheck());
-            exactRegistry.put("isUidAllowedAccessToDataOrObbPathForFuse", uidTracking());
+            exactRegistry.put("insertfileifnecessaryforfuse", fileOp(FileObserver.CREATE));
+            exactRegistry.put("deletefileforfuse", fileOp(FileObserver.DELETE));
+            exactRegistry.put("renameforfuse", renameOp());
+            exactRegistry.put("openwithfuse", simpleRedirect());
+            exactRegistry.put("onfilelookupforfuse", multiArgConsistency());
+            exactRegistry.put("onfileopenforfuse", multiArgConsistency());
+            exactRegistry.put("isdiraccessallowedforfuse", accessCheck());
+            exactRegistry.put("isdirectorycreationordeletionallowedforfuse", accessCheck());
+            exactRegistry.put("isuidallowedaccesstodataorobbpathforfuse", uidTracking());
 
             // ── 启发式规则（按优先级排序）──
             // 规则：同时匹配 "insert" / "create" / "add" 和 "Fuse" → fileOp(CREATE)
@@ -439,12 +456,12 @@ public class FuseJavaGate {
             heuristicRules.add(new HeuristicRule("rename", renameOp()));
             heuristicRules.add(new HeuristicRule("open", simpleRedirect()));
             // "onFile" 前缀 → multiArgConsistency
-            heuristicRules.add(new HeuristicRule.PrefixRule("onFile", multiArgConsistency()));
+            heuristicRules.add(new HeuristicRule.PrefixRule("onfile", multiArgConsistency()));
             // "isDir" 或 "isDirectory" 前缀 → accessCheck
-            heuristicRules.add(new HeuristicRule.PrefixRule("isDir", accessCheck()));
-            heuristicRules.add(new HeuristicRule.PrefixRule("isDirectory", accessCheck()));
+            heuristicRules.add(new HeuristicRule.PrefixRule("isdir", accessCheck()));
+            heuristicRules.add(new HeuristicRule.PrefixRule("isdirectory", accessCheck()));
             // "isUid" 前缀 → uidTracking
-            heuristicRules.add(new HeuristicRule.PrefixRule("isUid", uidTracking()));
+            heuristicRules.add(new HeuristicRule.PrefixRule("isuid", uidTracking()));
         }
 
         /**
@@ -454,14 +471,15 @@ public class FuseJavaGate {
          * @return 行为模板，或 null 如果无法匹配
          */
         BehaviorHandler lookup(final String methodName) {
+            final String normalizedName = methodName.toLowerCase(Locale.ROOT);
             // 1. 精确匹配
-            final BehaviorHandler exact = exactRegistry.get(methodName);
+            final BehaviorHandler exact = exactRegistry.get(normalizedName);
             if (exact != null) {
                 return exact;
             }
             // 2. 启发式回退
             for (final HeuristicRule rule : heuristicRules) {
-                if (rule.matches(methodName)) {
+                if (rule.matches(normalizedName)) {
                     Log.i("MC_REDIRECT", "[FuseJavaGate] heuristic match: " + methodName
                             + " (rule: \"" + rule.substring + "\")");
                     return rule.handler;
@@ -538,13 +556,13 @@ public class FuseJavaGate {
          * @return ParamRoles，或 null 如果无法分析（无 String 参数等）
          */
         static ParamRoles analyze(final Method method) {
-            final String name = method.getName();
+            final String name = method.getName().toLowerCase(Locale.ROOT);
             final Class<?>[] types = method.getParameterTypes();
 
             // ── Level 1: 方法名模式识别 ──
 
             // isUid* 系列：参数反转 (int uid, String path)
-            if (name.startsWith("isUid") && types.length >= 2) {
+            if (name.startsWith("isuid") && types.length >= 2) {
                 return new ParamRoles(/*pathIndex=*/1, /*path2Index=*/-1,
                         /*uidIndex=*/0, ExtraParamRole.NONE);
             }
@@ -566,7 +584,7 @@ public class FuseJavaGate {
             }
 
             // ── Level 1 cont'd: isDir/isDirectory — uid 固定在 index 1 ──
-            if (name.startsWith("isDir") || name.startsWith("isDirectory")) {
+            if (name.startsWith("isdir") || name.startsWith("isdirectory")) {
                 int uidIdx = (types.length > 1 && types[1] == int.class) ? 1 : -1;
                 ExtraParamRole extra = ExtraParamRole.NONE;
                 if (types.length > 2) {
@@ -605,7 +623,7 @@ public class FuseJavaGate {
             // 多 int 参数 —— 根据方法名判断
             uidIndex = intIndices.get(0); // 默认第一个 int 是 uid
 
-            if (name.contains("delete") || name.contains("Delete")) {
+            if (name.contains("delete")) {
                 // deleteFileForFuse(String, int, int) → 第三个 int 忽略
                 extra = ExtraParamRole.IGNORE;
             }
@@ -619,7 +637,8 @@ public class FuseJavaGate {
     //  文件事件分发
     // ════════════════════════════════════════════════════════════════
 
-    void dispatchFileSystemEvent(final String packageName, final String path, final int flags) {
+    void dispatchFileSystemEvent(final String packageName, final String path, final int flags,
+                                 final String methodName, final int uid) {
         Log.d("MC_REDIRECT", "[FuseJavaGate] dispatchFileSystemEvent pkg=" + packageName + " path=" + path + " flags=" + flags);
         // 通过 DataBus 事件队列分发（异步，不影响主流程）。
         // 仅使用 DataBus 路径——不再通过 Binder 同步调用 onFileSystemEvent。
@@ -635,6 +654,11 @@ public class FuseJavaGate {
             event.put("path", path);
             event.put("flags", flags);
             event.put("sourceLayer", "FUSE_JAVA_GATE");
+            event.put("methodName", methodName);
+            event.put("uid", uid);
+            event.put("policyGeneration", HookPolicyCache.INSTANCE.getRedirectPolicyGeneration());
+            event.put("nativeMountPointsGeneration",
+                    HookPolicyCache.INSTANCE.getNativeMountPointsGeneration());
             HookDataBusBridge.INSTANCE.writeEvent(DataBus.EVENT_FILESYSTEM, event.toString());
             // 数据面契约 6.4: 写事件后发 signal，消除消费者端 2s 轮询延迟
             HookDataBusBridge.INSTANCE.signal(DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED);
@@ -683,7 +707,7 @@ public class FuseJavaGate {
         if (originalPath == null || mountedPath == null || originalPath.equals(mountedPath)) {
             return;
         }
-        for (int i = 1; i < param.args.length; i++) {
+        for (int i = 0; i < param.args.length; i++) {
             if (originalPath.equals(param.args[i])) {
                 param.args[i] = mountedPath;
             }
