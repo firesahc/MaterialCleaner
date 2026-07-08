@@ -137,6 +137,19 @@ object SnapshotPublisher {
                 "mediaProvider=${caps.mediaProviderPackageName}, " +
                 "fuseJniLoadMode=${caps.fuseJniLoadMode}, " +
                 "nativeHookMode=${caps.supportedNativeHookMode}")
+        Log.i("MC_BOOT", JSONObject().apply {
+            put("event", "platform_capabilities_published")
+            put("written", written)
+            put("signaled", signaled)
+            put("sdk", caps.sdkVersionInt)
+            put("fuseAvailable", caps.fuseAvailable)
+            put("fuseBpfEnabled", caps.isFuseBpfEnabled)
+            put("usesSdcardfs", caps.usesSdcardfs)
+            put("mediaProvider", caps.mediaProviderPackageName)
+            put("fuseJniLoadMode", caps.fuseJniLoadMode)
+            put("nativeHookMode", caps.supportedNativeHookMode)
+            put("mediaProviderApiShape", caps.mediaProviderApiShape)
+        }.toString())
         return written && signaled
     }
 

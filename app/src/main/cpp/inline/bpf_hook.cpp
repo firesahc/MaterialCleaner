@@ -745,7 +745,7 @@ namespace bpf_hook {
                                        "none", "none", "none", "none", "none",
                                        false, "FUSE not available");
         }
-        LOGE("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
+        LOGI("%s", std::string(AY_OBFUSCATE("Initializing bpf_hook")).c_str()); // "Initializing bpf_hook"
         if (handle == nullptr) {
             lastError = "FUSE library mapped but symbol handle unavailable";
             auto embeddedResult = HookEmbeddedFuseJni();

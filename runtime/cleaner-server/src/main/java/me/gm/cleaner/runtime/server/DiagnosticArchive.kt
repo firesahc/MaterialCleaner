@@ -47,6 +47,7 @@ object DiagnosticArchive {
         ZipOutputStream(FileOutputStream(archive)).use { zip ->
             addText(zip, "privacy.txt", privacyNotice())
             addText(zip, "manifest.txt", buildManifest(server))
+            addText(zip, "summary.txt", buildSummary(server))
             addStatus(zip, server)
             addDataBus(zip)
             addLogcat(zip)
@@ -54,6 +55,13 @@ object DiagnosticArchive {
             addCommandOutputs(zip)
         }
         archive.setReadable(true, false)
+        Log.i("MC_DIAG", JSONObject().apply {
+            put("event", "diagnostics_archive_created")
+            put("path", archive.path)
+            put("sizeBytes", archive.length())
+            put("redacted", true)
+            put("summary", true)
+        }.toString())
         return archive
     }
 
@@ -82,6 +90,102 @@ object DiagnosticArchive {
         appendLine("model=${Build.MODEL}")
         appendLine("device=${Build.DEVICE}")
         appendLine("fingerprint=${Build.FINGERPRINT}")
+    }
+
+    private fun buildSummary(server: CleanerServer): String = buildString {
+        appendLine("Material Cleaner diagnostics summary")
+        appendLine("Generated at: ${System.currentTimeMillis()}")
+        appendLine()
+        appendLine("Read this first:")
+        appendLine("- status/orchestrated_status.json has the full five-layer state.")
+        appendLine("- status/native_hook_status_pretty.json has MediaProvider/FUSE hook details.")
+        appendLine("- databus/health.json has queue, snapshot, and permission health.")
+        appendLine("- logs/logcat_material_cleaner_filtered.txt has focused runtime logs.")
+        appendLine("- commands/media_provider_maps.txt and commands/media_provider_mountinfo.txt prove native loading and mount state.")
+        appendLine()
+
+        val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
+            .onFailure {
+                appendLine("Runtime status: unavailable (${it.javaClass.name}: ${it.message})")
+            }
+            .getOrNull()
+        if (status != null) {
+            appendLine("Runtime health: ${status.optString("health", "UNKNOWN")}")
+            appendLayerSummary(status, "vfs", "VFS")
+            appendLayerSummary(status, "mediaProviderJavaHook", "MediaProvider Java Hook")
+            appendLayerSummary(status, "fuseNativeHook", "FUSE Native Hook")
+            appendLayerSummary(status, "dataBus", "DataBus")
+            appendLayerSummary(status, "controlPlane", "Control Plane")
+            appendLine()
+        }
+
+        val health = runCatching { DataBus.checkHealth(repair = true) }.getOrNull()
+        if (health != null) {
+            appendLine("DataBus:")
+            appendLine("- initialized=${health.initialized}, healthy=${health.healthy}, criticalSnapshotsReady=${health.criticalSnapshotsReady}")
+            appendLine("- eventQueueCounts=${health.eventQueueCounts}")
+            appendLine("- leaseCounts=${health.leaseCounts}")
+            appendLine("- missingDirectories=${health.missingDirectories.size}, permissionIssues=${health.permissionIssues.size}")
+            appendLine()
+        }
+
+        val nativeStatus = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        if (nativeStatus != null) {
+            appendNativeHookSummary(nativeStatus)
+            appendLine()
+        }
+
+        val platformCaps = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        if (platformCaps != null) {
+            appendLine("Platform capabilities:")
+            appendLine("- sdk=${platformCaps.optInt("sdkVersionInt", 0)}, fuse=${platformCaps.optBoolean("fuseAvailable", false)}, fuseBpf=${platformCaps.optBoolean("isFuseBpfEnabled", false)}")
+            appendLine("- mediaProvider=${platformCaps.optString("mediaProviderPackageName", "")}")
+            appendLine("- fuseJniLoadMode=${platformCaps.optString("fuseJniLoadMode", "UNKNOWN")}, nativeHookMode=${platformCaps.optString("supportedNativeHookMode", "UNKNOWN")}")
+            appendLine()
+        }
+
+        appendLine("If the package is hard to read, start from this file, then open the referenced files above.")
+    }
+
+    private fun StringBuilder.appendLayerSummary(
+        root: JSONObject,
+        key: String,
+        label: String,
+    ) {
+        val layer = root.optJSONObject(key)
+        if (layer == null) {
+            appendLine("- $label: missing")
+            return
+        }
+        val state = layer.optString("state", "UNKNOWN")
+        val error = layer.optString("lastError", "")
+        val suffix = if (error.isBlank() || error == "null") "" else ", error=$error"
+        appendLine("- $label: $state$suffix")
+    }
+
+    private fun StringBuilder.appendNativeHookSummary(root: JSONObject) {
+        val mediaProvider = root.optJSONObject("mediaProvider")
+        val inline = root.optJSONObject("inline")
+        val native = root.optJSONObject("native")
+        val symbols = native?.optJSONObject("symbols")
+        val missingSymbols = native?.optJSONArray("missingSymbols")
+
+        appendLine("Native hook:")
+        appendLine("- mediaProvider.loaded=${mediaProvider?.optBoolean("loaded", false) ?: false}, package=${mediaProvider?.optString("packageName", "") ?: ""}")
+        appendLine("- inline.state=${inline?.optString("state", "UNKNOWN") ?: "UNKNOWN"}, retryCount=${inline?.optInt("retryCount", 0) ?: 0}, disabledByPlatform=${inline?.optBoolean("disabledByPlatform", false) ?: false}")
+        appendLine("- fuseLibraryLoaded=${native?.optBoolean("fuseLibraryLoaded", false) ?: false}, hookMode=${native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN"}, fuseJniLoadMode=${native?.optString("fuseJniLoadMode", "UNKNOWN") ?: "UNKNOWN"}")
+        if (symbols != null) {
+            appendLine("- symbols containsMount=${symbols.optBoolean("containsMount", false)}, startsWith=${symbols.optBoolean("startsWith", false)}, isFuseBpfEnabled=${symbols.optBoolean("isFuseBpfEnabled", false)}, fuseReqUserdata=${symbols.optBoolean("fuseReqUserdata", false)}, fuseBpfInstall=${symbols.optBoolean("fuseBpfInstall", false)}")
+        }
+        if (missingSymbols != null && missingSymbols.length() > 0) {
+            appendLine("- missingSymbols=$missingSymbols")
+        }
+        val lastError = native?.optString("lastError", "") ?: ""
+        if (lastError.isNotBlank()) {
+            appendLine("- lastError=$lastError")
+        }
     }
 
     private fun addStatus(zip: ZipOutputStream, server: CleanerServer) {
@@ -158,8 +262,14 @@ object DiagnosticArchive {
             zip,
             "logs/logcat_material_cleaner_filtered.txt",
             "/system/bin/logcat -d -v threadtime -b main,system,crash -t 3000 " +
-                    "MC_REDIRECT:* DataBus:* CleanerService:* ActivityManagerLogsObserver:* " +
-                    "AMLogs:* MC/Test:* MC/StateMachine:* CleanerTest:* xhook:* starter:* " +
+                    "MC_BOOT:* MC_EVENT:* MC_STATE:* MC_DIAG:* MC_NATIVE:* " +
+                    "MC_REDIRECT:* DataBus:* DiagnosticArchive:* CleanerService:* " +
+                    "LayerOrchestrator:* SnapshotPublisher:* HookRecoveryCoordinator:* " +
+                    "MediaProviderRecoveryStrategy:* NativeHookStatus:* HookPolicyCache:* " +
+                    "FuseNativePolicyAdapter:* HookDataBusBridge:* EventConsumerScheduler:* " +
+                    "FileSystemEventConsumer:* RedirectNoticeConsumer:* QuerySessionLeaseConsumer:* " +
+                    "ActivityManagerLogsObserver:* AMLogs:* MC/Test:* MC/StateMachine:* " +
+                    "CleanerTest:* xhook:* starter:* " +
                     "me.gm.cleaner:* *:S",
         )
     }
