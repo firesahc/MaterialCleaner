@@ -19,9 +19,25 @@ import me.gm.cleaner.util.FileUtils.toUserId
 class BootCompleteReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (Process.myUid().toUserId() > 0) return
+        when (intent?.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_LOCKED_BOOT_COMPLETED -> Unit
+            else -> {
+                if (BuildConfig.DEBUG) {
+                    Log.w("CleanerTest", "BootCompleteReceiver ignored action=${intent?.action}")
+                }
+                return
+            }
+        }
         val isStartOnBoot = RootPreferences.isStartOnBoot
         val isManuallyStopped = ServicePreferences.isServiceManuallyStopped
-        if (BuildConfig.DEBUG) Log.i("CleanerTest", "BootCompleteReceiver.onReceive: action=${intent?.action}, isStartOnBoot=$isStartOnBoot, isManuallyStopped=$isManuallyStopped")
+        if (BuildConfig.DEBUG) {
+            Log.i(
+                "CleanerTest",
+                "BootCompleteReceiver.onReceive: action=${intent.action}, " +
+                        "isStartOnBoot=$isStartOnBoot, isManuallyStopped=$isManuallyStopped"
+            )
+        }
         if (isStartOnBoot && !isManuallyStopped) {
             CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
                 ServerStateMachine.start(StartSource.BOOT, context)

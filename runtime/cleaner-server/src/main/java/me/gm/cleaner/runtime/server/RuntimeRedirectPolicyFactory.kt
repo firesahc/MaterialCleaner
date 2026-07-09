@@ -30,6 +30,7 @@ object RuntimeRedirectPolicyFactory {
         val now = System.currentTimeMillis()
         val gen = generationCounter.incrementAndGet()
         val rules = LinkedHashMap<String, Map<Int, List<RedirectRule>>>()
+        val readOnlyRules = buildReadOnlyRules()
 
         for (packageName in ServicePreferences.srPackages) {
             val userRules = LinkedHashMap<Int, List<RedirectRule>>()
@@ -56,13 +57,36 @@ object RuntimeRedirectPolicyFactory {
             createdAt = now,
             publisher = PUBLISHER_IDENTITY,
             storageRedirectRules = rules,
-            readOnlyRules = ServicePreferences.getAllReadOnly(),
+            readOnlyRules = readOnlyRules,
             denylist = ServicePreferences.denylist.toSet(),
             recordSharedStorage = ServicePreferences.recordSharedStorage,
             recordExternalAppSpecificStorage = ServicePreferences.recordExternalAppSpecificStorage,
             aggressivelyPromptForReadingMediaFiles = ServicePreferences.aggressivelyPromptForReadingMediaFiles,
             upsertRecords = ServicePreferences.upsert,
         )
+    }
+
+    private fun buildReadOnlyRules(): Map<String, List<String>> {
+        val rules = LinkedHashMap<String, List<String>>()
+        for ((packageName, paths) in ServicePreferences.getAllReadOnly()) {
+            val validPaths = paths.mapNotNull { path ->
+                val normalized = normalizeExternalStoragePath(path)?.let {
+                    RuntimeFileUtils.getPathAsUser(it, 0)
+                }
+                if (normalized == null) {
+                    Log.w(
+                        "MC_REDIRECT",
+                        "[RuntimeRedirectPolicyFactory] drop invalid read-only rule " +
+                                "pkg=$packageName path=$path"
+                    )
+                }
+                normalized
+            }.distinct()
+            if (validPaths.isNotEmpty()) {
+                rules[packageName] = validPaths
+            }
+        }
+        return rules
     }
 
     private fun buildRedirectRuleOrNull(
@@ -103,7 +127,7 @@ object RuntimeRedirectPolicyFactory {
             File(trimmed).absolutePath
         }
         return normalized.takeIf {
-            RuntimeFileUtils.startsWith(RuntimeFileUtils.externalStorageDirParent, it)
+            RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, it)
         }
     }
 

@@ -13,7 +13,6 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.util.regex.Pattern
 
 // Preference key constants (values match existing R.string values to preserve user data)
@@ -283,7 +282,7 @@ object ServicePreferences {
 
     // @App
     // @Server
-    fun readRawStorageRedirect(): String = storageRedirectFile.readText()
+    fun readRawStorageRedirect(): String = storageRedirectFile.readText(Charsets.UTF_8)
 
     @Synchronized
     private fun readStorageRedirect(): JSONObject {
@@ -372,16 +371,7 @@ object ServicePreferences {
 
     // @App
     // @Server
-    fun readRawReadOnly(): String {
-        readOnlyFile.inputStream().use {
-            val bb = ByteBuffer.allocate(readOnlyFile.length().toInt())
-            val bytesRead = it.channel.read(bb)
-            if (bytesRead <= 0) {
-                Log.w("ServicePreferences", "readRawReadOnly: channel.read returned $bytesRead")
-            }
-            return String(bb.array())
-        }
-    }
+    fun readRawReadOnly(): String = readOnlyFile.readText(Charsets.UTF_8)
 
     @Synchronized
     private fun readReadOnly(): JSONObject {
@@ -404,16 +394,10 @@ object ServicePreferences {
         @Synchronized
         get() = try {
             if (denylistCache == null) {
-                denylistFile.inputStream().use { input ->
-                    val bb = ByteBuffer.allocate(denylistFile.length().toInt())
-                    val bytesRead = input.channel.read(bb)
-                    if (bytesRead <= 0) {
-                        Log.w("ServicePreferences", "denylist: channel.read returned $bytesRead")
-                    }
-                    denylistCache = String(bb.array())
-                        .split('\n')
-                        .filterNot { it.isBlank() }
-                }
+                denylistCache = denylistFile.readText(Charsets.UTF_8)
+                    .lineSequence()
+                    .filterNot { it.isBlank() }
+                    .toList()
             }
             denylistCache!!
         } catch (e: IOException) {

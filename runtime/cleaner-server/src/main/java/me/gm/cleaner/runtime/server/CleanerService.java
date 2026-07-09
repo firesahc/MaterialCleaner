@@ -80,6 +80,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int getServerException() {
+        enforceManager(BuildConfig.DEBUG ? "getServerException" : 1);
         final var observers = ObserverManager.INSTANCE.getObservers();
         if (observers.isEmpty() && !MediaProviderHookGateway.pingBinder()) {
             return 4;
@@ -103,6 +104,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public int getServerPid() {
+        enforceManager(BuildConfig.DEBUG ? "getServerPid" : 2);
         return Process.myPid();
     }
 
@@ -246,6 +248,7 @@ public class CleanerService extends ICleanerService.Stub {
 
     @Override
     public void unregisterFileChangeObserver(final IFileChangeObserver observer) {
+        enforceManager(BuildConfig.DEBUG ? "unregisterFileChangeObserver" : 17);
         mFileChangeObservers.unregister(observer);
     }
 
