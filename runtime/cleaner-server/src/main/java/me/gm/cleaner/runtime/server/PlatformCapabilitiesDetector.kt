@@ -76,8 +76,6 @@ object PlatformCapabilitiesDetector {
             FUSE_LOAD_MODE_APEX_APK_EMBEDDED -> HOOK_MODE_EMBEDDED_GOT_PATCH
             else -> HOOK_MODE_NONE
         }
-        // 兼容字段保持原含义：仅表示系统分区 libfuse_jni.so 可用于 xhook。
-        val xhookSymbolsAvailable = systemFuseJniAvailable
         val mediaProviderApiShape = detectMediaProviderApiShape(sdkInt)
 
         return PlatformCapabilities(
@@ -92,7 +90,6 @@ object PlatformCapabilitiesDetector {
             usesSdcardfs = usesSdcardfs,
             hyperOsVariant = hyperOsVariant,
             specialAndroidDataHandlingRequired = specialAndroidDataHandlingRequired,
-            xhookSymbolsAvailable = xhookSymbolsAvailable,
             mediaProviderPackageName = mediaProviderPackageName,
             systemFuseJniAvailable = systemFuseJniAvailable,
             fuseJniLoadMode = fuseJniLoadMode,
@@ -169,40 +166,6 @@ object PlatformCapabilitiesDetector {
     }
 
     /**
-     * 从 DataBus 读取的 JSON 解析 [PlatformCapabilities]。
-     * 由 HookPolicyCache 在 MediaProvider 进程中使用。
-     */
-    fun fromJson(json: String): PlatformCapabilities? {
-        return try {
-            val root = org.json.JSONObject(json)
-            PlatformCapabilities(
-                schemaVersion = root.optInt("schemaVersion", 1),
-                generation = root.optLong("generation", 0L),
-                publisherEpoch = root.optString("publisherEpoch", ""),
-                createdAt = root.optLong("createdAt", 0L),
-                publisher = root.optString("publisher", ""),
-                sdkVersionInt = root.optInt("sdkVersionInt", 0),
-                isFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false),
-                fuseAvailable = root.optBoolean("fuseAvailable", false),
-                usesSdcardfs = root.optBoolean("usesSdcardfs", false),
-                hyperOsVariant = root.optBoolean("hyperOsVariant", false),
-                specialAndroidDataHandlingRequired = root.optBoolean(
-                    "specialAndroidDataHandlingRequired", false
-                ),
-                xhookSymbolsAvailable = root.optBoolean("xhookSymbolsAvailable", false),
-                mediaProviderPackageName = root.optString("mediaProviderPackageName", ""),
-                systemFuseJniAvailable = root.optBoolean("systemFuseJniAvailable", false),
-                fuseJniLoadMode = root.optString("fuseJniLoadMode", FUSE_LOAD_MODE_UNKNOWN),
-                supportedNativeHookMode = root.optString("supportedNativeHookMode", HOOK_MODE_NONE),
-                mediaProviderApiShape = root.optString("mediaProviderApiShape", "UNKNOWN"),
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse PlatformCapabilities from JSON", e)
-            null
-        }
-    }
-
-    /**
      * 序列化 [PlatformCapabilities] 为 JSON。
      * 由 SnapshotPublisher 使用。
      */
@@ -219,7 +182,6 @@ object PlatformCapabilitiesDetector {
         root.put("usesSdcardfs", caps.usesSdcardfs)
         root.put("hyperOsVariant", caps.hyperOsVariant)
         root.put("specialAndroidDataHandlingRequired", caps.specialAndroidDataHandlingRequired)
-        root.put("xhookSymbolsAvailable", caps.xhookSymbolsAvailable)
         root.put("mediaProviderPackageName", caps.mediaProviderPackageName)
         root.put("systemFuseJniAvailable", caps.systemFuseJniAvailable)
         root.put("fuseJniLoadMode", caps.fuseJniLoadMode)
