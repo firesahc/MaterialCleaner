@@ -7,6 +7,8 @@ import me.gm.cleaner.runtime.server.observer.ObserverManager
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 /**
  * 文件系统事件消费者（游标持久化版）。
@@ -104,10 +106,13 @@ object FileSystemEventConsumer {
      */
     private fun cleanupConsumed() {
         val consumedDir = File(DataBus.BUS_ROOT, "events/consumed")
-        if (!consumedDir.exists()) return
+        if (!Files.isDirectory(consumedDir.toPath(), LinkOption.NOFOLLOW_LINKS)) return
 
         val files = consumedDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".json") }
+            ?.filter {
+                Files.isRegularFile(it.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+                        it.name.endsWith(".json")
+            }
             ?.sortedBy { it.name }  // 按文件名排序（内含时间戳）
             ?: return
 
@@ -148,13 +153,19 @@ object FileSystemEventConsumer {
      * 使用时间戳+随机数命名文件（不含事件序列号），避免浪费 DataBus 全局序列号计数器。
      */
     private fun archiveEvent(content: String) {
+        if (!DataBus.ensureInitialized()) return
         val consumedDir = File(DataBus.BUS_ROOT, "events/consumed")
-        if (!consumedDir.exists() && !consumedDir.mkdirs()) return
+        if (!Files.isDirectory(consumedDir.toPath(), LinkOption.NOFOLLOW_LINKS)) return
 
         val now = System.currentTimeMillis()
         val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
         val filename = "$now-$rand.json"
-        val tmpFile = File(consumedDir, "$filename.tmp")
+        val tmpFile = try {
+            Files.createTempFile(consumedDir.toPath(), "$filename-", ".tmp").toFile()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create consumed archive temp file", e)
+            return
+        }
         val targetFile = File(consumedDir, filename)
 
         try {

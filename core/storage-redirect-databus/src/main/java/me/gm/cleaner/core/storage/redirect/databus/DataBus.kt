@@ -5,6 +5,8 @@ import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -54,7 +56,8 @@ import java.util.concurrent.atomic.AtomicLong
 object DataBus {
     private const val TAG = "DataBus"
 
-    const val BUS_ROOT = "/data/local/tmp/cleaner/bus"
+    private const val CLEANER_ROOT = "/data/local/tmp/cleaner"
+    const val BUS_ROOT = "$CLEANER_ROOT/bus"
 
     private const val DIR_SNAPSHOTS = "snapshots"
     private const val DIR_SIGNALS = "signals"
@@ -166,18 +169,9 @@ object DataBus {
 
         try {
             for (dir in requiredDirectories()) {
-                val f = File(dir)
-                if (!f.exists()) {
-                    if (!f.mkdirs()) {
-                        // 如果 mkdirs 失败，检查是否已被其他进程创建
-                        if (!f.exists()) {
-                            Log.e(TAG, "Failed to create directory: $dir")
-                            return false
-                        }
-                    }
+                if (!prepareDirectory(File(dir))) {
+                    return false
                 }
-                // 设置跨进程可读写权限；目录已存在时也要修复，避免重启后继承坏权限。
-                makeWorldAccessible(f, executable = true)
             }
             initialized = true
             Log.i(TAG, "DataBus initialized at $BUS_ROOT")
@@ -194,9 +188,12 @@ object DataBus {
         if (!isValidSnapshotName(name)) return false
         if (!ensureInitialized()) return false
         val targetFile = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
-        val pid = Process.myPid()
-        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
-        val tmpFile = File("$BUS_ROOT/$DIR_TMP/$name-$pid-$rand.tmp")
+        val tmpFile = try {
+            createTempFileIn(File("$BUS_ROOT/$DIR_TMP"), "$name-", ".tmp")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create snapshot temp file: $name", e)
+            return false
+        }
 
         return try {
             FileOutputStream(tmpFile).use { fos ->
@@ -226,7 +223,7 @@ object DataBus {
         if (!isValidSnapshotName(name)) return null
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         return try {
-            if (!file.exists()) null else file.readText(Charsets.UTF_8)
+            readRegularText(file, "snapshot/$name")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read snapshot: $name", e)
             null
@@ -249,8 +246,7 @@ object DataBus {
         if (!isValidSnapshotName(name)) return null
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
         return try {
-            if (!file.exists()) return null
-            val content = file.readText(Charsets.UTF_8)
+            val content = readRegularText(file, "snapshot/$name") ?: return null
             // 验证 JSON 格式有效性
             JSONObject(content)
             content
@@ -277,8 +273,17 @@ object DataBus {
         if (!ensureInitialized()) return false
         val signalFile = File("$BUS_ROOT/$DIR_SIGNALS/$name")
         return try {
-            if (!signalFile.exists()) signalFile.createNewFile()
-            else signalFile.setLastModified(System.currentTimeMillis())
+            val path = signalFile.toPath()
+            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+                !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+            ) {
+                Files.delete(path)
+            }
+            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+                signalFile.createNewFile()
+            } else {
+                signalFile.setLastModified(System.currentTimeMillis())
+            }
             makeWorldAccessible(signalFile, executable = false)
             Log.d(TAG, "Signal sent: $name")
             true
@@ -291,7 +296,7 @@ object DataBus {
     fun getSignalTimestamp(name: String): Long {
         if (!isValidSignalName(name)) return 0L
         val signalFile = File("$BUS_ROOT/$DIR_SIGNALS/$name")
-        return if (signalFile.exists()) signalFile.lastModified() else 0L
+        return if (isRegularFileNoFollow(signalFile)) signalFile.lastModified() else 0L
     }
 
     // ── 事件队列（单文件原子写） ──
@@ -313,8 +318,7 @@ object DataBus {
         if (!isValidEventQueue(queue)) return -1L
         if (!ensureInitialized()) return -1L
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
-        if (!eventDir.exists() && !eventDir.mkdirs()) {
-            Log.e(TAG, "Failed to create event dir: $queue")
+        if (!prepareDirectory(eventDir)) {
             return -1L
         }
 
@@ -324,7 +328,12 @@ object DataBus {
         val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
         val filename = String.format("%020d-%d-%d-%04x.json", seq, now, pid, rand)
 
-        val tmpFile = File(eventDir, "$filename.tmp")
+        val tmpFile = try {
+            createTempFileIn(eventDir, "$filename-", ".tmp")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create event temp file: $queue/$filename", e)
+            return -1L
+        }
         val targetFile = File(eventDir, filename)
 
         return try {
@@ -369,9 +378,16 @@ object DataBus {
 
         return try {
             eventDir.listFiles()
-                ?.filter { it.isFile && it.name.endsWith(".json") && it.name > afterCursor }
+                ?.filter {
+                    isRegularFileNoFollow(it) && it.name.endsWith(".json") &&
+                            it.name > afterCursor
+                }
                 ?.sortedBy { it.name }
-                ?.map { EventFile(it.name, it.readText(Charsets.UTF_8)) }
+                ?.mapNotNull { file ->
+                    readRegularText(file, "events/$queue/${file.name}")?.let {
+                        EventFile(file.name, it)
+                    }
+                }
                 ?: emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read events from $queue", e)
@@ -387,7 +403,7 @@ object DataBus {
         val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
         if (!eventDir.exists()) return ""
         return eventDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".json") }
+            ?.filter { isRegularFileNoFollow(it) && it.name.endsWith(".json") }
             ?.maxByOrNull { it.name }
             ?.name ?: ""
     }
@@ -402,10 +418,15 @@ object DataBus {
         if (!isValidEventQueue(queue)) return false
         if (!ensureInitialized()) return false
         val cursorDir = File("$BUS_ROOT/$DIR_CURSORS")
-        if (!cursorDir.exists()) cursorDir.mkdirs()
+        if (!prepareDirectory(cursorDir)) return false
 
         val cursorFile = File(cursorDir, "$queue.cursor")
-        val tmpFile = File(cursorDir, "$queue.cursor.tmp")
+        val tmpFile = try {
+            createTempFileIn(cursorDir, "$queue.cursor-", ".tmp")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create cursor temp file: $queue", e)
+            return false
+        }
 
         return try {
             FileOutputStream(tmpFile).use { fos ->
@@ -443,16 +464,17 @@ object DataBus {
         if (!isValidLeaseCategory(category)) return false
         if (!ensureInitialized()) return false
         val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
-        if (!leaseDir.exists() && !leaseDir.mkdirs()) {
-            Log.e(TAG, "Failed to create lease dir: $category")
+        if (!prepareDirectory(leaseDir)) {
             return false
         }
-        makeWorldAccessible(leaseDir, executable = true)
 
         val filename = "${sanitizeFileName(key)}.json"
-        val pid = Process.myPid()
-        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
-        val tmpFile = File(leaseDir, "$filename-$pid-$rand.tmp")
+        val tmpFile = try {
+            createTempFileIn(leaseDir, "$filename-", ".tmp")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create lease temp file: $category/$filename", e)
+            return false
+        }
         val targetFile = File(leaseDir, filename)
 
         return try {
@@ -476,6 +498,42 @@ object DataBus {
         }
     }
 
+    private fun prepareDirectory(dir: File): Boolean = try {
+        val path = dir.toPath()
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+            (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+        ) {
+            Files.delete(path)
+        }
+        Files.createDirectories(path)
+        makeWorldAccessible(dir, executable = true)
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to prepare directory: ${dir.path}", e)
+        false
+    }
+
+    private fun createTempFileIn(dir: File, prefix: String, suffix: String): File {
+        val safePrefix = prefix
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(120)
+            .padEnd(3, '_')
+        return Files.createTempFile(dir.toPath(), safePrefix, suffix).toFile()
+    }
+
+    private fun isRegularFileNoFollow(file: File): Boolean =
+        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+
+    private fun readRegularText(file: File, label: String): String? {
+        if (!isRegularFileNoFollow(file)) {
+            if (Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                Log.w(TAG, "Rejected non-regular DataBus file: $label")
+            }
+            return null
+        }
+        return file.readText(Charsets.UTF_8)
+    }
+
     fun readLeaseFiles(category: String): List<EventFile> {
         if (!isValidLeaseCategory(category)) return emptyList()
         val leaseDir = File("$BUS_ROOT/$DIR_LEASES/$category")
@@ -483,9 +541,13 @@ object DataBus {
 
         return try {
             leaseDir.listFiles()
-                ?.filter { it.isFile && it.name.endsWith(".json") }
+                ?.filter { isRegularFileNoFollow(it) && it.name.endsWith(".json") }
                 ?.sortedBy { it.name }
-                ?.map { EventFile(it.name, it.readText(Charsets.UTF_8)) }
+                ?.mapNotNull { file ->
+                    readRegularText(file, "leases/$category/${file.name}")?.let {
+                        EventFile(file.name, it)
+                    }
+                }
                 ?: emptyList()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read leases from $category", e)
@@ -512,7 +574,7 @@ object DataBus {
         if (!isValidEventQueue(queue)) return ""
         val cursorFile = File("$BUS_ROOT/$DIR_CURSORS/$queue.cursor")
         return try {
-            if (cursorFile.exists()) cursorFile.readText(Charsets.UTF_8).trim() else ""
+            readRegularText(cursorFile, "cursors/$queue.cursor")?.trim() ?: ""
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read cursor: $queue", e)
             ""
@@ -554,15 +616,20 @@ object DataBus {
 
         for (dir in requiredDirectories()) {
             val file = File(dir)
-            if (!file.exists() || !file.isDirectory) {
+            val path = file.toPath()
+            var exists = Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+            var isDirectory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
+            if (!exists || !isDirectory) {
                 if (repair) {
-                    file.mkdirs()
+                    prepareDirectory(file)
+                    exists = Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+                    isDirectory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
                 }
-                if (!file.exists() || !file.isDirectory) {
+                if (!exists || !isDirectory) {
                     missingDirs += dir
                 }
             }
-            if (file.exists()) {
+            if (exists && isDirectory) {
                 if (repair) {
                     makeWorldAccessible(file, executable = true)
                 }
@@ -589,6 +656,7 @@ object DataBus {
     }
 
     private fun requiredDirectories(): List<String> = listOf(
+        CLEANER_ROOT,
         BUS_ROOT,
         "$BUS_ROOT/$DIR_SNAPSHOTS",
         "$BUS_ROOT/$DIR_SIGNALS",
@@ -611,11 +679,13 @@ object DataBus {
 
     private fun inspectSnapshot(name: String): SnapshotHealth {
         val file = File("$BUS_ROOT/$DIR_SNAPSHOTS/$name")
-        if (!file.exists()) {
+        if (!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             return SnapshotHealth(name, exists = false, validJson = false)
         }
         return try {
-            JSONObject(file.readText(Charsets.UTF_8))
+            val content = readRegularText(file, "snapshot/$name")
+                ?: return SnapshotHealth(name, exists = true, validJson = false)
+            JSONObject(content)
             SnapshotHealth(name, exists = true, validJson = true)
         } catch (e: Exception) {
             SnapshotHealth(
@@ -629,9 +699,9 @@ object DataBus {
 
     private fun countJsonFiles(path: String): Int {
         val dir = File(path)
-        if (!dir.exists()) return 0
+        if (!Files.isDirectory(dir.toPath(), LinkOption.NOFOLLOW_LINKS)) return 0
         return dir.listFiles()
-            ?.count { it.isFile && it.name.endsWith(".json") }
+            ?.count { isRegularFileNoFollow(it) && it.name.endsWith(".json") }
             ?: 0
     }
 
