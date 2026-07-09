@@ -25,10 +25,5 @@ android {
 dependencies {
     implementation project(':core:ipc-contract')
 
-    implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
-    implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"
-    implementation "androidx.preference:preference-ktx:$rootProject.preferenceVersion"
-    implementation "androidx.security:security-crypto-ktx:$rootProject.securityCryptoVersion"
-    implementation "com.google.flatbuffers:flatbuffers-java:$rootProject.flatbuffersVersion"
 }
