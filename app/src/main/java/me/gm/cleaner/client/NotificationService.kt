@@ -61,9 +61,7 @@ class NotificationService : Service() {
                 NOTIFICATION_CHANNEL_SHUTDOWN, NOTIFICATION_CHANNEL_UPDATED -> {
                     NotificationManagerCompat.from(this).cancel(name.hashCode())
                     MainScope().launch(Dispatchers.IO) {
-                        if (!ServicePreferences.isServiceManuallyStopped) {
-                            ServerStateMachine.start(StartSource.NOTIFICATION, this@NotificationService)
-                        }
+                        ServerStateMachine.start(StartSource.NOTIFICATION, this@NotificationService)
                     }
                 }
 

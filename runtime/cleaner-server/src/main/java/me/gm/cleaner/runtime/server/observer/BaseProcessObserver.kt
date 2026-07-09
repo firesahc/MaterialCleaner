@@ -73,6 +73,10 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun getLastMountFailure(): Mounter.MountFailure? = mounter.getLastMountFailure()
 
+    fun resetAllMounts() {
+        mounter.resetAllMounts()
+    }
+
     @CallSuper
     override fun onDestroy() {
         super.onDestroy()

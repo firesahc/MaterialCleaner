@@ -66,6 +66,30 @@ object RuntimeRedirectPolicyFactory {
         )
     }
 
+    /**
+     * 构建停止态策略快照。
+     *
+     * 停止服务是用户主动暂停所有运行能力，不应继续向 Hook/VFS 暴露旧规则。
+     */
+    fun buildStopped(): RedirectPolicySnapshot {
+        val now = System.currentTimeMillis()
+        val gen = generationCounter.incrementAndGet()
+        return RedirectPolicySnapshot(
+            schemaVersion = 1,
+            generation = gen,
+            publisherEpoch = publisherEpoch,
+            createdAt = now,
+            publisher = PUBLISHER_IDENTITY,
+            storageRedirectRules = emptyMap(),
+            readOnlyRules = emptyMap(),
+            denylist = emptySet(),
+            recordSharedStorage = false,
+            recordExternalAppSpecificStorage = false,
+            aggressivelyPromptForReadingMediaFiles = false,
+            upsertRecords = false,
+        )
+    }
+
     private fun buildReadOnlyRules(): Map<String, List<String>> {
         val rules = LinkedHashMap<String, List<String>>()
         for ((packageName, paths) in ServicePreferences.getAllReadOnly()) {

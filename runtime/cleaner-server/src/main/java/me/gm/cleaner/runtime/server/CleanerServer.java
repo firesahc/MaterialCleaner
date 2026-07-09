@@ -123,6 +123,21 @@ public class CleanerServer extends ContextWrapper {
     }
 
     public void onDestroy() {
+        try {
+            SnapshotPublisher.INSTANCE.publishStopped();
+        } catch (final Throwable t) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "publish stopped snapshots failed", t);
+        }
+        try {
+            MediaProviderHookGateway.refreshPolicyFromDataBus();
+        } catch (final Throwable t) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "refresh hook stopped policy failed", t);
+        }
+        try {
+            vfsLayerController.shutdown();
+        } catch (final Throwable t) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "shutdown VFS layer failed", t);
+        }
         MediaProviderHookGateway.onDestroy();
         ObserverManager.INSTANCE.stopAllObservers();
     }

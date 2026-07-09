@@ -88,6 +88,28 @@ object SnapshotPublisher {
     }
 
     /**
+     * 发布停止态快照。
+     *
+     * 用空策略显式通知 Hook/VFS 清理运行时能力，避免 server 退出后继续使用旧快照。
+     */
+    fun publishStopped(): Boolean {
+        if (!DataBus.ensureInitialized()) {
+            Log.w(TAG, "DataBus not available, skipping publishStopped")
+            return false
+        }
+
+        val snapshot = RuntimeRedirectPolicyFactory.buildStopped()
+        VfsRuntimeConfigStore.updatePolicy(snapshot)
+
+        val policyPublished = publishRedirectPolicy(snapshot)
+        val readOnlyPublished = publishReadOnly(snapshot)
+        val mountPointsPublished = publishConfiguredMountPoints(snapshot)
+        val published = policyPublished && readOnlyPublished && mountPointsPublished
+        Log.i(TAG, "publishStopped: generation=${snapshot.generation}, published=$published")
+        return published
+    }
+
+    /**
      * 发布只读配置快照。
      */
     @JvmOverloads

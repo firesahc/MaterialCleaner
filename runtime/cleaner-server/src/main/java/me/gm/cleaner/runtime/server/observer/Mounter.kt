@@ -335,6 +335,38 @@ class Mounter {
         mkdirRecords.values().toList()
     }
 
+    fun resetAllMounts() = synchronized(lock) {
+        val records = pidRecords.asMap()
+            .flatMap { (packageName, pids) -> pids.map { packageName to it } }
+        records.forEach { (packageName, pid) ->
+            val uid = runCatching { RuntimeFileUtils.read_uid(pid) }.getOrDefault(-1)
+            if (uid < 0) {
+                Log.w("MC_REDIRECT", "[Mounter] skip reset for dead pid=$pid pkg=$packageName")
+                return@forEach
+            }
+            val result = RuntimeFileUtils.bind_mount_result(
+                pid, uid,
+                unmountDataRestriction = false,
+                fuseBypass = false,
+                sources = emptyArray(),
+                targets = emptyArray()
+            )
+            if (!result.success) {
+                Log.w(
+                    "MC_REDIRECT",
+                    "[Mounter] reset mount failed pkg=$packageName pid=$pid detail=${result.reason}"
+                )
+            }
+        }
+
+        mountFailedPids.clear()
+        mountRetryCount.clear()
+        rmdirPackages.clear()
+        rmdirQueueSize = 0
+        pidRecords.clear()
+        mkdirRecords.keySet().toList().forEach { removeMountDirsLocked(it) }
+    }
+
     fun getTotalAttempts(): Int = totalAttempts.get()
 
     fun getFailureCount(): Int = failureCount.get()

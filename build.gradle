@@ -38,7 +38,9 @@ allprojects {
     }
 }
 
-def gitCommitCount = Integer.parseInt('git rev-list --count HEAD'.execute([], project.rootDir).text.trim())
+def gitCommitCount = Integer.parseInt(
+        ['git', 'rev-list', '--count', 'HEAD'].execute(null, project.rootDir).text.trim()
+)
 
 ext {
     minSdk = 26

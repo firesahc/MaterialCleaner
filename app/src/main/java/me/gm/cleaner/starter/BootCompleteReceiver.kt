@@ -13,7 +13,6 @@ import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.ServerStateMachine
 import me.gm.cleaner.client.StartSource
 import me.gm.cleaner.dao.RootPreferences
-import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.util.FileUtils.toUserId
 
 class BootCompleteReceiver : BroadcastReceiver() {
@@ -30,17 +29,21 @@ class BootCompleteReceiver : BroadcastReceiver() {
             }
         }
         val isStartOnBoot = RootPreferences.isStartOnBoot
-        val isManuallyStopped = ServicePreferences.isServiceManuallyStopped
         if (BuildConfig.DEBUG) {
             Log.i(
                 "CleanerTest",
                 "BootCompleteReceiver.onReceive: action=${intent.action}, " +
-                        "isStartOnBoot=$isStartOnBoot, isManuallyStopped=$isManuallyStopped"
+                        "isStartOnBoot=$isStartOnBoot"
             )
         }
-        if (isStartOnBoot && !isManuallyStopped) {
+        if (isStartOnBoot) {
+            val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
-                ServerStateMachine.start(StartSource.BOOT, context)
+                try {
+                    ServerStateMachine.start(StartSource.BOOT, context)
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }

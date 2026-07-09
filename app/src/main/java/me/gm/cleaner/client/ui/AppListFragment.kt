@@ -116,7 +116,11 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // Toggle service button — start or stop
         btnToggleServer?.setOnClickListener {
-            if (ServicePreferences.isServiceManuallyStopped) {
+            val serverState = ServerStateMachine.state.value
+            if (ServerStateMachine.isSessionManuallyStopped ||
+                serverState == ServerState.STOPPED ||
+                serverState == ServerState.FAILED
+            ) {
                 startServer()
             } else {
                 stopServer()
@@ -243,7 +247,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         val ctx = requireContext()
         val isRunning = serverState == ServerState.RUNNING
-        val isManuallyStopped = ServicePreferences.isServiceManuallyStopped
+        val isManuallyStopped = ServerStateMachine.isSessionManuallyStopped
         val rootAvailable = runCatching { Shell.getShell().isRoot }.getOrDefault(false)
         val orchestrated = orchestratedStatus.takeIf { isRunning }
         val configured = ServicePreferences.srPackages.size
@@ -268,7 +272,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // ── 正常显示：五层详情 ──
         statusDetails?.visibility = android.view.View.VISIBLE
-        btnToggleServer?.text = ctx.getString(R.string.btn_stop_service)
+        btnToggleServer?.text = ctx.getString(
+            if (serverState == ServerState.RUNNING || serverState == ServerState.STARTING) {
+                R.string.btn_stop_service
+            } else {
+                R.string.btn_start_service
+            }
+        )
 
         if (orchestrated == null) {
             updateFallbackStatus(serverState, rootAvailable, isXposedConnected, configured)
@@ -753,14 +763,20 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     private fun loadMountedApps(adapter: AppListAdapter) {
         lifecycleScope.launch {
-            // 如果服务器已手动停止，不等待，直接返回空列表
-            if (ServicePreferences.isServiceManuallyStopped) {
+            // 如果本会话已手动停止或服务未处于启动/运行态，不等待，直接返回空列表
+            if (ServerStateMachine.isSessionManuallyStopped ||
+                ServerStateMachine.state.value == ServerState.STOPPED ||
+                ServerStateMachine.state.value == ServerState.FAILED
+            ) {
                 adapter.submitList(emptyList())
                 return@launch
             }
 
             // 等待服务器就绪（最长重试 20 次 = ~10 秒）
-            CleanerClient.waitForBinder()
+            if (!CleanerClient.waitForBinder()) {
+                adapter.submitList(emptyList())
+                return@launch
+            }
             val loaded = withContext(Dispatchers.Default) {
                 try {
                     AppListLoader().load()

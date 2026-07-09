@@ -67,6 +67,9 @@ object Starter {
 
     fun deleteSourceDir(context: Context) {
         val dir = context.createDeviceProtectedStorageContext().filesDir
-        Os.remove(dir.resolve("source_dir").path)
+        val sourceDir = dir.resolve("source_dir")
+        if (sourceDir.exists()) {
+            Os.remove(sourceDir.path)
+        }
     }
 }

@@ -69,6 +69,11 @@ class VfsLayerController {
             ?: emptyList()
     }
 
+    fun shutdown() {
+        ObserverManager.getObserver(BaseProcessObserver::class.java)
+            ?.resetAllMounts()
+    }
+
     fun getPackageStatus(packageName: String, flags: Int): PackageStatus {
         val observer = ObserverManager.getObserver(BaseProcessObserver::class.java)
             ?: return PackageStatus()

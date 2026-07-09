@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.starter.Starter
 
 /**
@@ -55,6 +56,8 @@ object ServerStateMachine {
     private var appContext: Context? = null
     private var crashCount = 0
     private var lastStartSource = StartSource.AUTO
+    @Volatile
+    private var sessionManuallyStopped = false
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /** 用于 FAILED 状态下区分"是否曾经成功运行过" */
@@ -74,9 +77,12 @@ object ServerStateMachine {
     /** 当前是否应认为"服务完全开启"（用于 UI 按钮标签） */
     val isServiceOpen: Boolean
         get() = _state.value == ServerState.RUNNING
-                && !ServicePreferences.isServiceManuallyStopped
+                && !sessionManuallyStopped
                 && runCatching { Shell.getShell().isRoot }.getOrDefault(false)
                 && HooksBridgeProvider.isMediaProviderConnected()
+
+    val isSessionManuallyStopped: Boolean
+        get() = sessionManuallyStopped
 
     // ── 统一启动 ──
 
@@ -86,7 +92,15 @@ object ServerStateMachine {
      * @param context 用于 writeDataFiles 的 Context（device-protected storage）
      * @return true=启动成功并进入 RUNNING
      */
-    suspend fun start(source: StartSource, context: Context): Boolean = withContext(Dispatchers.IO) {
+    suspend fun start(source: StartSource, context: Context): Boolean =
+        startInternal(source, context, allowStartingState = false, crashRetry = false)
+
+    private suspend fun startInternal(
+        source: StartSource,
+        context: Context,
+        allowStartingState: Boolean,
+        crashRetry: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
         val current = _state.value
         if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "start($source) from state=$current")
 
@@ -99,14 +113,28 @@ object ServerStateMachine {
         }
 
         // 启动中 → 等待调用方 await 后续状态
-        if (current == ServerState.STARTING) {
+        if (current == ServerState.STARTING && !allowStartingState) {
             if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "start($source): already STARTING, skip")
             return@withContext false
         }
 
-        // 手动停止标记检查（MANUAL 来源例外）
-        if (ServicePreferences.isServiceManuallyStopped && source != StartSource.MANUAL) {
-            if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "start($source): skipped, manually stopped")
+        if (isUserRequestedStart(source) && !crashRetry) {
+            sessionManuallyStopped = false
+            crashCount = 0
+        }
+
+        // 开机自启是持久主控制；手动/通知点击仅作为当前会话的额外入口。
+        if (!isStartAllowed(source)) {
+            if (BuildConfig.DEBUG) {
+                Log.d(
+                    "MC/StateMachine",
+                    "start($source): skipped, startOnBoot=${RootPreferences.isStartOnBoot}, " +
+                            "sessionManuallyStopped=$sessionManuallyStopped"
+                )
+            }
+            if (current == ServerState.STARTING || crashRetry) {
+                _state.value = ServerState.STOPPED
+            }
             return@withContext false
         }
 
@@ -121,11 +149,6 @@ object ServerStateMachine {
         // ── 状态转换 ──
 
         lastStartSource = source
-        if (source == StartSource.MANUAL) {
-            // 用户手动启动：清除停止标记 + 重置计数器
-            ServicePreferences.isServiceManuallyStopped = false
-            crashCount = 0
-        }
         _state.value = ServerState.STARTING
 
         // ── 执行启动 ──
@@ -190,7 +213,7 @@ object ServerStateMachine {
         if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "stop($source) from state=${_state.value}")
         _state.value = ServerState.STOPPED
 
-        ServicePreferences.isServiceManuallyStopped = true
+        sessionManuallyStopped = true
 
         CleanerClient.exit()
         CleanerClient.resetConnection()
@@ -216,9 +239,7 @@ object ServerStateMachine {
             }
             ServerState.STOPPED -> {
                 // 进程重启场景：Binder 意外到达但服务器还在
-                val manuallyStopped = runCatching { ServicePreferences.isServiceManuallyStopped }
-                    .getOrDefault(true) // App.onCreate 未完成时默认为手动停止
-                if (!manuallyStopped) {
+                if (!sessionManuallyStopped) {
                     if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "onBinderReceived: STOPPED → RUNNING (process restart)")
                     _state.value = ServerState.RUNNING
                     hasEverRun = true
@@ -238,7 +259,7 @@ object ServerStateMachine {
         when (_state.value) {
             ServerState.RUNNING -> {
                 crashCount++
-                val maxRetries = if (lastStartSource == StartSource.MANUAL) 5 else 3
+                val maxRetries = if (isUserRequestedStart(lastStartSource)) 5 else 3
                 Log.w("MC/StateMachine", "onBinderDied: crash #$crashCount, max=$maxRetries")
 
                 if (crashCount <= maxRetries) {
@@ -246,9 +267,15 @@ object ServerStateMachine {
                     val ctx = appContext
                     if (ctx != null) {
                         _state.value = ServerState.STARTING  // 立即反映重试状态
+                        val retrySource = lastStartSource
                         scope.launch {
                             delay(backoffMillis(crashCount))
-                            start(lastStartSource, ctx)
+                            startInternal(
+                                retrySource,
+                                ctx,
+                                allowStartingState = true,
+                                crashRetry = true
+                            )
                         }
                     } else {
                         // appContext 尚未初始化 → 无法自动重试
@@ -296,4 +323,10 @@ object ServerStateMachine {
         }
         return seconds * 1000
     }
+
+    private fun isUserRequestedStart(source: StartSource): Boolean =
+        source == StartSource.MANUAL || source == StartSource.NOTIFICATION
+
+    private fun isStartAllowed(source: StartSource): Boolean =
+        !sessionManuallyStopped && (isUserRequestedStart(source) || RootPreferences.isStartOnBoot)
 }

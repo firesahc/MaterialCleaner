@@ -8,7 +8,6 @@ import androidx.lifecycle.MutableLiveData
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.delay
 import me.gm.cleaner.BuildConfig
-import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.model.LayerStatus
 import me.gm.cleaner.server.ICleanerService
 
@@ -75,13 +74,13 @@ object CleanerClient {
      *
      * 仅当所有条件都满足时返回 true：
      *  1. 进程存活（[pingBinder]）
-     *  2. 用户未手动停止（[ServicePreferences.isServiceManuallyStopped] == false）
+     *  2. 本次会话未被用户手动停止
      *  3. Root 权限可用
      *  4. LSPosed Xposed Hooks 已连接到 MediaProvider（[HooksBridgeProvider.isMediaProviderConnected]）
      */
     fun isServiceOpen(): Boolean {
         val running = pingBinder()
-        val notManuallyStopped = !ServicePreferences.isServiceManuallyStopped
+        val notManuallyStopped = !ServerStateMachine.isSessionManuallyStopped
         val rootAvailable = runCatching { Shell.getShell().isRoot }.getOrDefault(false)
         val xposedConnected = HooksBridgeProvider.isMediaProviderConnected()
         val open = running && notManuallyStopped && rootAvailable && xposedConnected
