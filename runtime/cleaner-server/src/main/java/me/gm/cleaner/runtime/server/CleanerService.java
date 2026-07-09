@@ -351,13 +351,13 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public IRootFileService newRootFileService() {
         enforceManager(BuildConfig.DEBUG ? "newRootFileService" : 23);
-        return new RootFileService();
+        return new RootFileService(mManagerAid);
     }
 
     @Override
     public IRootWorkerService newRootWorkerService() {
         enforceManager(BuildConfig.DEBUG ? "newRootWorkerService" : 24);
-        return new RootWorkerService();
+        return new RootWorkerService(mManagerAid);
     }
 
     @Override

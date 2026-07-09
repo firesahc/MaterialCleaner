@@ -1,9 +1,12 @@
 package me.gm.cleaner.core.common.nio
 
+import android.os.Binder
+import android.os.Process
 import android.util.Log
 import com.google.flatbuffers.FlatBufferBuilder
 import me.gm.cleaner.browser.IProgressListener
 import me.gm.cleaner.browser.IRootWorkerService
+import me.gm.cleaner.core.common.RuntimeFileUtils.toAppId
 import me.gm.cleaner.model.ParceledException
 import java.io.InterruptedIOException
 import java.io.RandomAccessFile
@@ -15,17 +18,28 @@ import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.toPath
 
-class RootWorkerService : IRootWorkerService.Stub() {
+class RootWorkerService(private val managerAppId: Int) : IRootWorkerService.Stub() {
     private val TAG = "RootWorkerService"
     private val activeWorks: MutableSet<String> = CopyOnWriteArraySet()
 
+    private fun enforceManager(method: String) {
+        if (Binder.getCallingPid() == Process.myPid() ||
+            Binder.getCallingUid().toAppId() == managerAppId
+        ) {
+            return
+        }
+        throw SecurityException(method)
+    }
+
     override fun cancelWork(uuid: String) {
+        enforceManager("RootWorkerService.cancelWork")
         activeWorks.remove(uuid)
     }
 
     private fun decode(uriString: String): Path = URI.create(uriString).toPath()
 
     override fun delete(uuid: String, listener: IProgressListener, file: String) {
+        enforceManager("RootWorkerService.delete")
         activeWorks.add(uuid)
         try {
             val limiter = CallbackRateLimiter()
@@ -46,6 +60,7 @@ class RootWorkerService : IRootWorkerService.Stub() {
     override fun copy(
         uuid: String, listener: IProgressListener, source: String, target: String
     ) {
+        enforceManager("RootWorkerService.copy")
         activeWorks.add(uuid)
         try {
             val limiter = CallbackRateLimiter()
@@ -87,6 +102,7 @@ class RootWorkerService : IRootWorkerService.Stub() {
     override fun move(
         uuid: String, listener: IProgressListener, source: String, target: String
     ) {
+        enforceManager("RootWorkerService.move")
         activeWorks.add(uuid)
         try {
             val limiter = CallbackRateLimiter()
@@ -134,9 +150,9 @@ class RootWorkerService : IRootWorkerService.Stub() {
     override fun snapshot(
         uuid: String, listener: IProgressListener, pendingSnapshotFile: String, path: String
     ): Boolean {
+        enforceManager("RootWorkerService.snapshot")
         activeWorks.add(uuid)
         return try {
-            val limiter = CallbackRateLimiter()
             RandomAccessFile(
                 decode(pendingSnapshotFile).toFile(), "rw"
             ).channel.use { channel ->

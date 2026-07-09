@@ -1,7 +1,10 @@
 package me.gm.cleaner.core.common.nio
 
+import android.os.Binder
+import android.os.Process
 import me.gm.cleaner.browser.IProgressListener
 import me.gm.cleaner.browser.IRootFileService
+import me.gm.cleaner.core.common.RuntimeFileUtils.toAppId
 import me.gm.cleaner.model.ParceledBasicFileAttributes
 import me.gm.cleaner.model.ParceledCopyOptions
 import me.gm.cleaner.model.ParceledException
@@ -19,7 +22,16 @@ import kotlin.io.path.moveTo
 import kotlin.io.path.readAttributes
 import kotlin.io.path.toPath
 
-class RootFileService : IRootFileService.Stub() {
+class RootFileService(private val managerAppId: Int) : IRootFileService.Stub() {
+
+    private fun enforceManager(method: String) {
+        if (Binder.getCallingPid() == Process.myPid() ||
+            Binder.getCallingUid().toAppId() == managerAppId
+        ) {
+            return
+        }
+        throw SecurityException(method)
+    }
 
     private fun decode(uriString: String): Path = URI.create(uriString).toPath()
 
@@ -39,6 +51,7 @@ class RootFileService : IRootFileService.Stub() {
     override fun readAttributes(
         listener: IProgressListener, file: String, followLinks: Boolean
     ): ParceledBasicFileAttributes {
+        enforceManager("RootFileService.readAttributes")
         try {
             val attrs: StructStatFileAttributes = if (!followLinks) {
                 StructStatPath.wrap(decode(file)).readAttributes(LinkOption.NOFOLLOW_LINKS)
@@ -53,6 +66,7 @@ class RootFileService : IRootFileService.Stub() {
     }
 
     override fun delete(listener: IProgressListener, file: String) {
+        enforceManager("RootFileService.delete")
         try {
             decode(file).deleteExisting()
         } catch (e: Throwable) {
@@ -64,6 +78,7 @@ class RootFileService : IRootFileService.Stub() {
     override fun copy(
         listener: IProgressListener, source: String, target: String, options: ParceledCopyOptions
     ) {
+        enforceManager("RootFileService.copy")
         try {
             decode(source).copyTo(decode(target), *options.value)
         } catch (e: Throwable) {
@@ -75,6 +90,7 @@ class RootFileService : IRootFileService.Stub() {
     override fun move(
         listener: IProgressListener, source: String, target: String, options: ParceledCopyOptions
     ) {
+        enforceManager("RootFileService.move")
         try {
             decode(source).moveTo(decode(target), *options.value)
         } catch (e: Throwable) {
@@ -86,6 +102,7 @@ class RootFileService : IRootFileService.Stub() {
     override fun newDirectoryStream(
         listener: IProgressListener, dir: String
     ): ParceledListSlice<ParceledPath> = try {
+        enforceManager("RootFileService.newDirectoryStream")
         ParceledListSlice(
             decode(dir).listDirectoryEntries().map {
                 ParceledPath(
