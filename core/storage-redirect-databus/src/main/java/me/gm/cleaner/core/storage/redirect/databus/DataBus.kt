@@ -6,6 +6,7 @@ import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.concurrent.atomic.AtomicLong
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicLong
  *   leases/
  *     query_sessions/ ← MediaProvider 写入，server 按 TTL 维护临时目录
  *   cursors/          ← 消费者游标持久化
+ *   counters/         ← 事件队列持久化序号
  *   tmp/
  * ```
  *
@@ -71,6 +73,7 @@ object DataBus {
     private const val DIR_EVENTS = "events"
     private const val DIR_LEASES = "leases"
     private const val DIR_CURSORS = "cursors"
+    private const val DIR_COUNTERS = "counters"
     private const val DIR_CONSUMED = "consumed"
     private const val DIR_TMP = "tmp"
 
@@ -128,7 +131,9 @@ object DataBus {
     @Volatile
     private var initialized = false
 
-    // 每进程事件序列号
+    private val EVENT_FILE_NAME_PATTERN = Regex("^(\\d{20})-\\d+-\\d+-[0-9a-fA-F]{4}\\.json$")
+
+    // 进程内序号下界；真实事件序号会通过 counters/ 持久化分配。
     private val eventSeqCounter = AtomicLong(0)
 
     data class SnapshotHealth(
@@ -315,7 +320,7 @@ object DataBus {
      *   `events/<queue>/<seq20>-<ts>-<pid>-<rand>.json`
      *
      * 写入流程：tmp → fsync → rename → 目标文件
-     * 多进程安全：每进程独立 seq 计数器 + pid/rand 确保文件名唯一。
+     * 多进程安全：持久化队列序号 + 文件锁串行发布，确保文件名顺序与可见顺序一致。
      *
      * @param queue 事件队列子目录名
      * @param content JSON 字符串
@@ -329,39 +334,7 @@ object DataBus {
             return -1L
         }
 
-        val seq = eventSeqCounter.incrementAndGet()
-        val now = System.currentTimeMillis()
-        val pid = Process.myPid()
-        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
-        val filename = String.format("%020d-%d-%d-%04x.json", seq, now, pid, rand)
-
-        val tmpFile = try {
-            createTempFileIn(eventDir, "$filename-", ".tmp")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create event temp file: $queue/$filename", e)
-            return -1L
-        }
-        val targetFile = File(eventDir, filename)
-
-        return try {
-            FileOutputStream(tmpFile).use { fos ->
-                fos.write(content.toByteArray(Charsets.UTF_8))
-                fos.flush()
-                fos.fd.sync()
-            }
-            if (!tmpFile.renameTo(targetFile)) {
-                Log.e(TAG, "Event rename failed: $filename")
-                tmpFile.delete()
-                return -1L
-            }
-            makeWorldAccessible(targetFile, executable = false, writable = false)
-            Log.d(TAG, "Event written: $queue/$filename")
-            seq
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write event to $queue", e)
-            tmpFile.delete()
-            -1L
-        }
+        return writeEventLocked(queue, eventDir, content)
     }
 
     /**
@@ -448,6 +421,7 @@ object DataBus {
                 tmpFile.delete()
                 return false
             }
+            makeWorldAccessible(cursorFile, executable = false, writable = false)
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write cursor: $queue", e)
@@ -562,6 +536,117 @@ object DataBus {
         }
     }
 
+    @Synchronized
+    private fun writeEventLocked(queue: String, eventDir: File, content: String): Long {
+        val counterDir = File("$BUS_ROOT/$DIR_COUNTERS")
+        if (!prepareDirectory(counterDir)) return -1L
+
+        val counterFile = File(counterDir, "$queue.seq")
+        val counterPath = counterFile.toPath()
+        return try {
+            if (Files.exists(counterPath, LinkOption.NOFOLLOW_LINKS) &&
+                (Files.isSymbolicLink(counterPath) ||
+                        !Files.isRegularFile(counterPath, LinkOption.NOFOLLOW_LINKS))
+            ) {
+                Files.delete(counterPath)
+            }
+
+            RandomAccessFile(counterFile, "rw").use { raf ->
+                raf.channel.use { channel ->
+                    channel.lock().use {
+                        val next = nextEventSequence(queue, raf)
+                        writeCounterValue(raf, next)
+                        makeWorldAccessible(counterFile, executable = false, writable = true)
+                        if (writeEventFile(queue, eventDir, content, next)) {
+                            eventSeqCounter.updateAndGet { current -> maxOf(current, next) }
+                            next
+                        } else {
+                            -1L
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write event with locked sequence for $queue", e)
+            -1L
+        }
+    }
+
+    private fun nextEventSequence(queue: String, raf: RandomAccessFile): Long {
+        val storedSeq = readCounterValue(raf)
+        val cursorSeq = parseEventSequence(readCursor(queue)) ?: 0L
+        val queuedSeq = maxEventSequence(queue)
+        val processSeq = eventSeqCounter.incrementAndGet()
+        return maxOf(storedSeq + 1, cursorSeq + 1, queuedSeq + 1, processSeq)
+    }
+
+    private fun readCounterValue(raf: RandomAccessFile): Long {
+        raf.seek(0)
+        val content = ByteArray(raf.length().coerceAtMost(64L).toInt())
+        if (content.isEmpty()) return 0L
+        raf.readFully(content)
+        return content.toString(Charsets.UTF_8).trim().toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    }
+
+    private fun writeCounterValue(raf: RandomAccessFile, value: Long) {
+        raf.setLength(0)
+        raf.seek(0)
+        raf.write(value.toString().toByteArray(Charsets.UTF_8))
+        raf.fd.sync()
+    }
+
+    private fun writeEventFile(queue: String, eventDir: File, content: String, seq: Long): Boolean {
+        val now = System.currentTimeMillis()
+        val pid = Process.myPid()
+        val rand = ((Math.random() * 0xFFFF).toInt() and 0xFFFF)
+        val filename = String.format("%020d-%d-%d-%04x.json", seq, now, pid, rand)
+
+        val tmpFile = try {
+            createTempFileIn(eventDir, "$filename-", ".tmp")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create event temp file: $queue/$filename", e)
+            return false
+        }
+        val targetFile = File(eventDir, filename)
+
+        return try {
+            FileOutputStream(tmpFile).use { fos ->
+                fos.write(content.toByteArray(Charsets.UTF_8))
+                fos.flush()
+                fos.fd.sync()
+            }
+            if (!tmpFile.renameTo(targetFile)) {
+                Log.e(TAG, "Event rename failed: $filename")
+                tmpFile.delete()
+                return false
+            }
+            makeWorldAccessible(targetFile, executable = false, writable = false)
+            Log.d(TAG, "Event written: $queue/$filename")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write event to $queue", e)
+            tmpFile.delete()
+            false
+        }
+    }
+
+    private fun maxEventSequence(queue: String): Long {
+        val eventDir = File("$BUS_ROOT/$DIR_EVENTS/$queue")
+        if (!eventDir.exists()) return 0L
+        return eventDir.listFiles()
+            ?.asSequence()
+            ?.filter { isRegularFileNoFollow(it) && it.name.endsWith(".json") }
+            ?.mapNotNull { parseEventSequence(it.name) }
+            ?.maxOrNull()
+            ?: 0L
+    }
+
+    private fun parseEventSequence(name: String): Long? =
+        EVENT_FILE_NAME_PATTERN.matchEntire(name)
+            ?.groupValues
+            ?.get(1)
+            ?.toLongOrNull()
+
     fun deleteLeaseFile(category: String, name: String): Boolean {
         if (!isValidLeaseCategory(category)) return false
         val file = File("$BUS_ROOT/$DIR_LEASES/$category/${sanitizeFileName(name)}")
@@ -672,6 +757,7 @@ object DataBus {
         "$BUS_ROOT/$DIR_EVENTS/$DIR_CONSUMED",
         "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS",
         "$BUS_ROOT/$DIR_CURSORS",
+        "$BUS_ROOT/$DIR_COUNTERS",
         "$BUS_ROOT/$DIR_TMP",
     )
 
@@ -743,7 +829,8 @@ object DataBus {
         "$BUS_ROOT/$DIR_SIGNALS",
         "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
         "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
-        "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS" -> MODE_DIR_SHARED_STICKY
+        "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS",
+        "$BUS_ROOT/$DIR_COUNTERS" -> MODE_DIR_SHARED_STICKY
         else -> MODE_DIR_WORLD_READABLE
     }
 }

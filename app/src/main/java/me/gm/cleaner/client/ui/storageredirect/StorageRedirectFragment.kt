@@ -487,8 +487,9 @@ class StorageRedirectFragment : BaseFragment() {
                 if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
-                        viewModel.writeMountRules()
-                        viewModel.writeReadOnlyPaths()
+                        viewModel.ensureSharedPackagesLoaded(args.pi)
+                        viewModel.writeMountRules(args.pi)
+                        viewModel.writeReadOnlyPaths(args.pi)
                         viewModel.permissionToGrant.entries.forEach { (permission, grant) ->
                             if (grant != PackageManager.PERMISSION_GRANTED &&
                                 viewModel.isRuntime(permission)
@@ -507,8 +508,9 @@ class StorageRedirectFragment : BaseFragment() {
                 if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {
-                        viewModel.writeMountRules()
-                        viewModel.writeReadOnlyPaths()
+                        viewModel.ensureSharedPackagesLoaded(args.pi)
+                        viewModel.writeMountRules(args.pi)
+                        viewModel.writeReadOnlyPaths(args.pi)
                         viewModel.permissionToGrant.entries.forEach { (permission, grant) ->
                             if (grant != PackageManager.PERMISSION_GRANTED) {
                                 viewModel.setPackagePermission(
@@ -518,8 +520,7 @@ class StorageRedirectFragment : BaseFragment() {
                         }
                         if (viewModel.runningStatus?.isNotEmpty() == true) {
                             CleanerClient.service?.remount(
-                                viewModel.sharedProcessPackages!!
-                                    .map { it.packageName }
+                                viewModel.sharedProcessPackageNamesOrSelf(args.pi)
                                     .toTypedArray()
                             )
                         }

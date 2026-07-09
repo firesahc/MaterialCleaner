@@ -229,6 +229,34 @@ class StorageRedirectViewModel(private val application: Application, state: Save
             sharedProcessPackages = getSharedProcessPackages(packageInfo)
         }
 
+    suspend fun ensureSharedPackagesLoaded(packageInfo: PackageInfo) {
+        if (sharedUserIdPackages == null) {
+            loadSharedUserIdPackagesAsync(packageInfo).await()
+        }
+        if (sharedUserIdPackages.isNullOrEmpty()) {
+            sharedUserIdPackages = listOf(packageInfo)
+        }
+
+        if (sharedProcessPackages == null) {
+            loadSharedProcessPackagesAsync(packageInfo).await()
+        }
+        if (sharedProcessPackages.isNullOrEmpty()) {
+            sharedProcessPackages = listOf(packageInfo)
+        }
+    }
+
+    fun sharedProcessPackageNamesOrSelf(packageInfo: PackageInfo): List<String> =
+        sharedProcessPackages
+            ?.map { it.packageName }
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(packageInfo.packageName)
+
+    private fun sharedUserIdPackageNamesOrSelf(packageInfo: PackageInfo): List<String> =
+        sharedUserIdPackages
+            ?.map { it.packageName }
+            ?.takeIf { it.isNotEmpty() }
+            ?: listOf(packageInfo.packageName)
+
     // RULES
     private val _mountRulesLiveData: MutableLiveData<DiffArrayList<Pair<String?, String?>>> =
         state.get<Bundle>(::mountRules.name).let { bundle ->
@@ -259,13 +287,13 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         _mountRulesLiveData.value = _mountRulesLiveData.value!!.also { action(it) }
     }
 
-    fun writeMountRules() {
-        val packageNames = sharedProcessPackages?.map { it.packageName } ?: emptyList()
+    fun writeMountRules(packageInfo: PackageInfo) {
+        val packageNames = sharedProcessPackageNamesOrSelf(packageInfo)
         ServicePreferences.putStorageRedirect(mountRules, packageNames)
         Log.i(
             "MC/Test",
             "writeMountRules: service=${CleanerClient.service != null}, " +
-                    "ruleCount=${mountRules.size}"
+                    "ruleCount=${mountRules.size}, packages=$packageNames"
         )
         CleanerClient.service?.let { service ->
             try {
@@ -298,14 +326,15 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         _readOnlyPathsLiveData.value = _readOnlyPathsLiveData.value!!.also { action(it) }
     }
 
-    fun writeReadOnlyPaths() {
+    fun writeReadOnlyPaths(packageInfo: PackageInfo) {
+        val packageNames = sharedUserIdPackageNamesOrSelf(packageInfo)
         ServicePreferences.putReadOnly(
-            readOnlyPaths, sharedUserIdPackages?.map { it.packageName } ?: emptyList()
+            readOnlyPaths, packageNames
         )
         Log.i(
             "MC/Test",
             "writeReadOnlyPaths: service=${CleanerClient.service != null}, " +
-                    "readOnlyCount=${readOnlyPaths.size}"
+                    "readOnlyCount=${readOnlyPaths.size}, packages=$packageNames"
         )
         try {
             CleanerClient.service?.notifyReadOnlyChanged()
