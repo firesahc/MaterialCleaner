@@ -3,7 +3,6 @@ package me.gm.cleaner.runtime.server.observer
 import android.annotation.SuppressLint
 import android.database.Cursor
 import android.util.Log
-import androidx.annotation.IntDef
 import androidx.room.Room
 import api.SystemService
 import me.gm.cleaner.core.common.RuntimeFileUtils
@@ -18,7 +17,6 @@ import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DISTINCT
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_QUERIED
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_UNINSTALLED
 import me.gm.cleaner.runtime.server.CleanerServer
-import me.gm.cleaner.runtime.server.record.MIGRATION_1_2
 import java.io.File
 
 class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
@@ -81,7 +79,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
                 FileSystemRecordDatabase::class.java,
                 FileSystemRecordContract.DATABASE_NAME
             )
-            .addMigrations(MIGRATION_1_2)
+            .fallbackToDestructiveMigration()
             .build()
         dao = database.fileSystemRecordDao()
     }
@@ -182,26 +180,6 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
 
     companion object {
         const val DATABASE_NAME: String = FileSystemRecordContract.DATABASE_NAME
-    }
-}
-
-@IntDef(
-    value = [
-        PRUNE_DELETE_ALL,
-        PRUNE_DELETE_APP_SPECIFIC,
-        PRUNE_UNINSTALLED,
-        PRUNE_DISTINCT,
-        PRUNE_QUERIED,
-    ]
-)
-@Retention(AnnotationRetention.SOURCE)
-annotation class PruneMethod {
-    companion object {
-        const val DELETE_ALL: Int = PRUNE_DELETE_ALL
-        const val DELETE_APP_SPECIFIC: Int = PRUNE_DELETE_APP_SPECIFIC
-        const val UNINSTALLED: Int = PRUNE_UNINSTALLED
-        const val DISTINCT: Int = PRUNE_DISTINCT
-        const val QUERIED: Int = PRUNE_QUERIED
     }
 }
 

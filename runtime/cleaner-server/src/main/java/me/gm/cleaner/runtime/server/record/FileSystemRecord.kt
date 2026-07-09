@@ -11,8 +11,6 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity
 data class FileSystemRecord(
@@ -87,11 +85,5 @@ interface FileSystemRecordDao {
 @Database(entities = [FileSystemRecord::class], version = 2, exportSchema = false)
 abstract class FileSystemRecordDatabase : RoomDatabase() {
     abstract fun fileSystemRecordDao(): FileSystemRecordDao
-}
-
-val MIGRATION_1_2 = object : Migration(1, 2) {
-    override fun migrate(_db: SupportSQLiteDatabase) {
-        _db.execSQL("ALTER TABLE FileSystemRecord ADD COLUMN 'is_app_specific_storage' INTEGER NOT NULL DEFAULT 1")
-    }
 }
 

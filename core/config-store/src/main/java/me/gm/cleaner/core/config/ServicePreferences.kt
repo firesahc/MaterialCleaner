@@ -15,7 +15,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.util.regex.Pattern
 
-// Preference key constants (values match existing R.string values to preserve user data)
+// Preference key constants shared by XML preferences and runtime config snapshots.
 private const val PREF_STORAGE_REDIRECT = "storage_redirect"
 private const val READ_ONLY = "read_only"
 private const val DENY_LIST_KEY = "deny_list"

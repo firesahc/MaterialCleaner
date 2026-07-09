@@ -7,7 +7,7 @@ import androidx.preference.PreferenceManager
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
 import me.gm.cleaner.util.toParcelable
 
-// Preference key constants (values match existing R.string values to preserve user data)
+// Preference key constants shared by XML preferences and code.
 private const val OPEN_WIZARD_BY_DEFAULT_KEY = "open_wizard_by_default"
 private const val APP_CATEGORY_REPO_KEY = "app_category_repo"
 private const val APP_CATEGORY_DEFAULT = "https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/"
@@ -48,7 +48,6 @@ object ServiceMoreOptionsPreferences {
                 ?.toParcelable()
                 ?: WizardAnswers(true)
         } catch (e: Throwable) {
-            TempCodeRecords.fixBug("2.0.1")
             preferences.edit {
                 remove(EDIT_MOUNT_RULES_TEMPLATE_KEY)
             }

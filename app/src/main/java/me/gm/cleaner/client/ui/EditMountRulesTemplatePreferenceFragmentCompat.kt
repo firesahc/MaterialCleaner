@@ -19,7 +19,6 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.dao.TempCodeRecords
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountWizardQuestionsBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.util.createMaterialAlertDialogThemedContext
@@ -48,7 +47,6 @@ class EditMountRulesTemplatePreferenceFragmentCompat : PreferenceDialogFragmentC
                 savedInstanceState.getString(SAVE_STATE_VALUE)!!
             }.toParcelable()
         } catch (e: Throwable) {
-            TempCodeRecords.fixBug("2.0.1")
             ServiceMoreOptionsPreferences.editMountRulesTemplate
         }
     }

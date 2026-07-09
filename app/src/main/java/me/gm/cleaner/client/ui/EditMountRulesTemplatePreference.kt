@@ -12,7 +12,6 @@ import androidx.core.content.res.TypedArrayUtils
 import androidx.preference.DialogPreference
 import me.gm.cleaner.R
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
-import me.gm.cleaner.dao.TempCodeRecords
 import me.gm.cleaner.util.toBase64String
 import me.gm.cleaner.util.toParcelable
 
@@ -32,7 +31,6 @@ class EditMountRulesTemplatePreference @JvmOverloads constructor(
                 _value = value.toParcelable()
                 persistString(value)
             } catch (e: Throwable) {
-                TempCodeRecords.fixBug("1.10")
                 _value = WizardAnswers(true)
                 persistString(_value.toBase64String())
             }
