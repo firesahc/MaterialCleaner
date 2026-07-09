@@ -309,7 +309,7 @@ object DiagnosticArchive {
     private fun addAutoLogs(zip: ZipOutputStream) {
         val dir = File(AUTO_LOG_DIR)
         val files = dir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".log") }
+            ?.filter { isRegularFileNoFollow(it) && it.name.endsWith(".log") }
             ?.sortedByDescending { it.lastModified() }
             ?.take(MAX_AUTO_LOG_FILES)
             ?: emptyList()
@@ -348,7 +348,7 @@ object DiagnosticArchive {
         maxFiles: Int,
     ) {
         val files = dir.listFiles()
-            ?.filter { it.isFile }
+            ?.filter { isRegularFileNoFollow(it) }
             ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.name })
             ?.take(maxFiles)
             ?: emptyList()
@@ -506,10 +506,13 @@ object DiagnosticArchive {
     private fun safeEntryName(name: String): String =
         name.replace('\\', '/').trimStart('/').replace("../", "_")
 
+    private fun isRegularFileNoFollow(file: File): Boolean =
+        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+
     private fun cleanupOldArchives(dir: File) {
         runCatching {
             dir.listFiles()
-                ?.filter { it.isFile && it.name.endsWith(".zip") }
+                ?.filter { isRegularFileNoFollow(it) && it.name.endsWith(".zip") }
                 ?.sortedByDescending { it.lastModified() }
                 ?.drop(5)
                 ?.forEach { it.delete() }
