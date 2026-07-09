@@ -4,10 +4,14 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
+import android.os.Binder
 import android.os.Bundle
+import android.os.Process
 import android.util.Log
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.core.config.SecurityHelper
+
+private const val AID_USER_OFFSET = 100000
 
 class BinderProvider : ContentProvider() {
 
@@ -19,12 +23,34 @@ class BinderProvider : ContentProvider() {
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         Log.d("MC/Test", "BinderProvider.call: method=$method")
         if (BuildConfig.DEBUG) Log.d("CleanerTest", "BinderProvider.call: method=$method, arg=$arg")
-        if (extras == null) return null
-        val reply = Bundle()
-        if (METHOD_SEND_BINDER == method) {
+        if (METHOD_SEND_BINDER != method) {
+            return Bundle()
+        }
+        enforceSendBinderCaller(method)
+        if (extras != null) {
             handleSendBinder(extras)
         }
-        return reply
+        return Bundle()
+    }
+
+    private fun enforceSendBinderCaller(method: String) {
+        val uid = Binder.getCallingUid()
+        if (isAuthorizedSendBinderCaller(uid)) {
+            return
+        }
+        Log.w(
+            "MC/Test",
+            "Rejected BinderProvider call: method=$method uid=$uid pid=${Binder.getCallingPid()}"
+        )
+        throw SecurityException("Unauthorized BinderProvider caller: $method")
+    }
+
+    private fun isAuthorizedSendBinderCaller(uid: Int): Boolean {
+        val appId = uid % AID_USER_OFFSET
+        return uid == Process.myUid() ||
+                appId == Process.ROOT_UID ||
+                appId == Process.SYSTEM_UID ||
+                appId == Process.SHELL_UID
     }
 
     private fun handleSendBinder(extras: Bundle) {
