@@ -13,308 +13,222 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
-import me.gm.cleaner.core.config.ServicePreferences
-import me.gm.cleaner.dao.RootPreferences
-import me.gm.cleaner.starter.Starter
+import java.util.concurrent.atomic.AtomicLong
 
 /**
- * 服务进程（cleaner_server）的 4 状态状态机。
+ * cleaner_server 状态机。
  *
- * 管理服务器进程的启/停/崩溃恢复。
- * 不关心 Xposed 连接状态——那是 [XposedConnectionState] 的职责。
+ * 职责边界：
+ * - 手动/通知启停入口
+ * - UI 状态同步
+ * - Binder 死亡后的失败恢复协调
+ * - 通过启动 generation 让停止操作失效正在进行的启动流程
  *
- * 状态转换：
- *   STOPPED ──[start(source)]──→ STARTING ──[Binder收到]──→ RUNNING
- *      ▲                             │                        │
- *      │                        [超时/失败]              [Binder意外断]
- *      │                             ▼                        │
- *      │                           FAILED ←────── 重试耗尽 ───┘
- *      │                               │
- *      └───────[start(MANUAL)]─────────┘
- *
- * stop(USER) → 任何状态 → STOPPED（永远不触发重试）
+ * 自动启动入口只属于 BootCompleteReceiver，状态机不读取 start_on_boot。
  */
 enum class ServerState {
-    /** 手动停止 / 初始状态 */
     STOPPED,
-    /** Shell.cmd 已发送，等待 Binder */
     STARTING,
-    /** Binder 已通，AIDL 可调用 */
     RUNNING,
-    /** 启动失败或崩溃超过最大重试次数 */
     FAILED
 }
 
-enum class StartSource { MANUAL, AUTO, BOOT, NOTIFICATION }
+enum class StartSource { MANUAL, NOTIFICATION }
 enum class StopSource { USER }
 
 object ServerStateMachine {
+    private const val TAG = "MC/StateMachine"
+    private const val MAX_RECOVERY_RETRIES = 5
 
     private val _state = MutableStateFlow(ServerState.STOPPED)
     val state: StateFlow<ServerState> = _state.asStateFlow()
 
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val launchGeneration = AtomicLong(0)
+
+    @Volatile
     private var appContext: Context? = null
     private var crashCount = 0
-    private var lastStartSource = StartSource.AUTO
-    @Volatile
-    private var sessionManuallyStopped = false
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /** 用于 FAILED 状态下区分"是否曾经成功运行过" */
-    private var hasEverRun = false
-
-    // ── 初始化 ──
-
-    /**
-     * 在 Application.onCreate() 中调用。
-     * 传入 Application Context 供自动重试时使用。
-     */
     fun init(context: Context) {
-        appContext = context
-        if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "initialized")
+        appContext = context.applicationContext
+        ServiceBootStateStore.ensureInitialized(context)
+        if (BuildConfig.DEBUG) Log.d(TAG, "initialized")
     }
 
-    /** 当前是否应认为"服务完全开启"（用于 UI 按钮标签） */
     val isServiceOpen: Boolean
-        get() = _state.value == ServerState.RUNNING
-                && !sessionManuallyStopped
-                && runCatching { Shell.getShell().isRoot }.getOrDefault(false)
-                && HooksBridgeProvider.isMediaProviderConnected()
-
-    val isSessionManuallyStopped: Boolean
-        get() = sessionManuallyStopped
-
-    // ── 统一启动 ──
+        get() = _state.value == ServerState.RUNNING &&
+                ServiceBootStateStore.shouldRun() &&
+                runCatching { Shell.getShell().isRoot }.getOrDefault(false) &&
+                HooksBridgeProvider.isMediaProviderConnected()
 
     /**
-     * 启动服务器进程。
-     * @param source 启动来源决定前置检查和重试策略
-     * @param context 用于 writeDataFiles 的 Context（device-protected storage）
-     * @return true=启动成功并进入 RUNNING
+     * 兼容旧 UI 命名：仅表示本次 boot 内用户手动停止。
      */
-    suspend fun start(source: StartSource, context: Context): Boolean =
-        startInternal(source, context, allowStartingState = false, crashRetry = false)
+    val isSessionManuallyStopped: Boolean
+        get() = ServiceBootStateStore.isStopped() &&
+                ServiceBootStateStore.source == BootTargetSource.MANUAL
 
-    private suspend fun startInternal(
-        source: StartSource,
-        context: Context,
-        allowStartingState: Boolean,
-        crashRetry: Boolean
-    ): Boolean = withContext(Dispatchers.IO) {
-        val current = _state.value
-        if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "start($source) from state=$current")
+    suspend fun start(source: StartSource, context: Context): Boolean = withContext(Dispatchers.IO) {
+        ServiceBootStateStore.ensureInitialized(context)
+        ServiceBootStateStore.setTarget(BootTargetState.RUNNING, source.toBootTargetSource())
+        crashCount = 0
 
-        // ── 前置检查 ──
-
-        // 已在运行 → 跳过
-        if (current == ServerState.RUNNING) {
-            if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "start($source): already RUNNING, skip")
-            return@withContext true
-        }
-
-        // 启动中 → 等待调用方 await 后续状态
-        if (current == ServerState.STARTING && !allowStartingState) {
-            if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "start($source): already STARTING, skip")
-            return@withContext false
-        }
-
-        if (isUserRequestedStart(source) && !crashRetry) {
-            sessionManuallyStopped = false
-            crashCount = 0
-        }
-
-        // 开机自启是持久主控制；手动/通知点击仅作为当前会话的额外入口。
-        if (!isStartAllowed(source)) {
-            if (BuildConfig.DEBUG) {
-                Log.d(
-                    "MC/StateMachine",
-                    "start($source): skipped, startOnBoot=${RootPreferences.isStartOnBoot}, " +
-                            "sessionManuallyStopped=$sessionManuallyStopped"
-                )
-            }
-            if (current == ServerState.STARTING || crashRetry) {
-                _state.value = ServerState.STOPPED
-            }
-            return@withContext false
-        }
-
-        // Root 权限检查
-        val isRoot = runCatching { Shell.getShell().isRoot }.getOrDefault(false)
-        if (!isRoot) {
-            Log.w("MC/StateMachine", "start($source): no root access")
-            _state.value = ServerState.FAILED
-            return@withContext false
-        }
-
-        // ── 状态转换 ──
-
-        lastStartSource = source
+        val token = launchGeneration.incrementAndGet()
         _state.value = ServerState.STARTING
+        if (BuildConfig.DEBUG) Log.i(TAG, "start($source): token=$token")
 
-        // ── 执行启动 ──
+        val success = CleanerServerLauncher.launch(context, source.toLaunchReason()) {
+            isLaunchValid(token)
+        }
+        finishLaunch(token, success)
+    }
 
-        try {
-            // 1) 清理已有 server 进程，确保启动环境干净
-            CleanerClient.killServerProcess()
-            delay(1000)
+    suspend fun recoverIfTargetRunning(
+        context: Context,
+        reason: LaunchReason = LaunchReason.RECOVERY
+    ): Boolean = withContext(Dispatchers.IO) {
+        ServiceBootStateStore.ensureInitialized(context)
+        if (!ServiceBootStateStore.shouldRun()) {
+            synchronizeWithTarget()
+            return@withContext false
+        }
 
-            // 2) 写数据文件 + 执行 Shell 命令
-            Starter.writeDataFiles(context)
-            val result = Shell.cmd(Starter.command).exec()
-            if (!result.isSuccess) {
-                Log.e("MC/StateMachine", "start($source): shell command failed: ${result.err.joinToString()}")
-                _state.value = ServerState.FAILED
-                return@withContext false
-            }
-
-            // 3) 等待 Binder 就绪（最长 ~10s = 20×500ms）
-            if (!CleanerClient.waitForBinder()) {
-                Log.e("MC/StateMachine", "start($source): binder timeout")
-                _state.value = ServerState.FAILED
-                return@withContext false
-            }
-
-            // 4) 重载配置到服务器（逐个 try，单次失败不阻塞后续）
-            val svc = CleanerClient.service
-            if (svc != null) {
-                runCatching { svc.notifyPreferencesChanged() }
-                    .onFailure { Log.w("MC/StateMachine", "notifyPreferencesChanged failed", it) }
-                runCatching { svc.notifySrChanged() }
-                    .onFailure { Log.w("MC/StateMachine", "notifySrChanged failed", it) }
-                runCatching { svc.notifyReadOnlyChanged() }
-                    .onFailure { Log.w("MC/StateMachine", "notifyReadOnlyChanged failed", it) }
-                val packages = ServicePreferences.srPackages.toTypedArray()
-                if (packages.isNotEmpty()) {
-                    runCatching { svc.remount(packages) }
-                        .onFailure { Log.w("MC/StateMachine", "remount failed", it) }
-                }
-            }
-
+        if (CleanerServerLauncher.isServerAlive()) {
             _state.value = ServerState.RUNNING
             crashCount = 0
-            hasEverRun = true
-            if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "start($source) → RUNNING")
             return@withContext true
+        }
 
-        } catch (e: Exception) {
-            Log.e("MC/StateMachine", "start($source) exception", e)
-            _state.value = ServerState.FAILED
+        if (_state.value == ServerState.STARTING) {
+            if (BuildConfig.DEBUG) Log.d(TAG, "recover($reason): already STARTING")
             return@withContext false
         }
+
+        val token = launchGeneration.incrementAndGet()
+        _state.value = ServerState.STARTING
+        if (BuildConfig.DEBUG) Log.i(TAG, "recover($reason): token=$token")
+
+        val success = CleanerServerLauncher.launch(context, reason) {
+            isLaunchValid(token)
+        }
+        finishLaunch(token, success)
     }
 
-    // ── 统一停止 ──
-
-    /**
-     * 停止服务器进程。
-     * 三层清理：优雅退出 → 释放 Binder → root shell 杀死。
-     */
-    suspend fun stop(source: StopSource) {
-        if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "stop($source) from state=${_state.value}")
+    suspend fun stop(source: StopSource) = withContext(Dispatchers.IO) {
+        if (BuildConfig.DEBUG) Log.i(TAG, "stop($source) from state=${_state.value}")
+        launchGeneration.incrementAndGet()
+        ServiceBootStateStore.setTarget(BootTargetState.STOPPED, BootTargetSource.MANUAL)
+        crashCount = 0
         _state.value = ServerState.STOPPED
-
-        sessionManuallyStopped = true
-
-        CleanerClient.exit()
-        CleanerClient.resetConnection()
-        CleanerClient.killServerProcess()
+        CleanerServerLauncher.stopCurrentServer()
     }
 
-    // ── 事件驱动 ──
-
-    /**
-     * Binder 到达时调用（从 CleanerClient.onBinderReceived）。
-     *
-     * 处理两种场景：
-     *   1. STARTING → RUNNING（正常启动成功）
-     *   2. STOPPED → RUNNING（进程重启但服务器还在）
-     */
-    fun onBinderReceived() {
-        when (_state.value) {
-            ServerState.STARTING -> {
-                if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "onBinderReceived: STARTING → RUNNING")
+    fun synchronizeWithTarget() {
+        val shouldRun = ServiceBootStateStore.shouldRun()
+        val alive = CleanerServerLauncher.isServerAlive()
+        when {
+            shouldRun && alive -> {
                 _state.value = ServerState.RUNNING
                 crashCount = 0
-                hasEverRun = true
             }
-            ServerState.STOPPED -> {
-                // 进程重启场景：Binder 意外到达但服务器还在
-                if (!sessionManuallyStopped) {
-                    if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "onBinderReceived: STOPPED → RUNNING (process restart)")
-                    _state.value = ServerState.RUNNING
-                    hasEverRun = true
-                }
-            }
-            else -> { /* 非预期状态下的 Binder 到达 → 忽略 */ }
-        }
-    }
-
-    /**
-     * Binder 死亡时调用（从 CleanerClient.DEATH_RECIPIENT）。
-     *
-     * - RUNNING 状态死亡 → 计为一次崩溃，按策略自动重试
-     * - STOPPED 状态死亡 → 正常停止后的残留回调 → 忽略
-     */
-    fun onBinderDied() {
-        when (_state.value) {
-            ServerState.RUNNING -> {
-                crashCount++
-                val maxRetries = if (isUserRequestedStart(lastStartSource)) 5 else 3
-                Log.w("MC/StateMachine", "onBinderDied: crash #$crashCount, max=$maxRetries")
-
-                if (crashCount <= maxRetries) {
-                    // 自动重试：异步执行 start()（使用 appContext）
-                    val ctx = appContext
-                    if (ctx != null) {
-                        _state.value = ServerState.STARTING  // 立即反映重试状态
-                        val retrySource = lastStartSource
-                        scope.launch {
-                            delay(backoffMillis(crashCount))
-                            startInternal(
-                                retrySource,
-                                ctx,
-                                allowStartingState = true,
-                                crashRetry = true
-                            )
-                        }
-                    } else {
-                        // appContext 尚未初始化 → 无法自动重试
-                        Log.e("MC/StateMachine", "onBinderDied: appContext null, cannot auto-retry")
-                        _state.value = ServerState.FAILED
-                    }
-                } else {
-                    Log.e("MC/StateMachine", "onBinderDied: max retries reached")
+            shouldRun -> {
+                if (_state.value == ServerState.RUNNING) {
                     _state.value = ServerState.FAILED
                 }
             }
-            ServerState.STOPPED -> {
-                // 正常停止后的残留 DEATH_RECIPIENT → 忽略
-                if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "onBinderDied: STOPPED, ignored")
-            }
             else -> {
-                if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "onBinderDied: state=${_state.value}, ignored")
+                if (alive) {
+                    launchGeneration.incrementAndGet()
+                    CleanerClient.resetConnection()
+                    scope.launch {
+                        CleanerClient.killServerProcess()
+                    }
+                }
+                _state.value = ServerState.STOPPED
+                crashCount = 0
             }
         }
     }
 
-    /**
-     * Xposed 连接状态变化通知——仅用于日志记录。
-     * 状态机不据此改变自身状态。
-     */
-    fun onXposedConnected(changed: Boolean) {
-        if (BuildConfig.DEBUG) Log.d("MC/StateMachine", "onXposedConnected: $changed")
-    }
+    fun onBinderReceived() {
+        if (!ServiceBootStateStore.shouldRun()) {
+            Log.w(TAG, "onBinderReceived: target is ${ServiceBootStateStore.targetState}, rejecting binder")
+            launchGeneration.incrementAndGet()
+            _state.value = ServerState.STOPPED
+            crashCount = 0
+            CleanerClient.resetConnection()
+            scope.launch {
+                CleanerClient.killServerProcess()
+            }
+            return
+        }
 
-    // ── 工具 ──
-
-    /** 从 FAILED 恢复到 STOPPED，重置计数器 */
-    fun reset() {
-        if (BuildConfig.DEBUG) Log.i("MC/StateMachine", "reset")
+        if (BuildConfig.DEBUG) Log.i(TAG, "onBinderReceived: state=${_state.value} -> RUNNING")
+        _state.value = ServerState.RUNNING
         crashCount = 0
-        _state.value = ServerState.STOPPED
     }
 
-    /** 指数退避：第 n 次崩溃后等待 2^n 秒（上限 30s） */
+    fun onBinderDied() {
+        if (!ServiceBootStateStore.shouldRun()) {
+            if (BuildConfig.DEBUG) Log.d(TAG, "onBinderDied: target stopped, ignored")
+            _state.value = ServerState.STOPPED
+            crashCount = 0
+            return
+        }
+
+        crashCount++
+        Log.w(TAG, "onBinderDied: crash #$crashCount, max=$MAX_RECOVERY_RETRIES")
+        if (crashCount > MAX_RECOVERY_RETRIES) {
+            _state.value = ServerState.FAILED
+            return
+        }
+
+        val ctx = appContext
+        if (ctx == null) {
+            Log.e(TAG, "onBinderDied: appContext null, cannot recover")
+            _state.value = ServerState.FAILED
+            return
+        }
+
+        _state.value = ServerState.STARTING
+        scope.launch {
+            delay(backoffMillis(crashCount))
+            recoverIfTargetRunning(ctx, LaunchReason.RECOVERY)
+        }
+    }
+
+    fun onXposedConnected(changed: Boolean) {
+        if (BuildConfig.DEBUG) Log.d(TAG, "onXposedConnected: $changed")
+    }
+
+    fun reset() {
+        if (BuildConfig.DEBUG) Log.i(TAG, "reset")
+        crashCount = 0
+        _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
+    }
+
+    private fun finishLaunch(token: Long, success: Boolean): Boolean {
+        if (!isLaunchValid(token)) {
+            if (BuildConfig.DEBUG) Log.i(TAG, "finishLaunch: token=$token invalid")
+            _state.value = ServerState.STOPPED
+            CleanerServerLauncher.stopCurrentServer()
+            return false
+        }
+
+        return if (success) {
+            _state.value = ServerState.RUNNING
+            crashCount = 0
+            true
+        } else {
+            _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
+            false
+        }
+    }
+
+    private fun isLaunchValid(token: Long): Boolean =
+        launchGeneration.get() == token && ServiceBootStateStore.shouldRun()
+
     private fun backoffMillis(crash: Int): Long {
         val seconds = when {
             crash <= 0 -> 1L
@@ -324,9 +238,13 @@ object ServerStateMachine {
         return seconds * 1000
     }
 
-    private fun isUserRequestedStart(source: StartSource): Boolean =
-        source == StartSource.MANUAL || source == StartSource.NOTIFICATION
+    private fun StartSource.toBootTargetSource(): BootTargetSource = when (this) {
+        StartSource.MANUAL -> BootTargetSource.MANUAL
+        StartSource.NOTIFICATION -> BootTargetSource.NOTIFICATION
+    }
 
-    private fun isStartAllowed(source: StartSource): Boolean =
-        !sessionManuallyStopped && (isUserRequestedStart(source) || RootPreferences.isStartOnBoot)
+    private fun StartSource.toLaunchReason(): LaunchReason = when (this) {
+        StartSource.MANUAL -> LaunchReason.MANUAL
+        StartSource.NOTIFICATION -> LaunchReason.NOTIFICATION
+    }
 }

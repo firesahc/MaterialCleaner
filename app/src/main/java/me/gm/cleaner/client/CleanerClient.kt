@@ -74,20 +74,20 @@ object CleanerClient {
      *
      * 仅当所有条件都满足时返回 true：
      *  1. 进程存活（[pingBinder]）
-     *  2. 本次会话未被用户手动停止
+     *  2. 本次 boot 目标态要求服务运行
      *  3. Root 权限可用
      *  4. LSPosed Xposed Hooks 已连接到 MediaProvider（[HooksBridgeProvider.isMediaProviderConnected]）
      */
     fun isServiceOpen(): Boolean {
         val running = pingBinder()
-        val notManuallyStopped = !ServerStateMachine.isSessionManuallyStopped
+        val targetRunning = ServiceBootStateStore.shouldRun()
         val rootAvailable = runCatching { Shell.getShell().isRoot }.getOrDefault(false)
         val xposedConnected = HooksBridgeProvider.isMediaProviderConnected()
-        val open = running && notManuallyStopped && rootAvailable && xposedConnected
+        val open = running && targetRunning && rootAvailable && xposedConnected
         if (BuildConfig.DEBUG) {
             Log.d(
                 "CleanerTest",
-                "isServiceOpen: running=$running, notManuallyStopped=$notManuallyStopped, " +
+                "isServiceOpen: running=$running, targetRunning=$targetRunning, " +
                         "rootAvailable=$rootAvailable, xposedConnected=$xposedConnected → $open"
             )
         }
@@ -98,8 +98,14 @@ object CleanerClient {
     fun onBinderReceived(newBinder: IBinder) {
         Log.i("MC/Test", "onBinderReceived: newBinder received, currentBinder=${binder != null}")
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "onBinderReceived: newBinder=$newBinder, currentBinder=$binder")
+        if (!ServiceBootStateStore.shouldRun()) {
+            Log.w("MC/Test", "onBinderReceived: target stopped, rejecting binder")
+            ServerStateMachine.onBinderReceived()
+            return
+        }
         if (binder == newBinder) {
             if (BuildConfig.DEBUG) Log.d("CleanerTest", "onBinderReceived: same binder, skipping")
+            ServerStateMachine.onBinderReceived()
             return
         }
         binder?.unlinkToDeath(DEATH_RECIPIENT, 0)

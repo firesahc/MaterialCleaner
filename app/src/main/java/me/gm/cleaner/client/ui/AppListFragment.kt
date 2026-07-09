@@ -695,7 +695,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
             try {
                 val success = ServerStateMachine.start(StartSource.MANUAL, requireContext())
                 if (success) {
-                    viewModel.loadApps(startServer = false)
+                    viewModel.loadApps()
                     val packages = ServicePreferences.srPackages
                     val msg = if (packages.isNotEmpty()) {
                         requireContext().getString(R.string.toast_service_started_n_mounted, packages.size)

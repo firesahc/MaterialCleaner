@@ -17,6 +17,7 @@ class BinderProvider : ContentProvider() {
 
     override fun onCreate(): Boolean {
         SecurityHelper.init(context!!)
+        ServiceBootStateStore.ensureInitialized(context!!)
         return true
     }
 
@@ -57,6 +58,13 @@ class BinderProvider : ContentProvider() {
         val binder = extras.getBinder(EXTRA_BINDER)
         Log.i("MC/Test", "handleSendBinder: currentPingBinder=${CleanerClient.pingBinder()}, hasBinder=${binder != null}")
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "handleSendBinder: pingBinder=${CleanerClient.pingBinder()}, binder=$binder")
+        ServerStateMachine.synchronizeWithTarget()
+        if (!ServiceBootStateStore.shouldRun()) {
+            if (binder != null) {
+                ServerStateMachine.onBinderReceived()
+            }
+            return
+        }
         if (CleanerClient.pingBinder()) return
         if (binder == null) return
         Log.i("MC/Test", "handleSendBinder: passing binder to CleanerClient")

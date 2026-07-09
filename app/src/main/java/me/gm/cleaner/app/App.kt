@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import com.topjohnwu.superuser.Shell
 import me.gm.cleaner.client.ServerStateMachine
+import me.gm.cleaner.client.ServiceBootStateStore
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
@@ -24,11 +25,12 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLabelCache.init(this)
-        ServerStateMachine.init(this)
         val dpsContext = createDeviceProtectedStorageContext()
         RootPreferences.init(dpsContext)
         ServicePreferences.init(dpsContext)
         ServiceMoreOptionsPreferences.init(dpsContext)
+        ServiceBootStateStore.init(dpsContext)
+        ServerStateMachine.init(this)
         Shell.setDefaultBuilder(
             Shell.Builder.create()
                 .setFlags(Shell.FLAG_MOUNT_MASTER)
