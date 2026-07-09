@@ -40,22 +40,14 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".app.MainActivity"
-            android:exported="true">
+            android:name=".client.ui.ServiceSettingsActivity"
+            android:exported="true"
+            android:label="@string/service_settings">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".settings.SettingsActivity"
-            android:exported="false"
-            android:label="@string/settings" />
-
-        <activity
-            android:name=".client.ui.ServiceSettingsActivity"
-            android:exported="false"
-            android:label="@string/service_settings" />
 
         <activity
             android:name=".client.ServerBridgeActivity"

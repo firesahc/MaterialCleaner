@@ -9,6 +9,7 @@ build
 /out
 .externalNativeBuild
 .omo
+.learnings/
 /AGENTS.md
 /Document/
 

@@ -1,21 +1,27 @@
 package me.gm.cleaner.client.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.ListPreference
 import androidx.preference.Preference
-import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceRecyclerViewAccessibilityDelegate
 import androidx.preference.SwitchPreferenceCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.snackbar.Snackbar
+import com.topjohnwu.superuser.internal.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -25,22 +31,69 @@ import me.gm.cleaner.R
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
+import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
-import me.gm.cleaner.settings.PathListPreference
-import me.gm.cleaner.settings.PathListPreferenceFragmentCompat
+import me.gm.cleaner.net.NOTIFICATION_CHANNEL
+import me.gm.cleaner.settings.BaseSettingsFragment
+import me.gm.cleaner.settings.theme.ThemeUtil
+import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.util.PermissionUtils
+import me.gm.cleaner.util.RequesterFragment
 import me.gm.cleaner.util.fitsSystemWindowInsets
 import me.gm.cleaner.util.fixEdgeEffect
 import me.gm.cleaner.util.overScrollIfContentScrollsPersistent
 import org.json.JSONObject
+import java.util.Locale
 
-class MoreOptionsFragment : PreferenceFragmentCompat() {
+class MoreOptionsFragment : BaseSettingsFragment() {
     private lateinit var shareLauncher: ActivityResultLauncher<String>
     private lateinit var importLauncher: ActivityResultLauncher<Array<String>>
     private val notifyPreferencesChangedListener: NotifyServerPreferenceChangeListener
         get() = NotifyServerPreferenceChangeListener()
+
+    class PostNotificationRequesterFragment : RequesterFragment() {
+        @SuppressLint("InlinedApi")
+        override val requiredPermissions: Array<String> =
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+        private val preference: SwitchPreferenceCompat by lazy {
+            (parentFragment as MoreOptionsFragment)
+                .findPreference(getString(R.string.post_notification_key))!!
+        }
+        private var rationaleShowed: Boolean = false
+
+        override fun dispatchRequestPermissions(
+            permissions: Array<String>, savedInstanceState: Bundle?
+        ) {
+            rationaleShowed = false
+            super.dispatchRequestPermissions(permissions, savedInstanceState)
+        }
+
+        override fun onRequestPermissionsSuccess(
+            permissions: Set<String>, savedInstanceState: Bundle?
+        ) {
+            if (permissions.contains(Manifest.permission.POST_NOTIFICATIONS)) {
+                preference.isChecked = true
+            }
+        }
+
+        override fun onRequestPermissionsFailure(
+            shouldShowRationale: Set<String>, permanentlyDenied: Set<String>,
+            haveAskedUser: Boolean, savedInstanceState: Bundle?
+        ) {
+            if (shouldShowRationale.isNotEmpty()) {
+                if (!haveAskedUser) {
+                    rationaleShowed = true
+                    onRequestPermissions(shouldShowRationale.toTypedArray(), savedInstanceState)
+                }
+            } else if (permanentlyDenied.isNotEmpty() && !rationaleShowed) {
+                PermissionUtils.startNotificationSettings(requireContext())
+            }
+        }
+    }
 
     private open inner class NotifyServerPreferenceChangeListener :
         Preference.OnPreferenceChangeListener {
@@ -130,6 +183,7 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.setStorageDeviceProtected()
         addPreferencesFromResource(R.xml.service_more_options_preferences)
+        addPreferencesFromResource(R.xml.root_preferences)
 
         val aggressivelyPromptForReadingMediaFiles = findPreference<SwitchPreferenceCompat>(
             getString(me.gm.cleaner.shared.R.string.aggressively_prompt_for_reading_media_files_key)
@@ -147,10 +201,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
                     super.onPreferenceChange(preference, newValue)
                 }
         }
-
-        val openWizardByDefault = findPreference<SwitchPreferenceCompat>(
-            getString(R.string.open_wizard_by_default_key)
-        )!!
 
         findPreference<Preference>(getString(R.string.share_key))?.setOnPreferenceClickListener {
             shareLauncher.launch("storage_redirect")
@@ -274,6 +324,118 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
         )
         upsert?.onPreferenceChangeListener = notifyPreferencesChangedListener
 
+        bindAppPreferences()
+    }
+
+    @SuppressLint("RestrictedApi")
+    private fun bindAppPreferences() {
+        val isStartOnBoot = findPreference<Preference>(getString(R.string.start_on_boot_key))!!
+        isStartOnBoot.isVisible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                !Utils.isRootImpossible() && Process.myUid().toUserId() == 0
+        isStartOnBoot.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, newValue ->
+                try {
+                    if (newValue as Boolean) {
+                        Starter.writeSourceDir(requireContext())
+                    } else {
+                        Starter.deleteSourceDir(requireContext())
+                    }
+                } catch (e: Throwable) {
+                    Snackbar
+                        .make(requireView(), e.message.toString(), Snackbar.LENGTH_SHORT)
+                        .show()
+                    return@OnPreferenceChangeListener false
+                }
+                true
+            }
+
+        val postNotification =
+            findPreference<SwitchPreferenceCompat>(getString(R.string.post_notification_key))!!
+        postNotification.isVisible = true
+        postNotification.isChecked = RootPreferences.isPostNotification &&
+                PermissionUtils.checkSelfPostNotificationPermission(
+                    requireContext(), NOTIFICATION_CHANNEL
+                )
+        postNotification.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, newValue ->
+                val hasPermission = PermissionUtils.checkSelfPostNotificationPermission(
+                    requireContext(), NOTIFICATION_CHANNEL
+                )
+                if (newValue as Boolean && !hasPermission) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        PermissionUtils.requestPermissions(
+                            childFragmentManager, PostNotificationRequesterFragment()
+                        )
+                    } else {
+                        PermissionUtils.startNotificationSettings(requireContext())
+                    }
+                }
+                hasPermission
+            }
+
+        val language = findPreference<ListPreference>(getString(R.string.language_key))!!
+        language.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, _ ->
+                ActivityCompat.recreate(requireActivity())
+                true
+            }
+        val entries = language.entries
+        val userLocale = RootPreferences.locale
+        val isFollowSystem = "SYSTEM" == language.value
+        var summary: String? = null
+        for (i in 1 until entries.size) {
+            val locale = Locale.forLanguageTag(entries[i].toString())
+            val localeName = if (!locale.script.isNullOrEmpty()) {
+                locale.getDisplayScript(locale)
+            } else {
+                locale.getDisplayName(locale)
+            }
+            val localeNameUser = if (!locale.script.isNullOrEmpty()) {
+                locale.getDisplayScript(userLocale)
+            } else {
+                locale.getDisplayName(userLocale)
+            }
+            if (!isFollowSystem && localeName == localeNameUser) {
+                summary = localeName
+                entries[i] = localeName
+            } else {
+                entries[i] = "$localeName - $localeNameUser"
+            }
+        }
+        language.summary = if (isFollowSystem) {
+            getString(R.string.follow_system)
+        } else {
+            summary
+        }
+
+        findPreference<Preference>(getString(R.string.theme_color_key))?.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, _ ->
+                ActivityCompat.recreate(requireActivity())
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.theme_m3_key))?.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, _ ->
+                ActivityCompat.recreate(requireActivity())
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.dark_theme_key))?.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, newValue ->
+                if (RootPreferences.preferences.getString(
+                        getString(R.string.dark_theme_key), ThemeUtil.MODE_NIGHT_FOLLOW_SYSTEM
+                    ) != newValue
+                ) {
+                    ActivityCompat.recreate(requireActivity())
+                }
+                true
+            }
+
+        findPreference<Preference>(getString(R.string.black_dark_theme_key))?.onPreferenceChangeListener =
+            Preference.OnPreferenceChangeListener { _, _ ->
+                ActivityCompat.recreate(requireActivity())
+                true
+            }
     }
 
     @Suppress("DEPRECATION")
@@ -296,10 +458,6 @@ class MoreOptionsFragment : PreferenceFragmentCompat() {
         val f = when (preference) {
             is EditMountRulesTemplatePreference -> {
                 EditMountRulesTemplatePreferenceFragmentCompat.newInstance(preference.key)
-            }
-
-            is PathListPreference -> {
-                PathListPreferenceFragmentCompat.newInstance(preference.key)
             }
 
             else -> {
