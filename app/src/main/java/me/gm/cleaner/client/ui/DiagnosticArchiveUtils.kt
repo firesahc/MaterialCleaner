@@ -19,6 +19,8 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
+import me.gm.cleaner.client.OrchestratedLayerStatus
+import me.gm.cleaner.client.OrchestratedRuntimeStatus
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
@@ -93,15 +95,16 @@ private fun copyFromServerArchive(pfd: ParcelFileDescriptor, target: File) {
 
 private fun createFallbackArchive(target: File) {
     ZipOutputStream(FileOutputStream(target)).use { zip ->
+        val status = runCatching { CleanerClient.getOrchestratedStatus() }
+            .getOrNull()
         addTextEntry(zip, "privacy.txt", fallbackPrivacyNotice())
         addTextEntry(zip, "manifest.txt", buildFallbackManifest())
+        addTextEntry(zip, "summary_zh-CN.txt", buildFallbackSummaryZhCn(status))
         addCommandEntry(
             zip,
             "logs/app_logcat_threadtime_recent.txt",
             listOf("logcat", "-d", "-v", "threadtime", "-b", "main,system,crash", "-t", "2000")
         )
-        val status = runCatching { CleanerClient.getOrchestratedStatus() }
-            .getOrNull()
         addTextEntry(zip, "status/app_visible_status.txt", status?.toString() ?: "server unavailable")
     }
 }
@@ -112,6 +115,42 @@ private fun fallbackPrivacyNotice(): String = buildString {
     appendLine("and the app-visible service status.")
     appendLine("Basic identifiers such as build fingerprint, APK source paths,")
     appendLine("and long hex-like tokens are redacted before export.")
+}
+
+private fun buildFallbackSummaryZhCn(status: OrchestratedRuntimeStatus?): String = buildString {
+    appendLine("Material Cleaner 诊断包概览（App fallback）")
+    appendLine("生成时间：${System.currentTimeMillis()}")
+    appendLine()
+    appendLine("说明：")
+    appendLine("- 这是服务端诊断不可用时由 App 进程生成的 fallback 诊断包。")
+    appendLine("- 数据范围比完整服务端诊断包小，主要包含 App 可见状态和近期 logcat。")
+    appendLine("- logs/app_logcat_threadtime_recent.txt：App 进程可抓取的近期日志。")
+    appendLine("- status/app_visible_status.txt：App 通过 Binder 读取到的服务状态。")
+    appendLine()
+    appendLine("连接状态：")
+    appendLine("- serverConnected=${CleanerClient.service != null}")
+    appendLine("- serverVersion=${CleanerClient.serverVersion}")
+    if (status == null) {
+        appendLine("- orchestratedStatus=unavailable")
+    } else {
+        appendLine("- health=${status.health}")
+        appendFallbackLayerSummary("VFS", status.vfs)
+        appendFallbackLayerSummary("MediaProvider Java Hook", status.mediaProviderJavaHook)
+        appendFallbackLayerSummary("FUSE Native Hook", status.fuseNativeHook)
+        appendFallbackLayerSummary("DataBus", status.dataBus)
+        appendFallbackLayerSummary("控制面", status.controlPlane)
+    }
+    appendLine()
+    appendLine("如果需要完整链路证据，请优先修复服务端连接后重新导出诊断包。")
+}
+
+private fun StringBuilder.appendFallbackLayerSummary(
+    label: String,
+    layer: OrchestratedLayerStatus,
+) {
+    val error = layer.lastError.orEmpty()
+    val suffix = if (error.isBlank() || error == "null") "" else "，错误=$error"
+    appendLine("- $label：${layer.state}$suffix")
 }
 
 private fun buildFallbackManifest(): String = buildString {

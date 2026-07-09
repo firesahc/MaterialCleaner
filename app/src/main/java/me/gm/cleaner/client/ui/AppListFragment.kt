@@ -250,9 +250,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
         // ── 手动停止：覆盖显示 ──
         if (isManuallyStopped) {
-            statusTitle?.text = "存储重定向已停止"
+            statusTitle?.text = ctx.getString(R.string.service_status_stopped_title)
             statusSubtitle?.text = if (configured > 0) {
-                "已配置 $configured 个应用，启动服务后恢复重定向"
+                ctx.getString(R.string.service_status_stopped_configured, configured)
             } else {
                 ctx.getString(R.string.service_stopped_manually)
             }
@@ -276,9 +276,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
         }
 
         val title = when (orchestrated.health) {
-            "HEALTHY" -> if (configured > 0) "存储重定向运行正常" else "存储重定向已就绪"
-            "DEGRADED" -> "存储重定向降级运行"
-            else -> "存储重定向不可用"
+            "HEALTHY" -> if (configured > 0) {
+                ctx.getString(R.string.service_status_healthy_configured_title)
+            } else {
+                ctx.getString(R.string.service_status_ready_title)
+            }
+            "DEGRADED" -> ctx.getString(R.string.service_status_degraded_title)
+            else -> ctx.getString(R.string.service_status_unavailable_title)
         }
         statusTitle?.text = title
         statusSubtitle?.text = topSummary(ctx, orchestrated, configured)
@@ -288,7 +292,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
             l1Indicator,
             l1Text,
             orchestrated.vfs,
-            "VFS 主重定向",
+            ctx.getString(R.string.runtime_layer_vfs),
             vfsSummary(ctx, orchestrated.vfs, configured),
         )
         setLayerRow(
@@ -296,35 +300,35 @@ class AppListFragment : BaseServiceSettingsFragment() {
             l2Indicator,
             l2Text,
             orchestrated.mediaProviderJavaHook,
-            "媒体库路径修正",
-            hookSummary(orchestrated.mediaProviderJavaHook),
+            ctx.getString(R.string.runtime_layer_media_provider_hook),
+            hookSummary(ctx, orchestrated.mediaProviderJavaHook),
         )
         setLayerRow(
             ctx,
             l3Indicator,
             l3Text,
             orchestrated.fuseNativeHook,
-            "FUSE 兼容层",
-            nativeSummary(orchestrated.fuseNativeHook),
+            ctx.getString(R.string.runtime_layer_fuse_native),
+            nativeSummary(ctx, orchestrated.fuseNativeHook),
         )
         setLayerRow(
             ctx,
             l4Indicator,
             l4Text,
             orchestrated.dataBus,
-            "数据面快照",
-            dataBusSummary(orchestrated.dataBus),
+            ctx.getString(R.string.runtime_layer_databus),
+            dataBusSummary(ctx, orchestrated.dataBus),
         )
         setLayerRow(
             ctx,
             l5Indicator,
             l5Text,
             orchestrated.controlPlane,
-            "控制面",
-            controlPlaneSummary(orchestrated.controlPlane),
+            ctx.getString(R.string.runtime_layer_control_plane),
+            controlPlaneSummary(ctx, orchestrated.controlPlane),
         )
 
-        val problem = firstProblem(orchestrated)
+        val problem = firstProblem(ctx, orchestrated)
         statusCause?.visibility = if (problem == null) android.view.View.GONE else android.view.View.VISIBLE
         statusCause?.text = problem
 
@@ -341,40 +345,54 @@ class AppListFragment : BaseServiceSettingsFragment() {
     ) {
         val ctx = requireContext()
         val title = when (serverState) {
-            ServerState.STARTING -> "存储重定向启动中"
-            ServerState.RUNNING -> "正在读取运行状态"
-            ServerState.FAILED -> "存储重定向启动失败"
-            else -> "存储重定向未运行"
+            ServerState.STARTING -> ctx.getString(R.string.service_status_starting_title)
+            ServerState.RUNNING -> ctx.getString(R.string.service_status_reading_title)
+            ServerState.FAILED -> ctx.getString(R.string.service_status_start_failed_title)
+            else -> ctx.getString(R.string.service_status_not_running_title)
         }
         statusTitle?.text = title
         statusSubtitle?.text = when {
-            serverState == ServerState.RUNNING -> "守护进程已连接，正在读取编排状态"
+            serverState == ServerState.RUNNING -> ctx.getString(R.string.service_status_daemon_connected_reading)
             configured == 0 -> ctx.getString(R.string.storage_redirect_no_mount_rules)
-            else -> "已配置 $configured 个应用，等待服务就绪"
+            else -> ctx.getString(R.string.service_status_configured_waiting, configured)
         }
 
-        setFallbackRow(ctx, l1Indicator, l1Text, "VFS 主重定向", when {
-            serverState == ServerState.RUNNING && rootAvailable -> "等待编排状态"
-            serverState == ServerState.RUNNING -> "Root 不可用"
-            serverState == ServerState.STARTING -> "启动中"
-            serverState == ServerState.FAILED -> "启动失败"
-            else -> "未运行"
+        setFallbackRow(ctx, l1Indicator, l1Text, ctx.getString(R.string.runtime_layer_vfs), when {
+            serverState == ServerState.RUNNING && rootAvailable -> ctx.getString(R.string.service_status_wait_orchestrator)
+            serverState == ServerState.RUNNING -> ctx.getString(R.string.service_status_root_unavailable)
+            serverState == ServerState.STARTING -> ctx.getString(R.string.service_status_starting_short)
+            serverState == ServerState.FAILED -> ctx.getString(R.string.service_status_start_failed_short)
+            else -> ctx.getString(R.string.service_status_not_running_short)
         }, if (serverState == ServerState.RUNNING && rootAvailable) "STARTING" else "UNAVAILABLE")
-        setFallbackRow(ctx, l2Indicator, l2Text, "媒体库路径修正", when {
-            !isXposedConnected -> "等待 MediaProvider Hook"
-            else -> "等待编排状态"
+        setFallbackRow(ctx, l2Indicator, l2Text, ctx.getString(R.string.runtime_layer_media_provider_hook), when {
+            !isXposedConnected -> ctx.getString(R.string.service_status_wait_media_provider_hook)
+            else -> ctx.getString(R.string.service_status_wait_orchestrator)
         }, if (isXposedConnected) "STARTING" else "UNAVAILABLE")
-        setFallbackRow(ctx, l3Indicator, l3Text, "FUSE 兼容层", when {
-            !isXposedConnected -> "等待 Native Hook"
-            else -> "等待编排状态"
+        setFallbackRow(ctx, l3Indicator, l3Text, ctx.getString(R.string.runtime_layer_fuse_native), when {
+            !isXposedConnected -> ctx.getString(R.string.service_status_wait_native_hook)
+            else -> ctx.getString(R.string.service_status_wait_orchestrator)
         }, if (isXposedConnected) "STARTING" else "UNAVAILABLE")
-        setFallbackRow(ctx, l4Indicator, l4Text, "数据面快照", "等待状态快照", "STARTING")
-        setFallbackRow(ctx, l5Indicator, l5Text, "控制面", if (serverState == ServerState.RUNNING) "App Binder 已连接" else "未连接", if (serverState == ServerState.RUNNING) "HEALTHY" else "UNAVAILABLE")
+        setFallbackRow(
+            ctx, l4Indicator, l4Text,
+            ctx.getString(R.string.runtime_layer_databus),
+            ctx.getString(R.string.service_status_wait_snapshot),
+            "STARTING"
+        )
+        setFallbackRow(
+            ctx, l5Indicator, l5Text,
+            ctx.getString(R.string.runtime_layer_control_plane),
+            if (serverState == ServerState.RUNNING) {
+                ctx.getString(R.string.service_status_app_binder_connected)
+            } else {
+                ctx.getString(R.string.service_status_disconnected)
+            },
+            if (serverState == ServerState.RUNNING) "HEALTHY" else "UNAVAILABLE"
+        )
 
         val cause = when {
-            serverState == ServerState.FAILED -> "问题：守护进程启动失败，请查看日志。"
-            serverState == ServerState.RUNNING && !rootAvailable -> "问题：Root 权限不可用，VFS 主重定向无法工作。"
-            serverState == ServerState.RUNNING && !isXposedConnected -> "提示：MediaProvider Hook 尚未连接，媒体库修正和 FUSE 兼容层暂不可用。"
+            serverState == ServerState.FAILED -> ctx.getString(R.string.service_status_problem_daemon_failed)
+            serverState == ServerState.RUNNING && !rootAvailable -> ctx.getString(R.string.service_status_problem_root_unavailable)
+            serverState == ServerState.RUNNING && !isXposedConnected -> ctx.getString(R.string.service_status_hint_media_provider_hook_unavailable)
             else -> null
         }
         statusCause?.visibility = if (cause == null) android.view.View.GONE else android.view.View.VISIBLE
@@ -399,15 +417,15 @@ class AppListFragment : BaseServiceSettingsFragment() {
         else -> android.R.color.holo_red_dark
     }
 
-    private fun stateLabel(state: String): String = when (state) {
-        "HEALTHY" -> "正常"
-        "DEGRADED" -> "降级"
-        "STALE" -> "状态过期"
-        "UNAVAILABLE" -> "不可用"
-        "RECOVERING" -> "恢复中"
-        "STARTING" -> "启动中"
-        "UNINITIALIZED" -> "未初始化"
-        "DISABLED" -> "已禁用"
+    private fun stateLabel(ctx: android.content.Context, state: String): String = when (state) {
+        "HEALTHY" -> ctx.getString(R.string.runtime_state_healthy)
+        "DEGRADED" -> ctx.getString(R.string.runtime_state_degraded)
+        "STALE" -> ctx.getString(R.string.runtime_state_stale)
+        "UNAVAILABLE" -> ctx.getString(R.string.runtime_state_unavailable)
+        "RECOVERING" -> ctx.getString(R.string.runtime_state_recovering)
+        "STARTING" -> ctx.getString(R.string.runtime_state_starting)
+        "UNINITIALIZED" -> ctx.getString(R.string.runtime_state_uninitialized)
+        "DISABLED" -> ctx.getString(R.string.runtime_state_disabled)
         else -> state
     }
 
@@ -430,7 +448,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
         text?.text = buildString {
             append(name)
             append(" · ")
-            append(stateLabel(layer.state))
+            append(stateLabel(ctx, layer.state))
             if (summary.isNotBlank()) {
                 append(" · ")
                 append(summary)
@@ -457,9 +475,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
         configured: Int,
     ): String {
         val base = when (status.health) {
-            "HEALTHY" -> if (configured > 0) "主重定向和兼容层均可用" else "服务已就绪，尚未配置挂载规则"
-            "DEGRADED" -> "主能力可用性需结合下方各层状态确认"
-            else -> "核心重定向不可用，请查看下方问题原因"
+            "HEALTHY" -> if (configured > 0) {
+                ctx.getString(R.string.service_status_summary_healthy)
+            } else {
+                ctx.getString(R.string.service_status_summary_ready_no_rules)
+            }
+            "DEGRADED" -> ctx.getString(R.string.service_status_summary_degraded)
+            else -> ctx.getString(R.string.service_status_summary_unavailable)
         }
         return "$base · ${vfsSummary(ctx, status.vfs, configured)}"
     }
@@ -475,15 +497,23 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val failedPids = layer.metrics["mountFailedPids"]?.toIntOrNull() ?: 0
         val attempts = layer.metrics["mountTotalAttempts"]?.toIntOrNull() ?: 0
         val failures = layer.metrics["mountFailureCount"]?.toIntOrNull() ?: 0
-        val parts = mutableListOf("$configured 个应用")
-        if (mountedPackages > 0) parts += "$mountedPackages 已处理"
-        if (recordedPids > 0) parts += "$recordedPids 个进程"
-        if (failedPids > 0 || failures > 0) parts += "${maxOf(failedPids, failures)} 异常"
-        if (attempts > 0) parts += "$attempts 次尝试"
+        val parts = mutableListOf(ctx.getString(R.string.service_status_configured_apps, configured))
+        if (mountedPackages > 0) {
+            parts += ctx.getString(R.string.service_status_mounted_packages, mountedPackages)
+        }
+        if (recordedPids > 0) {
+            parts += ctx.getString(R.string.service_status_recorded_processes, recordedPids)
+        }
+        if (failedPids > 0 || failures > 0) {
+            parts += ctx.getString(R.string.service_status_exceptions, maxOf(failedPids, failures))
+        }
+        if (attempts > 0) {
+            parts += ctx.getString(R.string.service_status_attempts, attempts)
+        }
         return parts.joinToString(" · ")
     }
 
-    private fun hookSummary(layer: OrchestratedLayerStatus): String {
+    private fun hookSummary(ctx: android.content.Context, layer: OrchestratedLayerStatus): String {
         val connected = layer.metrics["binderConnected"]?.toBooleanStrictOrNull()
         val mediaProviderConnected = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
         val reconnectScheduled = layer.metrics["hooksReconnectScheduled"]?.toBooleanStrictOrNull()
@@ -493,32 +523,32 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val retryCount = layer.metrics["hooksRetryCount"]?.toIntOrNull() ?: 0
         val maxRetries = layer.metrics["maxHookRetries"]?.toIntOrNull() ?: 0
         val retryLabel = if (maxRetries > 0) {
-            "第 ${retryCount + 1}/$maxRetries 次"
+            ctx.getString(R.string.service_status_retry_with_max, retryCount + 1, maxRetries)
         } else {
-            "第 ${retryCount + 1} 次"
+            ctx.getString(R.string.service_status_retry, retryCount + 1)
         }
         return when (connected) {
             true -> if (mediaProviderConnected == true) {
-                "MediaProvider Hook 已连接"
+                ctx.getString(R.string.hook_connected)
             } else if (wakeScheduled == true) {
-                "正在唤醒 MediaProvider"
+                ctx.getString(R.string.hook_waking_media_provider)
             } else if (cooldownMs > 0L) {
-                "恢复冷却中 · 剩余 ${formatDurationSeconds(cooldownMs)}"
+                ctx.getString(R.string.hook_recovery_cooldown_remaining, formatDurationSeconds(cooldownMs))
             } else if (missingChecks > 0) {
-                "桥接已连接，MediaProvider 连续 $missingChecks 次未注册"
+                ctx.getString(R.string.hook_bridge_connected_missing, missingChecks)
             } else {
-                "桥接已连接，等待 MediaProvider Hook"
+                ctx.getString(R.string.hook_bridge_waiting)
             }
             false -> if (reconnectScheduled == true) {
-                "Hook 桥重连中 · $retryLabel"
+                ctx.getString(R.string.hook_bridge_reconnecting, retryLabel)
             } else {
-                "Hook Binder 未连接"
+                ctx.getString(R.string.hook_binder_disconnected)
             }
             null -> ""
         }
     }
 
-    private fun nativeSummary(layer: OrchestratedLayerStatus): String {
+    private fun nativeSummary(ctx: android.content.Context, layer: OrchestratedLayerStatus): String {
         val nativeGen = layer.metrics["configuredMountPointsGeneration"]
         val snapshotGen = layer.metrics["snapshotConfiguredMountPointsGeneration"]
         val inlineLoaded = layer.metrics["inlineLibraryLoaded"]?.toBooleanStrictOrNull()
@@ -530,57 +560,58 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val bpf = layer.metrics["isFuseBpfEnabledHooked"]?.toBooleanStrictOrNull()
         val applySuccess = layer.metrics["lastMountPointsApplySuccess"]?.toBooleanStrictOrNull()
         val modeLabel = when (hookMode) {
-            "EMBEDDED_GOT_PATCH" -> "内嵌 FUSE Hook"
+            "EMBEDDED_GOT_PATCH" -> ctx.getString(R.string.native_mode_embedded_hook)
             "XHOOK" -> "xhook"
             else -> ""
         }
         fun generationSummary(prefix: String): String {
             val label = listOf(prefix, modeLabel).filter { it.isNotBlank() }.joinToString(" · ")
             return if (label.isBlank()) {
-                "挂载点 generation $nativeGen/$snapshotGen"
+                ctx.getString(R.string.native_mount_points_generation, nativeGen, snapshotGen)
             } else {
-                "$label · 挂载点 generation $nativeGen/$snapshotGen"
+                ctx.getString(R.string.native_mount_points_generation_with_label, label, nativeGen, snapshotGen)
             }
         }
         return when {
-            inlineLoaded == false -> "libinline 未加载"
-            fuseLoaded == false && inlineLoaded == true -> "FUSE native 库未加载"
-            hookMode == "EMBEDDED_GOT_PATCH" && embeddedFound == false -> "未发现内嵌 FUSE native 库"
-            hookMode == "EMBEDDED_GOT_PATCH" && containsMount == false -> "内嵌 FUSE containsMount 未 Hook"
+            inlineLoaded == false -> ctx.getString(R.string.native_libinline_not_loaded)
+            fuseLoaded == false && inlineLoaded == true -> ctx.getString(R.string.native_fuse_library_not_loaded)
+            hookMode == "EMBEDDED_GOT_PATCH" && embeddedFound == false -> ctx.getString(R.string.native_embedded_library_missing)
+            hookMode == "EMBEDDED_GOT_PATCH" && containsMount == false -> ctx.getString(R.string.native_embedded_contains_mount_not_hooked)
             hookMode != "EMBEDDED_GOT_PATCH" &&
-                    (containsMount == false || startsWith == false || bpf == false) -> "native 符号部分缺失"
-            applySuccess == false && nativeGen != null && nativeGen != "0" -> "挂载点推送失败 · generation $nativeGen/$snapshotGen"
+                    (containsMount == false || startsWith == false || bpf == false) -> ctx.getString(R.string.native_symbols_missing)
+            applySuccess == false && nativeGen != null && nativeGen != "0" ->
+                ctx.getString(R.string.native_mount_points_push_failed, nativeGen, snapshotGen)
             nativeGen != null && snapshotGen != null -> generationSummary("")
-            nativeGen != null -> "native generation $nativeGen"
+            nativeGen != null -> ctx.getString(R.string.native_generation, nativeGen)
             else -> ""
         }
     }
 
-    private fun dataBusSummary(layer: OrchestratedLayerStatus): String {
+    private fun dataBusSummary(ctx: android.content.Context, layer: OrchestratedLayerStatus): String {
         val labels = listOf(
-            "snapshotRedirectPolicy" to "规则",
-            "snapshotReadOnly" to "只读",
-            "snapshotConfiguredMountPoints" to "挂载点",
-            "snapshotPlatformCapabilities" to "平台能力",
+            "snapshotRedirectPolicy" to ctx.getString(R.string.databus_snapshot_rules),
+            "snapshotReadOnly" to ctx.getString(R.string.databus_snapshot_read_only),
+            "snapshotConfiguredMountPoints" to ctx.getString(R.string.databus_snapshot_mount_points),
+            "snapshotPlatformCapabilities" to ctx.getString(R.string.databus_snapshot_platform),
         )
         val missing = labels
             .filter { (key, _) -> layer.metrics[key] == "missing" }
             .map { (_, label) -> label }
         if (missing.isNotEmpty()) {
-            return "缺少${missing.joinToString("、")}快照"
+            return ctx.getString(R.string.databus_missing_snapshots, missing.joinToString("、"))
         }
         val hookMode = when (layer.metrics["platformSupportedNativeHookMode"]) {
-            "EMBEDDED_GOT_PATCH" -> "内嵌 FUSE"
-            "XHOOK" -> "系统 FUSE"
-            "NONE" -> "无 native Hook"
+            "EMBEDDED_GOT_PATCH" -> ctx.getString(R.string.databus_hook_mode_embedded)
+            "XHOOK" -> ctx.getString(R.string.databus_hook_mode_system)
+            "NONE" -> ctx.getString(R.string.databus_hook_mode_none)
             else -> ""
         }
-        return listOf("关键快照完整", hookMode)
+        return listOf(ctx.getString(R.string.databus_snapshots_ready), hookMode)
             .filter { it.isNotBlank() }
             .joinToString(" · ")
     }
 
-    private fun controlPlaneSummary(layer: OrchestratedLayerStatus): String {
+    private fun controlPlaneSummary(ctx: android.content.Context, layer: OrchestratedLayerStatus): String {
         val appBinder = layer.metrics["appBinderRegistered"]?.toBooleanStrictOrNull()
         val hooksBridge = layer.metrics["hooksBridgeConnected"]?.toBooleanStrictOrNull()
         val mediaProviderHook = layer.metrics["mediaProviderHookConnected"]?.toBooleanStrictOrNull()
@@ -588,12 +619,30 @@ class AppListFragment : BaseServiceSettingsFragment() {
         val wakeScheduled = layer.metrics["mediaProviderWakeScheduled"]?.toBooleanStrictOrNull()
         val cooldownMs = layer.metrics["mediaProviderRecoveryCooldownRemainingMs"]?.toLongOrNull() ?: 0L
         val parts = mutableListOf<String>()
-        if (appBinder != null) parts += if (appBinder) "App Binder 已注册" else "App Binder 未注册"
-        if (hooksBridge != null) parts += if (hooksBridge) "Hook 桥已连接" else "Hook 桥未连接"
-        if (mediaProviderHook != null) parts += if (mediaProviderHook) "MediaProvider 已注册" else "MediaProvider 未注册"
-        if (reconnectScheduled == true) parts += "重连已调度"
-        if (wakeScheduled == true) parts += "唤醒已调度"
-        if (cooldownMs > 0L) parts += "冷却 ${formatDurationSeconds(cooldownMs)}"
+        if (appBinder != null) {
+            parts += if (appBinder) {
+                ctx.getString(R.string.control_app_binder_registered)
+            } else {
+                ctx.getString(R.string.control_app_binder_unregistered)
+            }
+        }
+        if (hooksBridge != null) {
+            parts += if (hooksBridge) {
+                ctx.getString(R.string.control_hook_bridge_connected)
+            } else {
+                ctx.getString(R.string.control_hook_bridge_disconnected)
+            }
+        }
+        if (mediaProviderHook != null) {
+            parts += if (mediaProviderHook) {
+                ctx.getString(R.string.control_media_provider_registered)
+            } else {
+                ctx.getString(R.string.control_media_provider_unregistered)
+            }
+        }
+        if (reconnectScheduled == true) parts += ctx.getString(R.string.control_reconnect_scheduled)
+        if (wakeScheduled == true) parts += ctx.getString(R.string.control_wake_scheduled)
+        if (cooldownMs > 0L) parts += ctx.getString(R.string.control_cooldown, formatDurationSeconds(cooldownMs))
         return parts.joinToString(" · ")
     }
 
@@ -602,13 +651,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
         return "${seconds}s"
     }
 
-    private fun firstProblem(status: OrchestratedRuntimeStatus): String? {
+    private fun firstProblem(ctx: android.content.Context, status: OrchestratedRuntimeStatus): String? {
         val layers = listOf(
-            "VFS 主重定向" to status.vfs,
-            "媒体库路径修正" to status.mediaProviderJavaHook,
-            "FUSE 兼容层" to status.fuseNativeHook,
-            "数据面快照" to status.dataBus,
-            "控制面" to status.controlPlane,
+            ctx.getString(R.string.runtime_layer_vfs) to status.vfs,
+            ctx.getString(R.string.runtime_layer_media_provider_hook) to status.mediaProviderJavaHook,
+            ctx.getString(R.string.runtime_layer_fuse_native) to status.fuseNativeHook,
+            ctx.getString(R.string.runtime_layer_databus) to status.dataBus,
+            ctx.getString(R.string.runtime_layer_control_plane) to status.controlPlane,
         )
         val problem = layers.firstOrNull { (_, layer) ->
             layer.state !in setOf("HEALTHY", "DEGRADED")
@@ -616,8 +665,8 @@ class AppListFragment : BaseServiceSettingsFragment() {
             layer.state == "DEGRADED" || layer.lastError != null
         }
         return problem?.let { (name, layer) ->
-            val detail = layer.lastError ?: stateLabel(layer.state)
-            "问题：$name - $detail"
+            val detail = layer.lastError ?: stateLabel(ctx, layer.state)
+            ctx.getString(R.string.service_status_problem_detail, name, detail)
         }
     }
 

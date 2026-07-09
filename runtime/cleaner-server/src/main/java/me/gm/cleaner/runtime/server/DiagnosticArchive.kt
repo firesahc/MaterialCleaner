@@ -46,6 +46,7 @@ object DiagnosticArchive {
             addText(zip, "privacy.txt", privacyNotice())
             addText(zip, "manifest.txt", buildManifest(server))
             addText(zip, "summary.txt", buildSummary(server))
+            addText(zip, "summary_zh-CN.txt", buildSummaryZhCn(server))
             addStatus(zip, server)
             addDataBus(zip)
             addLogcat(zip)
@@ -181,6 +182,63 @@ object DiagnosticArchive {
         appendLine("If the package is hard to read, start from this file, then open the referenced files above.")
     }
 
+    private fun buildSummaryZhCn(server: CleanerServer): String = buildString {
+        appendLine("Material Cleaner 诊断包概览")
+        appendLine("生成时间：${System.currentTimeMillis()}")
+        appendLine()
+        appendLine("优先阅读：")
+        appendLine("- status/orchestrated_status.json：完整五层运行状态。")
+        appendLine("- status/native_hook_status_pretty.json：MediaProvider/FUSE Hook 详情。")
+        appendLine("- databus/health.json：队列、快照和权限健康状态。")
+        appendLine("- logs/logcat_material_cleaner_filtered.txt：聚焦运行日志。")
+        appendLine("- commands/media_provider_maps.txt 与 commands/media_provider_mountinfo.txt：native 加载与挂载状态证据。")
+        appendLine()
+
+        val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
+            .onFailure {
+                appendLine("运行状态：不可用（${it.javaClass.name}: ${it.message}）")
+            }
+            .getOrNull()
+        if (status != null) {
+            appendLine("运行健康：${status.optString("health", "UNKNOWN")}")
+            appendLayerSummaryZhCn(status, "vfs", "VFS")
+            appendLayerSummaryZhCn(status, "mediaProviderJavaHook", "MediaProvider Java Hook")
+            appendLayerSummaryZhCn(status, "fuseNativeHook", "FUSE Native Hook")
+            appendLayerSummaryZhCn(status, "dataBus", "DataBus")
+            appendLayerSummaryZhCn(status, "controlPlane", "控制面")
+            appendLine()
+        }
+
+        val health = runCatching { DataBus.checkHealth(repair = true) }.getOrNull()
+        if (health != null) {
+            appendLine("DataBus：")
+            appendLine("- initialized=${health.initialized}, healthy=${health.healthy}, criticalSnapshotsReady=${health.criticalSnapshotsReady}")
+            appendLine("- eventQueueCounts=${health.eventQueueCounts}")
+            appendLine("- leaseCounts=${health.leaseCounts}")
+            appendLine("- missingDirectories=${health.missingDirectories.size}, permissionIssues=${health.permissionIssues.size}")
+            appendLine()
+        }
+
+        val nativeStatus = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_NATIVE_HOOK_STATUS)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        if (nativeStatus != null) {
+            appendNativeHookSummaryZhCn(nativeStatus)
+            appendLine()
+        }
+
+        val platformCaps = DataBus.readSnapshotSafe(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES)
+            ?.let { runCatching { JSONObject(it) }.getOrNull() }
+        if (platformCaps != null) {
+            appendLine("平台能力：")
+            appendLine("- sdk=${platformCaps.optInt("sdkVersionInt", 0)}, fuse=${platformCaps.optBoolean("fuseAvailable", false)}, fuseBpf=${platformCaps.optBoolean("isFuseBpfEnabled", false)}")
+            appendLine("- mediaProvider=${platformCaps.optString("mediaProviderPackageName", "")}")
+            appendLine("- fuseJniLoadMode=${platformCaps.optString("fuseJniLoadMode", "UNKNOWN")}, nativeHookMode=${platformCaps.optString("supportedNativeHookMode", "UNKNOWN")}")
+            appendLine()
+        }
+
+        appendLine("如果诊断包难以阅读，请先从本文件开始，再打开上方引用的文件。")
+    }
+
     private fun StringBuilder.appendLayerSummary(
         root: JSONObject,
         key: String,
@@ -197,6 +255,22 @@ object DiagnosticArchive {
         appendLine("- $label: $state$suffix")
     }
 
+    private fun StringBuilder.appendLayerSummaryZhCn(
+        root: JSONObject,
+        key: String,
+        label: String,
+    ) {
+        val layer = root.optJSONObject(key)
+        if (layer == null) {
+            appendLine("- $label：缺失")
+            return
+        }
+        val state = layer.optString("state", "UNKNOWN")
+        val error = layer.optString("lastError", "")
+        val suffix = if (error.isBlank() || error == "null") "" else "，错误=$error"
+        appendLine("- $label：$state$suffix")
+    }
+
     private fun StringBuilder.appendNativeHookSummary(root: JSONObject) {
         val mediaProvider = root.optJSONObject("mediaProvider")
         val inline = root.optJSONObject("inline")
@@ -205,6 +279,29 @@ object DiagnosticArchive {
         val missingSymbols = native?.optJSONArray("missingSymbols")
 
         appendLine("Native hook:")
+        appendLine("- mediaProvider.loaded=${mediaProvider?.optBoolean("loaded", false) ?: false}, package=${mediaProvider?.optString("packageName", "") ?: ""}")
+        appendLine("- inline.state=${inline?.optString("state", "UNKNOWN") ?: "UNKNOWN"}, retryCount=${inline?.optInt("retryCount", 0) ?: 0}, disabledByPlatform=${inline?.optBoolean("disabledByPlatform", false) ?: false}")
+        appendLine("- fuseLibraryLoaded=${native?.optBoolean("fuseLibraryLoaded", false) ?: false}, hookMode=${native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN"}, fuseJniLoadMode=${native?.optString("fuseJniLoadMode", "UNKNOWN") ?: "UNKNOWN"}")
+        if (symbols != null) {
+            appendLine("- symbols containsMount=${symbols.optBoolean("containsMount", false)}, startsWith=${symbols.optBoolean("startsWith", false)}, isFuseBpfEnabled=${symbols.optBoolean("isFuseBpfEnabled", false)}, fuseReqUserdata=${symbols.optBoolean("fuseReqUserdata", false)}, fuseBpfInstall=${symbols.optBoolean("fuseBpfInstall", false)}")
+        }
+        if (missingSymbols != null && missingSymbols.length() > 0) {
+            appendLine("- missingSymbols=$missingSymbols")
+        }
+        val lastError = native?.optString("lastError", "") ?: ""
+        if (lastError.isNotBlank()) {
+            appendLine("- lastError=$lastError")
+        }
+    }
+
+    private fun StringBuilder.appendNativeHookSummaryZhCn(root: JSONObject) {
+        val mediaProvider = root.optJSONObject("mediaProvider")
+        val inline = root.optJSONObject("inline")
+        val native = root.optJSONObject("native")
+        val symbols = native?.optJSONObject("symbols")
+        val missingSymbols = native?.optJSONArray("missingSymbols")
+
+        appendLine("Native Hook：")
         appendLine("- mediaProvider.loaded=${mediaProvider?.optBoolean("loaded", false) ?: false}, package=${mediaProvider?.optString("packageName", "") ?: ""}")
         appendLine("- inline.state=${inline?.optString("state", "UNKNOWN") ?: "UNKNOWN"}, retryCount=${inline?.optInt("retryCount", 0) ?: 0}, disabledByPlatform=${inline?.optBoolean("disabledByPlatform", false) ?: false}")
         appendLine("- fuseLibraryLoaded=${native?.optBoolean("fuseLibraryLoaded", false) ?: false}, hookMode=${native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN"}, fuseJniLoadMode=${native?.optString("fuseJniLoadMode", "UNKNOWN") ?: "UNKNOWN"}")
