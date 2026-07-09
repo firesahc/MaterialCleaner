@@ -1,6 +1,7 @@
 package me.gm.cleaner.core.storage.redirect.databus
 
 import android.os.Process
+import android.system.Os
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
@@ -51,13 +52,19 @@ import java.util.concurrent.atomic.AtomicLong
  * ## 权限
  * - snapshots/signals：server (root) 写，MediaProvider 读
  * - events：MediaProvider 写，server 读/消费
- * - 目录权限设为 0777（允许跨进程访问）
+ * - 共享写目录使用 01777 sticky bit，避免跨 UID 删除/替换对方文件
+ * - 数据文件默认 0644，仅 signal 文件保留 0666 用于无内容通知
  */
 object DataBus {
     private const val TAG = "DataBus"
 
     private const val CLEANER_ROOT = "/data/local/tmp/cleaner"
     const val BUS_ROOT = "$CLEANER_ROOT/bus"
+
+    private const val MODE_DIR_WORLD_READABLE = 493 // 0755
+    private const val MODE_DIR_SHARED_STICKY = 1023 // 01777
+    private const val MODE_FILE_WORLD_READABLE = 420 // 0644
+    private const val MODE_FILE_WORLD_WRITABLE = 438 // 0666
 
     private const val DIR_SNAPSHOTS = "snapshots"
     private const val DIR_SIGNALS = "signals"
@@ -208,8 +215,8 @@ object DataBus {
                 tmpFile.delete()
                 return false
             }
-            // 确保 MediaProvider 进程可读取
-            makeWorldAccessible(targetFile, executable = false)
+            // 确保 MediaProvider 进程可读取，但不能改写 server 发布的快照。
+            makeWorldAccessible(targetFile, executable = false, writable = false)
             Log.d(TAG, "Snapshot written: $name (${content.length} bytes)")
             true
         } catch (e: Exception) {
@@ -347,7 +354,7 @@ object DataBus {
                 tmpFile.delete()
                 return -1L
             }
-            makeWorldAccessible(targetFile, executable = false)
+            makeWorldAccessible(targetFile, executable = false, writable = false)
             Log.d(TAG, "Event written: $queue/$filename")
             seq
         } catch (e: Exception) {
@@ -488,7 +495,7 @@ object DataBus {
                 tmpFile.delete()
                 return false
             }
-            makeWorldAccessible(targetFile, executable = false)
+            makeWorldAccessible(targetFile, executable = false, writable = false)
             Log.d(TAG, "Lease written: $category/$filename")
             true
         } catch (e: Exception) {
@@ -705,11 +712,38 @@ object DataBus {
             ?: 0
     }
 
-    private fun makeWorldAccessible(file: File, executable: Boolean) {
+    private fun makeWorldAccessible(file: File, executable: Boolean, writable: Boolean = true) {
         file.setReadable(true, false)
-        file.setWritable(true, false)
+        if (writable) {
+            file.setWritable(true, false)
+        } else {
+            file.setWritable(false, false)
+            file.setWritable(true, true)
+        }
         if (executable) {
             file.setExecutable(true, false)
+        } else {
+            file.setExecutable(false, false)
         }
+        val mode = if (executable) {
+            directoryMode(file)
+        } else if (writable) {
+            MODE_FILE_WORLD_WRITABLE
+        } else {
+            MODE_FILE_WORLD_READABLE
+        }
+        try {
+            Os.chmod(file.path, mode)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to chmod ${file.path} to $mode", e)
+        }
+    }
+
+    private fun directoryMode(dir: File): Int = when (dir.path) {
+        "$BUS_ROOT/$DIR_SIGNALS",
+        "$BUS_ROOT/$DIR_EVENTS/$EVENT_FILESYSTEM",
+        "$BUS_ROOT/$DIR_EVENTS/$EVENT_REDIRECT_NOTICE",
+        "$BUS_ROOT/$DIR_LEASES/$LEASE_QUERY_SESSIONS" -> MODE_DIR_SHARED_STICKY
+        else -> MODE_DIR_WORLD_READABLE
     }
 }
