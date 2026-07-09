@@ -11,6 +11,17 @@ import me.gm.cleaner.server.ICleanerServerCallback;
  * unavailable; it must not become a policy or UI side-effect endpoint again.
  */
 public class CleanerServerCallback extends ICleanerServerCallback.Stub {
+    private static boolean isHookWritableSnapshot(String name) {
+        return DataBus.SNAPSHOT_NATIVE_HOOK_STATUS.equals(name);
+    }
+
+    private static boolean isHookWritableSignal(String name) {
+        return DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED.equals(name) ||
+                DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED.equals(name) ||
+                DataBus.SIGNAL_QUERY_SESSION_LEASES_CHANGED.equals(name) ||
+                DataBus.SIGNAL_NATIVE_HOOK_STATUS_CHANGED.equals(name);
+    }
+
     @Override
     public String readDataBusSnapshot(String name) {
         final var snapshot = DataBus.INSTANCE.readSnapshot(name);
@@ -34,12 +45,18 @@ public class CleanerServerCallback extends ICleanerServerCallback.Stub {
 
     @Override
     public boolean writeDataBusSnapshot(String name, String content) {
+        if (!isHookWritableSnapshot(name)) {
+            return false;
+        }
         return DataBus.INSTANCE.ensureInitialized() &&
                 DataBus.INSTANCE.writeSnapshot(name, content);
     }
 
     @Override
     public boolean signalDataBus(String name) {
+        if (!isHookWritableSignal(name)) {
+            return false;
+        }
         return DataBus.INSTANCE.signal(name);
     }
 }

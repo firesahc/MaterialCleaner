@@ -14,6 +14,15 @@ import me.gm.cleaner.server.ICleanerServerCallback
  */
 object HookDataBusBridge {
     private const val TAG = "HookDataBusBridge"
+    private val hookWritableSnapshots = setOf(
+        DataBus.SNAPSHOT_NATIVE_HOOK_STATUS,
+    )
+    private val hookWritableSignals = setOf(
+        DataBus.SIGNAL_FILESYSTEM_EVENTS_CHANGED,
+        DataBus.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED,
+        DataBus.SIGNAL_QUERY_SESSION_LEASES_CHANGED,
+        DataBus.SIGNAL_NATIVE_HOOK_STATUS_CHANGED,
+    )
 
     @Volatile
     private var callback: ICleanerServerCallback? = null
@@ -82,6 +91,10 @@ object HookDataBusBridge {
     }
 
     fun writeSnapshot(name: String, content: String): Boolean {
+        if (name !in hookWritableSnapshots) {
+            Log.w(TAG, "Rejected hook snapshot write: $name")
+            return false
+        }
         val remote = callback
         if (remote != null) {
             try {
@@ -96,6 +109,10 @@ object HookDataBusBridge {
     }
 
     fun signal(name: String): Boolean {
+        if (name !in hookWritableSignals) {
+            Log.w(TAG, "Rejected hook signal write: $name")
+            return false
+        }
         val remote = callback
         if (remote != null) {
             try {
