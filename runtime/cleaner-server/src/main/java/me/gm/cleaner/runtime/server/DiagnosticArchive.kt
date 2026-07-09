@@ -13,6 +13,8 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,15 +37,11 @@ object DiagnosticArchive {
     }
 
     private fun create(server: CleanerServer): File {
-        val outDir = File(OUTPUT_DIR)
-        outDir.mkdirs()
-        outDir.setReadable(true, false)
-        outDir.setWritable(true, false)
-        outDir.setExecutable(true, false)
+        val outDir = prepareOutputDir()
         cleanupOldArchives(outDir)
 
         val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val archive = File(outDir, "material-cleaner-diagnostics-$timestamp.zip")
+        val archive = createArchiveFile(outDir, timestamp)
         ZipOutputStream(FileOutputStream(archive)).use { zip ->
             addText(zip, "privacy.txt", privacyNotice())
             addText(zip, "manifest.txt", buildManifest(server))
@@ -54,7 +52,7 @@ object DiagnosticArchive {
             addAutoLogs(zip)
             addCommandOutputs(zip)
         }
-        archive.setReadable(true, false)
+        setOwnerOnly(archive, executable = false)
         Log.i("MC_DIAG", JSONObject().apply {
             put("event", "diagnostics_archive_created")
             put("path", archive.path)
@@ -63,6 +61,40 @@ object DiagnosticArchive {
             put("summary", true)
         }.toString())
         return archive
+    }
+
+    private fun prepareOutputDir(): File {
+        val outDir = File(OUTPUT_DIR)
+        val path = outDir.toPath()
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+            (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+        ) {
+            Files.delete(path)
+        }
+        Files.createDirectories(path)
+        setOwnerOnly(outDir, executable = true)
+        return outDir
+    }
+
+    private fun createArchiveFile(outDir: File, timestamp: String): File {
+        val archive = Files.createTempFile(
+            outDir.toPath(),
+            "material-cleaner-diagnostics-$timestamp-",
+            ".zip"
+        ).toFile()
+        setOwnerOnly(archive, executable = false)
+        return archive
+    }
+
+    private fun setOwnerOnly(file: File, executable: Boolean) {
+        file.setReadable(false, false)
+        file.setWritable(false, false)
+        file.setExecutable(false, false)
+        file.setReadable(true, true)
+        file.setWritable(true, true)
+        if (executable) {
+            file.setExecutable(true, true)
+        }
     }
 
     private fun privacyNotice(): String = buildString {
