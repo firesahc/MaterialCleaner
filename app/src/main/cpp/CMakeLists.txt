@@ -3,7 +3,8 @@ project(Cleaner)
 set(CMAKE_CXX_STANDARD 20)
 
 set(C_FLAGS "-Werror=format -fdata-sections -ffunction-sections -fno-exceptions -fno-rtti -fno-threadsafe-statics")
-set(LINKER_FLAGS "-Wl,--hash-style=both")
+# 16 KB 最大页尺寸同时兼容传统 4 KB 与 Android 15+ 的 16 KB 页设备。
+set(LINKER_FLAGS "-Wl,--hash-style=both -Wl,-z,max-page-size=16384")
 
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Builing Release...")
@@ -19,6 +20,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_FLAGS}")
 
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${LINKER_FLAGS}")
 set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${LINKER_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINKER_FLAGS}")
 
 find_package(cxx REQUIRED CONFIG)
 find_library(log-lib log)
