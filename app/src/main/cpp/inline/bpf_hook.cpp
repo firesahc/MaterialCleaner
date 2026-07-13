@@ -17,10 +17,24 @@
 #include "logging.h"
 #include "obfuscate.h"
 
-#if defined(__LP64__)
+#if defined(__aarch64__)
 #define MC_ELF_R_SYM ELF64_R_SYM
-#else
+#define MC_ELF_R_TYPE ELF64_R_TYPE
+#define MC_ELF_R_JUMP_SLOT R_AARCH64_JUMP_SLOT
+#elif defined(__arm__)
 #define MC_ELF_R_SYM ELF32_R_SYM
+#define MC_ELF_R_TYPE ELF32_R_TYPE
+#define MC_ELF_R_JUMP_SLOT R_ARM_JUMP_SLOT
+#elif defined(__x86_64__)
+#define MC_ELF_R_SYM ELF64_R_SYM
+#define MC_ELF_R_TYPE ELF64_R_TYPE
+#define MC_ELF_R_JUMP_SLOT R_X86_64_JUMP_SLOT
+#elif defined(__i386__)
+#define MC_ELF_R_SYM ELF32_R_SYM
+#define MC_ELF_R_TYPE ELF32_R_TYPE
+#define MC_ELF_R_JUMP_SLOT R_386_JMP_SLOT
+#else
+#error Unsupported Android ABI
 #endif
 
 // Regex copied from FileUtils.java in MediaProvider, but without media directory.
@@ -595,8 +609,9 @@ namespace bpf_hook {
 
         const char *strtab = nullptr;
         ElfW(Sym) *symtab = nullptr;
-        ElfW(Rela) *jmprel = nullptr;
+        void *jmprel = nullptr;
         size_t pltrelsz = 0;
+        ElfW(Addr) pltRelType = DT_NULL;
         const char *soname = nullptr;
         for (auto dyn = dynamic; dyn->d_tag != DT_NULL; dyn++) {
             switch (dyn->d_tag) {
@@ -609,11 +624,14 @@ namespace bpf_hook {
                             ResolveDynamicAddress(dyn->d_un.d_ptr, info->dlpi_addr));
                     break;
                 case DT_JMPREL:
-                    jmprel = reinterpret_cast<ElfW(Rela) *>(
+                    jmprel = reinterpret_cast<void *>(
                             ResolveDynamicAddress(dyn->d_un.d_ptr, info->dlpi_addr));
                     break;
                 case DT_PLTRELSZ:
                     pltrelsz = dyn->d_un.d_val;
+                    break;
+                case DT_PLTREL:
+                    pltRelType = dyn->d_un.d_val;
                     break;
                 case DT_SONAME:
                     if (strtab != nullptr) {
@@ -624,7 +642,8 @@ namespace bpf_hook {
                     break;
             }
         }
-        if (strtab == nullptr || symtab == nullptr || jmprel == nullptr || pltrelsz == 0) {
+        if (strtab == nullptr || symtab == nullptr || jmprel == nullptr || pltrelsz == 0 ||
+            (pltRelType != DT_REL && pltRelType != DT_RELA)) {
             return 0;
         }
         if (soname == nullptr) {
@@ -686,32 +705,54 @@ namespace bpf_hook {
                         &result->fuseBpfInstallMethod},
         };
 
-        const auto count = pltrelsz / sizeof(ElfW(Rela));
-        for (size_t i = 0; i < count; i++) {
-            const auto &relocation = jmprel[i];
-            const auto symbolIndex = MC_ELF_R_SYM(relocation.r_info);
-            const char *symbolName = strtab + symtab[symbolIndex].st_name;
-
-            for (auto &target: targets) {
-                if (*target.hooked) continue;
-
-                // --- Phase 1: Exact match (strcmp) ---
-                bool matched = (strcmp(symbolName, target.symbol) == 0);
-                MatchMethod method = MATCH_EXACT;
-
-                // --- Phase 2: Fuzzy match via Itanium name extraction ---
-                if (!matched && target.shortName != nullptr && FuzzyMatchesTarget(symbolName, target)) {
-                    matched = true;
-                    method = MATCH_FUZZY;
+        const auto patchRelocations = [&](const auto *relocations, size_t count) {
+            for (size_t i = 0; i < count; i++) {
+                const auto &relocation = relocations[i];
+                if (MC_ELF_R_TYPE(relocation.r_info) != MC_ELF_R_JUMP_SLOT) {
+                    continue;
                 }
+                const auto symbolIndex = MC_ELF_R_SYM(relocation.r_info);
+                const char *symbolName = strtab + symtab[symbolIndex].st_name;
 
-                // --- Apply GOT patch if matched ---
-                if (!matched) continue;
+                for (auto &target: targets) {
+                    if (*target.hooked) continue;
 
-                const auto slotAddress = info->dlpi_addr + relocation.r_offset;
-                *target.hooked = PatchGotSlot(slotAddress, target.replacement, target.original);
-                *target.method = method;
+                    // --- Phase 1: Exact match (strcmp) ---
+                    bool matched = (strcmp(symbolName, target.symbol) == 0);
+                    MatchMethod method = MATCH_EXACT;
+
+                    // --- Phase 2: Fuzzy match via Itanium name extraction ---
+                    if (!matched && target.shortName != nullptr &&
+                        FuzzyMatchesTarget(symbolName, target)) {
+                        matched = true;
+                        method = MATCH_FUZZY;
+                    }
+
+                    // --- Apply GOT patch if matched ---
+                    if (!matched) continue;
+
+                    const auto slotAddress = info->dlpi_addr + relocation.r_offset;
+                    *target.hooked = PatchGotSlot(
+                            slotAddress, target.replacement, target.original);
+                    *target.method = method;
+                }
             }
+        };
+
+        if (pltRelType == DT_RELA) {
+            if (pltrelsz % sizeof(ElfW(Rela)) != 0) {
+                return 1;
+            }
+            patchRelocations(
+                    static_cast<const ElfW(Rela) *>(jmprel),
+                    pltrelsz / sizeof(ElfW(Rela)));
+        } else {
+            if (pltrelsz % sizeof(ElfW(Rel)) != 0) {
+                return 1;
+            }
+            patchRelocations(
+                    static_cast<const ElfW(Rel) *>(jmprel),
+                    pltrelsz / sizeof(ElfW(Rel)));
         }
         return 1;
     }
