@@ -1,12 +1,12 @@
 #include <libgen.h>
 #include <sys/stat.h>
-#include <sys/system_properties.h>
 #include <unistd.h>
 #include <vector>
 
 #include "absl/strings/match.h"
 #include "android-base/stringprintf.h"
 #include "android_filesystem_config.h"
+#include "fuse_policy.h"
 #include "obfs-string.h"
 #include "FileUtils.h"
 
@@ -65,12 +65,6 @@ namespace FileUtils {
                absl::StartsWithIgnoreCase(child, parent + '/');
     }
 
-    bool isFuse() {
-        char prop[PROP_VALUE_MAX] = {0};
-        __system_property_get("persist.sys.fuse"_iobfs.c_str(), prop);
-        return std::string_view(prop) == "true"_iobfs.c_str();
-    }
-
     bool prepare_dir(const char *path, mode_t mode, uid_t uid, gid_t gid) {
         if (!mkdirs(path, mode)) {
             return false;
@@ -92,7 +86,7 @@ namespace FileUtils {
 
     /// @see /system/vold/Utils.cpp PrepareAndroidDirs()
     jboolean auto_prepare_dirs(JNIEnv *env, jclass clazz, jobjectArray jdirs, jint juid) {
-        const bool useSdcardFs = !isFuse();
+        const bool useSdcardFs = !storage_platform::is_fuse_available();
         const uid_t user_id = juid / AID_USER_OFFSET;
         const std::string androidDataDir = StringPrintf(
                 "/storage/emulated/%d/Android/data"_iobfs.c_str(), user_id);

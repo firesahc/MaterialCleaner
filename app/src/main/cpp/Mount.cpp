@@ -8,13 +8,13 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
-#include <sys/system_properties.h>
 #include <sys/mount.h>
 #include <unistd.h>
 
 #include "android-base/stringprintf.h"
 #include "android-base/unique_fd.h"
 #include "android_filesystem_config.h"
+#include "fuse_policy.h"
 #include "linux_syscall_support.h"
 #include "logging.h"
 #include "misc.h"
@@ -317,19 +317,13 @@ static bool switch_mnt_ns(int pid) {
     return true;
 }
 
-static bool isFuse() {
-    char prop[PROP_VALUE_MAX] = {0};
-    __system_property_get("persist.sys.fuse"_iobfs.c_str(), prop);
-    return !strcmp(prop, "true"_iobfs.c_str());
-}
-
 namespace Mount {
     static MountStatus bind_mount_internal(JNIEnv *env, jint pid, jint uid,
                                            jboolean unmountDataRestriction,
                                            jboolean fuseBypass, jobjectArray jsources,
                                            jobjectArray jtargets) {
         /// @see /system/vold/Utils.cpp IsSdcardfsUsed()
-        const bool useSdcardFs = !isFuse();
+        const bool useSdcardFs = !storage_platform::is_fuse_available();
         const uid_t user_id = uid / AID_USER_OFFSET;
         const std::string storage = "/storage"_iobfs.c_str();
         const std::string storageSource = "/mnt/runtime/write"_iobfs.c_str();

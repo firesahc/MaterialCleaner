@@ -7,10 +7,10 @@
 #include <shared_mutex>
 #include <regex>
 #include <sys/mman.h>
-#include <sys/system_properties.h>
 #include <unistd.h>
 
 #include "bpf_hook.h"
+#include "fuse_policy.h"
 #include "xhook/xhook.h"
 #include "fuse_i.h"
 #include "fuse_lowlevel.h"
@@ -122,26 +122,6 @@ namespace bpf_hook {
             return;
         }
         return old_fuse_bpf_install(fuse, e, child_path, backing_fd);
-    }
-
-    static int GetApiLevel() {
-        char prop[PROP_VALUE_MAX] = {0};
-        __system_property_get("ro.build.version.sdk", prop);
-        return atoi(prop);
-    }
-
-    // FUSE is always enabled on Android 11+ (API >= 30).
-    // The persist.sys.fuse property was removed in Android 11,
-    // so only check it on older versions where FUSE is optional.
-    static bool IsFuse() {
-        // Android 11+ (API >= 30) 上 FUSE 是默认文件系统，
-        // persist.sys.fuse 属性已被移除，直接返回 true
-        if (GetApiLevel() >= 30) {
-            return true;
-        }
-        char prop[PROP_VALUE_MAX] = {0};
-        __system_property_get("persist.sys.fuse", prop);
-        return strcmp(prop, "true") == 0;
     }
 
     static void AppendJsonBool(std::ostringstream &out, const char *name, bool value) {
@@ -771,14 +751,14 @@ namespace bpf_hook {
         bool fuseBpfInstallHooked = false;
         bool xhookRefreshCalled = false;
         std::string lastError;
-        const bool startsWithRequired = GetApiLevel() >= 31;
+        const bool startsWithRequired = storage_platform::device_api_level() >= 31;
         const char *startsWithMethod = "none";
         const char *containsMountMethod = "none";
         const char *isFuseBpfEnabledMethod = "none";
         const char *fuseReqUserdataMethod = "none";
         const char *fuseBpfInstallMethod = "none";
 
-        if (!IsFuse()) {
+        if (!storage_platform::is_fuse_available()) {
             LOGE("%s", std::string(AY_OBFUSCATE("FUSE not available, skipping hook")).c_str()); // "FUSE not available, skipping hook"
             return BuildHookStatusJson(false, true, "libfuse_jni.so",
                                        "NONE", "UNKNOWN", false,
