@@ -37,14 +37,34 @@
 #include "xh_errno.h"
 #include "xh_log.h"
 
-#define PAGE_START(addr) ((addr) & PAGE_MASK)
-#define PAGE_END(addr)   (PAGE_START(addr + sizeof(uintptr_t) - 1) + PAGE_SIZE)
-#define PAGE_COVER(addr) (PAGE_END(addr) - PAGE_START(addr))
+static int xh_util_get_page_range(uintptr_t addr, uintptr_t *start, size_t *length)
+{
+    long raw_page_size;
+    uintptr_t page_size, page_mask, last, end;
+
+    if(NULL == start || NULL == length) return EINVAL;
+    errno = 0;
+    raw_page_size = sysconf(_SC_PAGESIZE);
+    if(raw_page_size <= 0) return 0 == errno ? EINVAL : errno;
+
+    page_size = (uintptr_t)raw_page_size;
+    if(0 != (page_size & (page_size - 1))) return EINVAL;
+    if(addr > UINTPTR_MAX - (sizeof(uintptr_t) - 1)) return EOVERFLOW;
+
+    page_mask = page_size - 1;
+    *start = addr & ~page_mask;
+    last = addr + sizeof(uintptr_t) - 1;
+    end = last & ~page_mask;
+    if(end > UINTPTR_MAX - page_size) return EOVERFLOW;
+    end += page_size;
+    *length = (size_t)(end - *start);
+    return 0;
+}
 
 int xh_util_get_mem_protect(uintptr_t addr, size_t len, const char *pathname, unsigned int *prot)
 {
     uintptr_t  start_addr = addr;
-    uintptr_t  end_addr = addr + len;
+    uintptr_t  end_addr;
     FILE      *fp;
     char       line[512];
     uintptr_t  start, end;
@@ -52,6 +72,8 @@ int xh_util_get_mem_protect(uintptr_t addr, size_t len, const char *pathname, un
     int        load0 = 1;
     int        found_all = 0;
 
+    if(NULL == prot || 0 == len || addr > UINTPTR_MAX - len) return XH_ERRNO_SEGVERR;
+    end_addr = addr + len;
     *prot = 0;
 
     if(NULL == (fp = fopen("/proc/self/maps", "r"))) return XH_ERRNO_BADMAPS;
@@ -107,7 +129,12 @@ int xh_util_get_addr_protect(uintptr_t addr, const char *pathname, unsigned int 
 
 int xh_util_set_addr_protect(uintptr_t addr, unsigned int prot)
 {
-    if(0 != mprotect((void *)PAGE_START(addr), PAGE_COVER(addr), (int)prot))
+    uintptr_t page_start;
+    size_t page_length;
+    int r = xh_util_get_page_range(addr, &page_start, &page_length);
+    if(0 != r) return r;
+
+    if(0 != mprotect((void *)page_start, page_length, (int)prot))
         return 0 == errno ? XH_ERRNO_UNKNOWN : errno;
 
     return 0;
@@ -115,5 +142,8 @@ int xh_util_set_addr_protect(uintptr_t addr, unsigned int prot)
 
 void xh_util_flush_instruction_cache(uintptr_t addr)
 {
-    __builtin___clear_cache((void *)PAGE_START(addr), (void *)PAGE_END(addr));
+    uintptr_t page_start;
+    size_t page_length;
+    if(0 != xh_util_get_page_range(addr, &page_start, &page_length)) return;
+    __builtin___clear_cache((void *)page_start, (void *)(page_start + page_length));
 }
