@@ -20,4 +20,5 @@ dependencies {
     implementation project(':core:ipc-contract')
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
     implementation "com.google.flatbuffers:flatbuffers-java:$rootProject.flatbuffersVersion"
+    testImplementation 'junit:junit:4.13.2'
 }
