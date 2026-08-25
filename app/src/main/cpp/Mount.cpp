@@ -20,38 +20,50 @@
 #include "misc.h"
 #include "obfs-string.h"
 #include "socket.h"
+#include "include/mount_transaction_policy.h"
 #include "Mount.h"
 
 using android::base::StringPrintf;
 
-/// 挂载事务的阶段划分：用于错误定位与进度上报。
+/// 挂载事务阶段：语义对齐 mount_transaction::Phase，
+/// 仅变异阶段（MUTATING_BASELINE/APPLYING_RULES/ROLLING_BACK）可能弄脏目标 namespace。
 enum class MountPhase : int {
+    PREPARE = static_cast<int>(mount_transaction::Phase::PREPARE),
+    NAMESPACE_ENTERED = static_cast<int>(mount_transaction::Phase::NAMESPACE_ENTERED),
+    MUTATING_BASELINE = static_cast<int>(mount_transaction::Phase::MUTATING_BASELINE),
+    BASELINE_READY = static_cast<int>(mount_transaction::Phase::BASELINE_READY),
+    APPLYING_RULES = static_cast<int>(mount_transaction::Phase::APPLYING_RULES),
+    ROLLING_BACK = static_cast<int>(mount_transaction::Phase::ROLLING_BACK),
+    /// RESULT 消息专用终态标注；非 mount_transaction 阶段，恒为安全态。
+    COMPLETED = 6,
     UNKNOWN = -1,
-    ARGS = 0,
-    ZYGOTE_WAIT = 1,
-    NAMESPACE = 2,
-    BASELINE = 3,
-    RULES = 4,
-    REPORT = 5,
 };
 
 static const char *mount_phase_name(MountPhase phase) {
     switch (phase) {
-        case MountPhase::ARGS:
-            return "args";
-        case MountPhase::ZYGOTE_WAIT:
-            return "zygote_wait";
-        case MountPhase::NAMESPACE:
-            return "namespace";
-        case MountPhase::BASELINE:
-            return "baseline";
-        case MountPhase::RULES:
-            return "rules";
-        case MountPhase::REPORT:
-            return "report";
+        case MountPhase::PREPARE:
+            return "prepare";
+        case MountPhase::NAMESPACE_ENTERED:
+            return "namespace_entered";
+        case MountPhase::MUTATING_BASELINE:
+            return "mutating_baseline";
+        case MountPhase::BASELINE_READY:
+            return "baseline_ready";
+        case MountPhase::APPLYING_RULES:
+            return "applying_rules";
+        case MountPhase::ROLLING_BACK:
+            return "rolling_back";
+        case MountPhase::COMPLETED:
+            return "completed";
         default:
             return "unknown";
     }
+}
+
+constexpr bool phase_may_have_dirty_namespace(MountPhase phase) {
+    return phase != MountPhase::COMPLETED && phase != MountPhase::UNKNOWN &&
+            mount_transaction::phase_may_have_dirty_namespace(
+                    static_cast<mount_transaction::Phase>(phase));
 }
 
 /// socket 消息类型：RESULT 为终态消息（恰好一条），PROGRESS 为过程消息（零或多条）。
@@ -61,7 +73,7 @@ enum class MountMessageType : int {
 };
 
 /// MountStatus 的 socket wire 协议版本：父子进程同 APK 编译部署，仅防混版兜底。
-constexpr int kMountStatusSchemaVersion = 1;
+constexpr int kMountStatusSchemaVersion = 2;
 
 struct MountStatus {
     int schema_version;
@@ -71,6 +83,7 @@ struct MountStatus {
     int err;
     int index;
     int namespace_dirty;
+    int target_terminated;
     char stage[32];
     char source[PATH_MAX];
     char target[PATH_MAX];
@@ -87,7 +100,9 @@ static void copy_status_value(char *destination, size_t size, const char *value)
 
 static MountStatus make_mount_status(int ok, const char *stage, int err = 0, int index = -1,
                                      const char *source = nullptr, const char *target = nullptr,
-                                     MountPhase phase = MountPhase::UNKNOWN) {
+                                     MountPhase phase = MountPhase::UNKNOWN,
+                                     bool namespace_dirty = false,
+                                     bool target_terminated = false) {
     MountStatus status{};
     status.schema_version = kMountStatusSchemaVersion;
     status.message_type = static_cast<int>(MountMessageType::RESULT);
@@ -95,7 +110,8 @@ static MountStatus make_mount_status(int ok, const char *stage, int err = 0, int
     status.ok = ok;
     status.err = err;
     status.index = index;
-    status.namespace_dirty = 0;
+    status.namespace_dirty = namespace_dirty ? 1 : 0;
+    status.target_terminated = target_terminated ? 1 : 0;
     copy_status_value(status.stage, sizeof(status.stage), stage);
     copy_status_value(status.source, sizeof(status.source), source);
     copy_status_value(status.target, sizeof(status.target), target);
@@ -172,6 +188,7 @@ static std::string mount_status_to_json(const MountStatus &status, int pid, int 
         << ",\"error\":\"" << json_escape(status.err == 0 ? "" : strerror(status.err)) << "\""
         << ",\"failedIndex\":" << status.index
         << ",\"namespaceDirty\":" << (status.namespace_dirty != 0 ? "true" : "false")
+        << ",\"targetTerminated\":" << (status.target_terminated != 0 ? "true" : "false")
         << ",\"pid\":" << pid
         << ",\"uid\":" << uid
         << ",\"source\":\"" << json_escape(status.source) << "\""
@@ -206,8 +223,10 @@ static bool is_storage_path(const char *path) {
 
 static void fail_child(int sock, const char *stage, int err, int index = -1,
                        const char *source = nullptr, const char *target = nullptr,
-                       MountPhase phase = MountPhase::UNKNOWN) {
-    write_mount_status(sock, make_mount_status(-1, stage, err, index, source, target, phase));
+                       MountPhase phase = MountPhase::UNKNOWN,
+                       bool namespace_dirty = false) {
+    write_mount_status(sock, make_mount_status(-1, stage, err, index, source, target,
+                                               phase, namespace_dirty));
     sys__exit(1);
 }
 
@@ -303,6 +322,172 @@ static void kill_child_if_stuck(int child) {
     }
 }
 
+/// 解析 /proc/<pid>/stat 第 22 字段（starttime）：PID 被系统复用后该值必然变化。
+static bool read_process_start_time(pid_t pid, unsigned long long *start_time) {
+    if (pid <= 0 || start_time == nullptr) {
+        errno = EINVAL;
+        return false;
+    }
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    const int fd = TEMP_FAILURE_RETRY(sys_open(path, O_RDONLY | O_CLOEXEC, 0));
+    if (fd < 0) return false;
+    char stat[4096];
+    const ssize_t length = TEMP_FAILURE_RETRY(sys_read(fd, stat, sizeof(stat) - 1));
+    const int saved_errno = errno;
+    sys_close(fd);
+    if (length <= 0) {
+        errno = length < 0 ? saved_errno : EIO;
+        return false;
+    }
+    stat[length] = '\0';
+    // comm 字段可含空格与括号，从最后一个 ')' 之后开始才是数字字段。
+    char *cursor = strrchr(stat, ')');
+    if (cursor == nullptr || cursor[1] != ' ') {
+        errno = EINVAL;
+        return false;
+    }
+    cursor += 2;
+    for (int field = 3; field <= 22; ++field) {
+        while (*cursor == ' ') ++cursor;
+        if (*cursor == '\0') break;
+        char *end = cursor;
+        while (*end != '\0' && *end != ' ') ++end;
+        if (field == 22) {
+            const char saved = *end;
+            *end = '\0';
+            char *parse_end = nullptr;
+            errno = 0;
+            const unsigned long long value = strtoull(cursor, &parse_end, 10);
+            *end = saved;
+            if (errno != 0 || parse_end == cursor || parse_end != end || value == 0) {
+                errno = EINVAL;
+                return false;
+            }
+            *start_time = value;
+            return true;
+        }
+        cursor = end;
+    }
+    errno = EINVAL;
+    return false;
+}
+
+static bool read_process_uid(pid_t pid, uid_t *uid) {
+    if (pid <= 0 || uid == nullptr) {
+        errno = EINVAL;
+        return false;
+    }
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/status", pid);
+    const int fd = TEMP_FAILURE_RETRY(sys_open(path, O_RDONLY | O_CLOEXEC, 0));
+    if (fd < 0) return false;
+    char status[4096];
+    const ssize_t length = TEMP_FAILURE_RETRY(sys_read(fd, status, sizeof(status) - 1));
+    const int saved_errno = errno;
+    sys_close(fd);
+    if (length <= 0) {
+        errno = length < 0 ? saved_errno : EIO;
+        return false;
+    }
+    status[length] = '\0';
+    const char *line = strstr(status, "Uid:\t");
+    if (line == nullptr) {
+        errno = EINVAL;
+        return false;
+    }
+    line += strlen("Uid:\t");
+    char *end = nullptr;
+    errno = 0;
+    const unsigned long value = strtoul(line, &end, 10);
+    if (errno != 0 || end == line || value > UINT_MAX) {
+        errno = EINVAL;
+        return false;
+    }
+    *uid = static_cast<uid_t>(value);
+    return true;
+}
+
+/// 双读收敛的目标身份采集：前后 starttime 一致且 UID 匹配才采信，
+/// 防止读取间隙目标死亡且 PID 被系统复用导致张冠李戴。
+static bool read_target_identity(
+        pid_t pid,
+        uid_t expected_uid,
+        unsigned long long *start_time) {
+    unsigned long long before = 0;
+    unsigned long long after = 0;
+    uid_t observed_uid = 0;
+    if (!read_process_start_time(pid, &before) ||
+        !read_process_uid(pid, &observed_uid) ||
+        !read_process_start_time(pid, &after)) {
+        return false;
+    }
+    if (before != after || observed_uid != expected_uid) {
+        errno = ESTALE;
+        return false;
+    }
+    *start_time = after;
+    return true;
+}
+
+/// 仅当目标身份仍与事务登记一致时才允许 SIGKILL；
+/// PID 已被复用的新进程绝不能因旧事务被误杀。
+static bool terminate_target_if_same(pid_t pid, unsigned long long expected_start_time) {
+    unsigned long long observed_start_time = 0;
+    if (!read_process_start_time(pid, &observed_start_time)) {
+        // 无法读取身份时仅探测存活：已消失即视为达成，不再补刀。
+        const int probe = sys_kill(pid, 0);
+        return probe < 0 && errno == ESRCH;
+    }
+    if (observed_start_time != expected_start_time) {
+        // 原目标进程已退出且 PID 被复用，不能终止新进程。
+        return true;
+    }
+    return sys_kill(pid, SIGKILL) == 0 || errno == ESRCH;
+}
+
+/// 将 /storage 整体重建为该 user 的 baseline 视图：
+/// lazy detach 携带全部子挂载脱离后，以 bind|REC 重挂用户视图。
+/// 回滚的"命令成功"不等于"视图已一致"（MNT_DETACH 异步回收），
+/// 调用方必须把 dataRestriction 类修改保守地视为污染。
+static MountStatus restore_storage_baseline(bool useSdcardFs, const std::string &storage,
+                                            const std::string &storageSource,
+                                            const std::string &userSource) {
+    if (TEMP_FAILURE_RETRY(
+            umount2("/storage/"_iobfs.c_str(), UMOUNT_NOFOLLOW | MNT_DETACH)) < 0 &&
+        errno != EINVAL && errno != ENOENT) {
+        return make_mount_status(-1, "unmount_storage", errno, -1, nullptr,
+                                 "/storage/"_iobfs.c_str(), MountPhase::MUTATING_BASELINE);
+    }
+    if (useSdcardFs) {
+        if (TEMP_FAILURE_RETRY(
+                mount(storageSource.c_str(), storage.c_str(), nullptr, MS_BIND | MS_REC,
+                      nullptr))) {
+            return make_mount_status(-1, "remount_storage", errno, -1,
+                                     storageSource.c_str(), storage.c_str(),
+                                     MountPhase::MUTATING_BASELINE);
+        }
+        if (TEMP_FAILURE_RETRY(
+                mount(nullptr, storage.c_str(), nullptr, MS_REC | MS_SLAVE, nullptr))) {
+            return make_mount_status(-1, "remount_storage_slave", errno, -1, nullptr,
+                                     storage.c_str(), MountPhase::MUTATING_BASELINE);
+        }
+        if (TEMP_FAILURE_RETRY(
+                mount(userSource.c_str(), "/storage/self"_iobfs.c_str(), nullptr, MS_BIND,
+                      nullptr))) {
+            return make_mount_status(-1, "mount_storage_self", errno, -1,
+                                     userSource.c_str(), "/storage/self"_iobfs.c_str(),
+                                     MountPhase::MUTATING_BASELINE);
+        }
+    } else if (TEMP_FAILURE_RETRY(
+            mount(userSource.c_str(), storage.c_str(), nullptr, MS_BIND | MS_REC, nullptr))) {
+        return make_mount_status(-1, "remount_storage", errno, -1, userSource.c_str(),
+                                 storage.c_str(), MountPhase::MUTATING_BASELINE);
+    }
+    return make_mount_status(0, "success", 0, -1, nullptr, nullptr,
+                             MountPhase::BASELINE_READY);
+}
+
 static bool switch_mnt_ns(int pid) {
     std::string mnt = StringPrintf("/proc/%d/ns/mnt"_iobfs.c_str(), pid);
     int nsFd = TEMP_FAILURE_RETRY(sys_open(mnt.c_str(), O_RDONLY | O_CLOEXEC, 0));
@@ -332,17 +517,23 @@ namespace Mount {
         if (jsources == nullptr || jtargets == nullptr ||
             env->GetArrayLength(jsources) != env->GetArrayLength(jtargets)) {
             return make_mount_status(-1, "invalid_args", EINVAL, -1, nullptr, nullptr,
-                                     MountPhase::ARGS);
+                                     MountPhase::PREPARE);
         }
         if (!wait_zygote(pid)) {
             return make_mount_status(-1, "wait_zygote", errno == 0 ? ETIMEDOUT : errno,
-                                     -1, nullptr, nullptr, MountPhase::ZYGOTE_WAIT);
+                                     -1, nullptr, nullptr, MountPhase::PREPARE);
+        }
+        // 事务登记目标身份：starttime 在 PID 复用后必然变化，是全流程防误伤的锚点。
+        unsigned long long target_start_time = 0;
+        if (!read_target_identity(pid, static_cast<uid_t>(uid), &target_start_time)) {
+            return make_mount_status(-1, "target_identity", errno == 0 ? ESRCH : errno,
+                                     -1, nullptr, nullptr, MountPhase::PREPARE);
         }
         int sv[2];
         if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) != 0) {
             LOGE("%s"_iobfs.c_str(), "Failed to create Unix-domain socket pair"_iobfs.c_str());
             return make_mount_status(-1, "socketpair", errno, -1, nullptr, nullptr,
-                                     MountPhase::NAMESPACE);
+                                     MountPhase::NAMESPACE_ENTERED);
         }
         int child_pid = sys_fork();
         if (child_pid) {
@@ -352,7 +543,7 @@ namespace Mount {
                 close(sv[0]);
                 close(sv[1]);
                 return make_mount_status(-1, "fork", saved_errno, -1, nullptr, nullptr,
-                                         MountPhase::NAMESPACE);
+                                         MountPhase::NAMESPACE_ENTERED);
             } else {
                 int sock = sv[0];
                 set_socket_timeout(sock, 1);
@@ -388,6 +579,16 @@ namespace Mount {
                     copy_status_value(status.stage, sizeof(status.stage), "child_result_timeout");
                     status.phase = static_cast<int>(last_progress_phase);
                     status.index = last_progress_index;
+                    // 超时时若最后进度处于变异阶段，保守判定 namespace 可能已脏。
+                    if (phase_may_have_dirty_namespace(last_progress_phase)) {
+                        status.namespace_dirty = 1;
+                    }
+                }
+                if (status.namespace_dirty != 0) {
+                    // namespace 已污染且无法确认恢复：按安全策略终止目标应用，
+                    // 终止前强制复核身份，绝不误杀 PID 复用后的新进程。
+                    status.target_terminated =
+                            terminate_target_if_same(pid, target_start_time) ? 1 : 0;
                 }
                 return status;
             }
@@ -397,96 +598,127 @@ namespace Mount {
         // so that all mount operations will not affect parent process.
         if (!switch_mnt_ns(pid)) {
             fail_child(sock, "setns", errno == 0 ? EPERM : errno, -1, nullptr, nullptr,
-                       MountPhase::NAMESPACE);
+                       MountPhase::NAMESPACE_ENTERED);
+        }
+        // setns 后二次确认身份：采集与进入之间目标若死亡且 PID 被复用，
+        // 继续操作会把挂载打进无关进程的 namespace。
+        unsigned long long confirmed_start_time = 0;
+        if (!read_target_identity(pid, static_cast<uid_t>(uid), &confirmed_start_time) ||
+            confirmed_start_time != target_start_time) {
+            fail_child(sock, "target_identity", errno == 0 ? ESRCH : errno, -1,
+                       nullptr, nullptr, MountPhase::NAMESPACE_ENTERED);
         }
 #ifdef REMOUNT_STORAGE
-        write_mount_progress(sock, MountPhase::BASELINE);
-        if (TEMP_FAILURE_RETRY(umount2("/storage/"_iobfs.c_str(), UMOUNT_NOFOLLOW | MNT_DETACH)) <
-            0 && errno != EINVAL && errno != ENOENT) {
-            LOGE("Failed to unmount /storage/: %s"_iobfs.c_str(), strerror(errno));
-            fail_child(sock, "unmount_storage", errno, -1, nullptr, "/storage/"_iobfs.c_str(),
-                       MountPhase::BASELINE);
+        write_mount_progress(sock, MountPhase::NAMESPACE_ENTERED);
+        write_mount_progress(sock, MountPhase::MUTATING_BASELINE);
+        const auto baseline = restore_storage_baseline(
+                useSdcardFs, storage, storageSource, userSource);
+        if (baseline.ok != 0) {
+            // 首次恢复失败时再尝试一次，尽量避免目标 namespace 留在无 /storage 状态。
+            const auto recovery = restore_storage_baseline(
+                    useSdcardFs, storage, storageSource, userSource);
+            if (recovery.ok != 0) {
+                LOGE("Failed to restore storage baseline after %s: %s"_iobfs.c_str(),
+                     baseline.stage, strerror(recovery.err));
+                fail_child(sock, "baseline_recovery_failed", recovery.err, recovery.index,
+                           recovery.source, recovery.target, MountPhase::MUTATING_BASELINE,
+                           true);
+            }
+            write_mount_progress(sock, MountPhase::BASELINE_READY);
+            fail_child(sock, baseline.stage, baseline.err, baseline.index,
+                       baseline.source, baseline.target, MountPhase::MUTATING_BASELINE);
         }
-        /// @see EmulatedVolume::doMount()
-        if (useSdcardFs) {
-            /// @see /system/vold/VolumeManager.cpp forkAndRemountChild()
-            if (TEMP_FAILURE_RETRY(
-                    mount(storageSource.c_str(), storage.c_str(), nullptr, MS_BIND | MS_REC,
-                          nullptr))) {
-                LOGE("Failed to mount %s for %d: %s"_iobfs.c_str(), storageSource.c_str(), pid,
-                     strerror(errno));
-                fail_child(sock, "remount_storage", errno, -1, storageSource.c_str(),
-                           storage.c_str(), MountPhase::BASELINE);
+        write_mount_progress(sock, MountPhase::BASELINE_READY);
+
+        // 变异阶段副作用跟踪：回滚按标记撤销已产生的效果；
+        // dataRestrictionModified 一旦置位即保守判定 namespace 已脏
+        // （MNT_DETACH 异步回收，命令成功不代表视图一致）。
+        bool dataBypassMounted = false;
+        bool obbBypassMounted = false;
+        bool dataRestrictionModified = false;
+
+        const std::string androidDataFuseDir = StringPrintf(
+                "/mnt/user/%d/emulated/%d/Android/data"_iobfs.c_str(), user_id, user_id);
+        const std::string androidObbFuseDir = StringPrintf(
+                "/mnt/user/%d/emulated/%d/Android/obb"_iobfs.c_str(), user_id, user_id);
+
+        const auto rollback_and_fail = [&](const char *stage, int err, int index = -1,
+                                           const char *source = nullptr,
+                                           const char *target = nullptr) -> void {
+            write_mount_progress(sock, MountPhase::ROLLING_BACK);
+            if (dataBypassMounted) {
+                TEMP_FAILURE_RETRY(
+                        umount2(androidDataFuseDir.c_str(), UMOUNT_NOFOLLOW | MNT_DETACH));
             }
-            if (TEMP_FAILURE_RETRY(
-                    mount(nullptr, storage.c_str(), nullptr, MS_REC | MS_SLAVE, nullptr))) {
-                LOGE("Failed to set MS_SLAVE to /storage for %d: %s"_iobfs.c_str(), pid,
-                     strerror(errno));
-                fail_child(sock, "remount_storage_slave", errno, -1, nullptr, storage.c_str(),
-                           MountPhase::BASELINE);
+            if (obbBypassMounted) {
+                TEMP_FAILURE_RETRY(
+                        umount2(androidObbFuseDir.c_str(), UMOUNT_NOFOLLOW | MNT_DETACH));
             }
-            if (TEMP_FAILURE_RETRY(
-                    mount(userSource.c_str(), "/storage/self"_iobfs.c_str(), nullptr, MS_BIND,
-                          nullptr))) {
-                LOGE("Failed to mount %s for %d: %s"_iobfs.c_str(), userSource.c_str(), pid,
-                     strerror(errno));
-                fail_child(sock, "mount_storage_self", errno, -1, userSource.c_str(),
-                           "/storage/self"_iobfs.c_str(), MountPhase::BASELINE);
+            const auto rollback = restore_storage_baseline(
+                    useSdcardFs, storage, storageSource, userSource);
+            if (rollback.ok != 0) {
+                LOGE("Rollback failed after %s at %s: %s"_iobfs.c_str(), stage,
+                     rollback.stage, strerror(rollback.err));
             }
-        } else {
-            if (TEMP_FAILURE_RETRY(
-                    mount(userSource.c_str(), storage.c_str(), nullptr, MS_BIND | MS_REC,
-                          nullptr))) {
-                LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
-                     userSource.c_str(), storage.c_str(), strerror(errno));
-                fail_child(sock, "remount_storage", errno, -1, userSource.c_str(),
-                           storage.c_str(), MountPhase::BASELINE);
+            const bool namespace_dirty = dataRestrictionModified || rollback.ok != 0;
+            if (namespace_dirty) {
+                fail_child(sock, "namespace_rollback_failed",
+                           rollback.ok != 0 ? rollback.err : err,
+                           index, source, target, MountPhase::ROLLING_BACK, true);
             }
-        }
+            write_mount_progress(sock, MountPhase::BASELINE_READY);
+            fail_child(sock, stage, err, index, source, target, MountPhase::APPLYING_RULES);
+        };
+
         // some little tricks on the system with FUSE enabled
         if (!useSdcardFs) {
             // unmount /Android/data to intercept filesystem operations in app-specific dir.
             if (unmountDataRestriction) {
-                const std::string fuseDataDir = StringPrintf(
-                        "/mnt/user/%d/emulated/%d/Android/data"_iobfs.c_str(), user_id, user_id);
-                if (TEMP_FAILURE_RETRY(umount2(fuseDataDir.c_str(), UMOUNT_NOFOLLOW)) < 0 &&
-                    errno != EINVAL && errno != ENOENT) {
+                if (TEMP_FAILURE_RETRY(
+                        umount2(androidDataFuseDir.c_str(), UMOUNT_NOFOLLOW)) == 0) {
+                    dataRestrictionModified = true;
+                } else if (errno != EINVAL && errno != ENOENT) {
+                    const int error = errno;
                     LOGE("Failed to unmount fuseDataDir: %s"_iobfs.c_str(), strerror(errno));
+                    rollback_and_fail("unmount_data_restriction_fuse", error, -1,
+                                      nullptr, androidDataFuseDir.c_str());
                 }
                 const std::string androidDataDir = StringPrintf(
                         "/storage/emulated/%d/Android/data"_iobfs.c_str(), user_id);
-                if (TEMP_FAILURE_RETRY(umount2(androidDataDir.c_str(), UMOUNT_NOFOLLOW)) < 0 &&
-                    errno != EINVAL && errno != ENOENT) {
+                if (TEMP_FAILURE_RETRY(
+                        umount2(androidDataDir.c_str(), UMOUNT_NOFOLLOW)) == 0) {
+                    dataRestrictionModified = true;
+                } else if (errno != EINVAL && errno != ENOENT) {
+                    const int error = errno;
                     LOGE("Failed to unmount androidDataDir: %s"_iobfs.c_str(), strerror(errno));
+                    rollback_and_fail("unmount_data_restriction_storage", error, -1,
+                                      nullptr, androidDataDir.c_str());
                 }
             }
             if (fuseBypass) {
                 const std::string androidDataSourceDir = StringPrintf(
                         "/data/media/%d/Android/data"_iobfs.c_str(), user_id);
-                const std::string androidDataFuseDir = StringPrintf(
-                        "/mnt/user/%d/emulated/%d/Android/data"_iobfs.c_str(), user_id, user_id);
                 if (TEMP_FAILURE_RETRY(
                         mount(androidDataSourceDir.c_str(), androidDataFuseDir.c_str(), nullptr,
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidDataSourceDir.c_str(), androidDataFuseDir.c_str(), strerror(errno));
-                    fail_child(sock, "fuse_bypass_data_source", errno, -1,
-                               androidDataSourceDir.c_str(), androidDataFuseDir.c_str(),
-                               MountPhase::BASELINE);
+                    rollback_and_fail("fuse_bypass_data_source", errno, -1,
+                                      androidDataSourceDir.c_str(),
+                                      androidDataFuseDir.c_str());
                 }
+                dataBypassMounted = true;
                 const std::string androidObbSourceDir = StringPrintf(
                         "/data/media/%d/Android/obb"_iobfs.c_str(), user_id);
-                const std::string androidObbFuseDir = StringPrintf(
-                        "/mnt/user/%d/emulated/%d/Android/obb"_iobfs.c_str(), user_id, user_id);
                 if (TEMP_FAILURE_RETRY(
                         mount(androidObbSourceDir.c_str(), androidObbFuseDir.c_str(), nullptr,
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidObbSourceDir.c_str(), androidObbFuseDir.c_str(), strerror(errno));
-                    fail_child(sock, "fuse_bypass_obb_source", errno, -1,
-                               androidObbSourceDir.c_str(), androidObbFuseDir.c_str(),
-                               MountPhase::BASELINE);
+                    rollback_and_fail("fuse_bypass_obb_source", errno, -1,
+                                      androidObbSourceDir.c_str(), androidObbFuseDir.c_str());
                 }
+                obbBypassMounted = true;
 
                 const std::string androidDataDir = StringPrintf(
                         "/storage/emulated/%d/Android/data"_iobfs.c_str(), user_id);
@@ -495,9 +727,8 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidDataFuseDir.c_str(), androidDataDir.c_str(), strerror(errno));
-                    fail_child(sock, "fuse_bypass_data_target", errno, -1,
-                               androidDataFuseDir.c_str(), androidDataDir.c_str(),
-                               MountPhase::BASELINE);
+                    rollback_and_fail("fuse_bypass_data_target", errno, -1,
+                                      androidDataFuseDir.c_str(), androidDataDir.c_str());
                 }
                 const std::string androidObbDir = StringPrintf(
                         "/storage/emulated/%d/Android/obb"_iobfs.c_str(), user_id);
@@ -506,43 +737,36 @@ namespace Mount {
                               MS_BIND | MS_REC, nullptr))) {
                     LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                          androidObbFuseDir.c_str(), androidObbDir.c_str(), strerror(errno));
-                    fail_child(sock, "fuse_bypass_obb_target", errno, -1,
-                               androidObbFuseDir.c_str(), androidObbDir.c_str(),
-                               MountPhase::BASELINE);
+                    rollback_and_fail("fuse_bypass_obb_target", errno, -1,
+                                      androidObbFuseDir.c_str(), androidObbDir.c_str());
                 }
             }
         }
 #endif // REMOUNT_STORAGE
         // Mount as user wish.
         for (int i = 0, length = env->GetArrayLength(jsources); i < length; i++) {
-            write_mount_progress_with_index(sock, MountPhase::RULES, i);
+            write_mount_progress_with_index(sock, MountPhase::APPLYING_RULES, i);
             auto jsource = (jstring) env->GetObjectArrayElement(jsources, i);
             if (jsource == nullptr) {
-                fail_child(sock, "invalid_source", EINVAL, i, nullptr, nullptr,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_source", EINVAL, i);
             }
             const char *source = env->GetStringUTFChars(jsource, nullptr);
             if (source == nullptr) {
-                fail_child(sock, "invalid_source", EINVAL, i, nullptr, nullptr,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_source", EINVAL, i);
             }
             auto jtarget = (jstring) env->GetObjectArrayElement(jtargets, i);
             if (jtarget == nullptr) {
-                fail_child(sock, "invalid_target", EINVAL, i, source, nullptr,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_target", EINVAL, i, source);
             }
             const char *target = env->GetStringUTFChars(jtarget, nullptr);
             if (target == nullptr) {
-                fail_child(sock, "invalid_target", EINVAL, i, source, nullptr,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_target", EINVAL, i, source);
             }
             if (!is_storage_path(source)) {
-                fail_child(sock, "invalid_source", EINVAL, i, source, target,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_source", EINVAL, i, source, target);
             }
             if (!is_storage_path(target)) {
-                fail_child(sock, "invalid_target", EINVAL, i, source, target,
-                           MountPhase::RULES);
+                rollback_and_fail("invalid_target", EINVAL, i, source, target);
             }
             const std::string mnt_source = (useSdcardFs ? storageSource : userSource) +
                                            std::string(source).substr(storage.length(),
@@ -551,8 +775,7 @@ namespace Mount {
                     mount(mnt_source.c_str(), target, nullptr, MS_BIND | MS_REC, nullptr))) {
                 LOGE("Failed to mount %s to %s: %s"_iobfs.c_str(),
                      mnt_source.c_str(), target, strerror(errno));
-                fail_child(sock, "mount_rule", errno, i, mnt_source.c_str(), target,
-                           MountPhase::RULES);
+                rollback_and_fail("mount_rule", errno, i, mnt_source.c_str(), target);
             }
             env->ReleaseStringUTFChars(jsource, source);
             env->ReleaseStringUTFChars(jtarget, target);
@@ -560,7 +783,7 @@ namespace Mount {
             env->DeleteLocalRef(jtarget);
         }
         write_mount_status(sock, make_mount_status(0, "success", 0, -1, nullptr, nullptr,
-                                                   MountPhase::REPORT));
+                                                   MountPhase::COMPLETED));
         close(sv[0]);
         close(sv[1]);
         sys__exit(0);

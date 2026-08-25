@@ -234,6 +234,8 @@ object RuntimeFileUtils {
         val phaseName: String = "unknown",
         /** 目标命名空间可能残留部分效果（预留：当前实现恒 false）。 */
         val namespaceDirty: Boolean = false,
+        /** 污染处置中已安全终止目标应用（仅 namespaceDirty 时可能为 true）。 */
+        val targetTerminated: Boolean = false,
     ) {
         val reason: String
             get() = if (success) {
@@ -266,6 +268,7 @@ object RuntimeFileUtils {
                     phase = root.optInt("phase", -1),
                     phaseName = root.optString("phaseName", "unknown"),
                     namespaceDirty = root.optBoolean("namespaceDirty", false),
+                    targetTerminated = root.optBoolean("targetTerminated", false),
                 )
             }
         }
