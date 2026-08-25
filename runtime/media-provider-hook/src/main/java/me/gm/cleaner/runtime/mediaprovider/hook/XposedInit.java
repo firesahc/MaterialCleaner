@@ -64,34 +64,62 @@ public class XposedInit implements IXposedHookLoadPackage {
         return nativeStatus != null && nativeStatus.contains("\"containsMount\":true");
     }
 
-    // 在 onMediaProviderLoaded 中设置自动重连回调（失败时指数退避重试）
+    // 在 onMediaProviderLoaded 中设置自动重连回调，失败时有界突发+冷却探针恢复。
     private void setupReRegisterOnDeath() {
         final Handler handler = new Handler(Looper.getMainLooper());
+        final BridgeRegistrationRetryGate retryGate = new BridgeRegistrationRetryGate();
         final int[] attempts = {0};
+        final boolean[] cooldownProbe = {false};
         final Runnable retryTask = new Runnable() {
             @Override
             public void run() {
-                attempts[0]++;
-                Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                if (!retryGate.beginScheduledRun()) {
+                    return;
+                }
+                final boolean isCooldownProbe = cooldownProbe[0];
+                cooldownProbe[0] = false;
+                if (!isCooldownProbe) {
+                    // 冷却探针不计入突发预算：它本身就是预算耗尽后的低频试探。
+                    attempts[0]++;
+                    Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                }
                 if (registerHooksCallback()) {
                     Log.i("MC_REDIRECT", "[XposedInit] Re-registration call completed");
                     attempts[0] = 0;
+                    retryGate.markIdle();
                     return;
                 }
                 Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed (attempt " + attempts[0] + ")");
-                if (attempts[0] < 10) {
-                    long delay = Math.min(1000L << (attempts[0] - 1), 30000L);
-                    // 风暴抑制路径：标记重试已调度（RETRYING），实际尝试由
-                    // 下轮 run() 内的 registerHooksCallback 走 REGISTERING 状态。
+                NativeHookStatus.INSTANCE.markBridgeFailed(
+                        "re-register attempt " + attempts[0] + " failed");
+                if (isCooldownProbe || BridgeRegistrationRetryPolicy.isBurstExhausted(attempts[0])) {
+                    cooldownProbe[0] = true;
                     NativeHookStatus.INSTANCE.markBridgeRetryScheduled(attempts[0]);
-                    handler.postDelayed(this, delay);
+                    retryGate.markWaiting();
+                    if (!handler.postDelayed(this, BridgeRegistrationRetryPolicy.COOLDOWN_MILLIS)) {
+                        retryGate.markIdle();
+                    }
+                    return;
+                }
+                NativeHookStatus.INSTANCE.markBridgeRetryScheduled(attempts[0]);
+                retryGate.markWaiting();
+                if (!handler.postDelayed(
+                        this,
+                        BridgeRegistrationRetryPolicy.delayMillis(attempts[0]))) {
+                    retryGate.markIdle();
                 }
             }
         };
         MediaProviderHooksService.sReRegisterCallback = () -> {
-            handler.removeCallbacks(retryTask);
-            attempts[0] = 0;
-            retryTask.run();
+            // 合并重注册请求：突发/冷却期间的外部事件不重置预算，
+            // 防止 Binder 死亡风暴无限重启退避序列。
+            if (!retryGate.requestSchedule()) {
+                Log.i("MC_REDIRECT", "[XposedInit] Re-registration request coalesced");
+                return;
+            }
+            if (!handler.post(retryTask)) {
+                retryGate.markIdle();
+            }
         };
     }
 

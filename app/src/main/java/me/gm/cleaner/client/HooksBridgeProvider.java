@@ -42,6 +42,7 @@ public class HooksBridgeProvider extends ContentProvider {
     private static final String METHOD_REGISTER_HOOKS_CALLBACK = "register_hooks_callback";
     private static final String METHOD_GET_HOOKS_SERVICE = "get_hooks_service";
     private static final String EXTRA_BINDER = "binder";
+    private static final String EXTRA_REGISTERED = "registered";
     private static final int AID_USER_OFFSET = 100000;
     private static final String[] MEDIA_PROVIDER_PACKAGES = {
             "com.android.providers.media",
@@ -421,17 +422,22 @@ public class HooksBridgeProvider extends ContentProvider {
         switch (method) {
             case METHOD_REGISTER_HOOKS_CALLBACK: {
                 enforceProviderCaller(method);
-                if (extras == null) break;
-                IBinder binder = extras.getBinder(EXTRA_BINDER);
-                if (binder != null) {
+                // 显式确认协议：回传 registered 让 Hook 侧区分
+                // "调用未抛异常"与"Binder 真实接入"两件事。
+                IBinder binder = extras == null ? null : extras.getBinder(EXTRA_BINDER);
+                boolean registered = false;
+                if (binder != null && binder.pingBinder()) {
                     try {
                         sHooksService.setMediaProviderBinder(
                                 IMediaProviderHooksService.Stub.asInterface(binder));
+                        registered = true;
                     } catch (RemoteException e) {
                         Log.w(TAG, "Failed to set media provider binder", e);
                     }
                 }
-                break;
+                Bundle result = new Bundle();
+                result.putBoolean(EXTRA_REGISTERED, registered);
+                return result;
             }
             case METHOD_GET_HOOKS_SERVICE: {
                 enforceProviderCaller(method);
