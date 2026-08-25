@@ -949,8 +949,9 @@ namespace bpf_hook {
     }
 
     void setMountPoint(JNIEnv *env, jclass clazz, jobjectArray value) {
-        std::unique_lock<std::shared_mutex> lock(mountPointMutex);
-        mountPoint.clear();
+        // 先在锁外完成解析与集合构建，成功后在临界区内一次性交换：
+        // 消除 clear 后逐条插入的长临界区，且任何异常路径都保留旧表不产生空窗。
+        std::set<std::string> new_mount_points;
         for (int i = 0, length = env->GetArrayLength(value); i < length; i++) {
             auto jpath = (jstring) env->GetObjectArrayElement(value, i);
             if (jpath == nullptr) continue;
@@ -959,7 +960,7 @@ namespace bpf_hook {
 
             std::string parent = path;
             while (true) {
-                if (!mountPoint.insert(parent).second) {
+                if (!new_mount_points.insert(parent).second) {
                     break;
                 }
                 char *mutable_path = strdup(parent.c_str());
@@ -974,6 +975,17 @@ namespace bpf_hook {
             env->ReleaseStringUTFChars(jpath, path);
             env->DeleteLocalRef(jpath);
         }
+
+        // 构建期间若有 JNI 异常挂起，清除并放弃本次更新，保留旧配置。
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("%s", std::string(AY_OBFUSCATE(
+                    "setMountPoint aborted by pending JNI exception")).c_str());
+            return;
+        }
+
+        std::unique_lock<std::shared_mutex> lock(mountPointMutex);
+        mountPoint.swap(new_mount_points);
     }
 
     void setRecordExternalAppSpecificStorage(JNIEnv *env, jclass clazz, jboolean value) {
