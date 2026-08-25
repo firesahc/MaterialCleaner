@@ -17,6 +17,7 @@ import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.common.err.ErrorLogThrottle
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
+import api.SystemService
 import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -115,27 +116,63 @@ class Mounter {
         if (result.success) {
             mountFailedPids.remove(pid)
             mountRetryCount.remove(pid)
-        } else {
-            mountFailedPids.add(pid)
-            failureCount.incrementAndGet()
-            recordMountFailureLocked(packageName, pid, uid, result)
-            lastMountFailure = MountFailure(
-                timeMillis = System.currentTimeMillis(),
-                packageName = packageName,
-                pid = pid,
-                uid = uid,
-                reason = result.reason,
-                stage = result.stage,
-                errno = result.errno,
-                failedIndex = result.failedIndex,
-                source = result.source,
-                target = result.target,
-                phaseName = result.phaseName,
-                namespaceDirty = result.namespaceDirty,
-            )
-            scheduleMountRetryLocked(packageName, pid, uid)
+            return true
         }
-        return result.success
+        mountFailedPids.add(pid)
+        failureCount.incrementAndGet()
+
+        // 处置分类：污染 / 永久失败 / 可重试失败 三分支。
+        val disposition = MountFailureRetryPolicy.classify(
+            stage = result.stage,
+            errno = result.errno,
+            namespaceDirty = result.namespaceDirty,
+            targetTerminated = result.targetTerminated,
+        )
+        val safetyStop = if (disposition.forceStopTargetPackage) {
+            // namespace 已污染且 native 未能终止目标：由 server 补充强停，
+            // 防止应用继续运行在脏挂载视图上产生不可预期的文件访问。
+            val userId = uid.toUserId()
+            val stopped = SystemService.forceStopPackageNoThrow(packageName, userId)
+            if (stopped) {
+                Log.w("MC_REDIRECT", "[Mounter] safety stop applied pkg=$packageName pid=$pid")
+            } else {
+                Log.e("MC_REDIRECT", "[Mounter] safety stop FAILED pkg=$packageName pid=$pid")
+            }
+            stopped
+        } else {
+            false
+        }
+
+        recordMountFailureLocked(packageName, pid, uid, result, disposition, safetyStop)
+        lastMountFailure = MountFailure(
+            timeMillis = System.currentTimeMillis(),
+            packageName = packageName,
+            pid = pid,
+            uid = uid,
+            reason = result.reason,
+            stage = result.stage,
+            errno = result.errno,
+            failedIndex = result.failedIndex,
+            source = result.source,
+            target = result.target,
+            phaseName = result.phaseName,
+            namespaceDirty = result.namespaceDirty,
+            retryable = disposition.retryable,
+            targetTerminated = result.targetTerminated,
+            forceStopAttempted = disposition.forceStopTargetPackage,
+            forceStopSucceeded = safetyStop,
+        )
+        if (disposition.retryable) {
+            scheduleMountRetryLocked(packageName, pid, uid)
+        } else {
+            mountRetryCount.remove(pid)
+            Log.w(
+                "MC_REDIRECT",
+                "[Mounter] permanent mount failure, no retry pkg=$packageName " +
+                        "stage=${result.stage} dirty=${result.namespaceDirty}"
+            )
+        }
+        return false
     }
 
     /**
@@ -146,10 +183,20 @@ class Mounter {
         packageName: String,
         pid: Int,
         uid: Int,
-        result: RuntimeFileUtils.BindMountResult
+        result: RuntimeFileUtils.BindMountResult,
+        disposition: MountFailureDisposition,
+        forceStopSucceeded: Boolean,
     ) {
+        // 错误码优先级：污染处置 > 身份复核 > 阶段映射。
+        val code = when {
+            result.namespaceDirty && disposition.forceStopTargetPackage ->
+                ErrorCodes.MOUNT_SAFETY_STOP
+            result.namespaceDirty -> ErrorCodes.MOUNT_ROLLBACK_FAILED
+            result.stage == "target_identity" -> ErrorCodes.MOUNT_IDENTITY_MISMATCH
+            else -> errorCodeForStage(result.stage)
+        }
         val event = ErrorEvent(
-            code = errorCodeForStage(result.stage),
+            code = code,
             errno = result.errno,
             subject = "$packageName/pid:$pid",
             pathDigest = if (result.failedIndex >= 0) {
@@ -163,6 +210,11 @@ class Mounter {
                 append("stage=").append(result.stage)
                 if (result.phase >= 0) append(" phase=").append(result.phaseName)
                 if (result.namespaceDirty) append(" dirty=true")
+                if (result.targetTerminated) append(" targetTerminated=true")
+                if (disposition.forceStopTargetPackage) {
+                    append(" safetyStop=").append(if (forceStopSucceeded) "ok" else "failed")
+                }
+                if (!disposition.retryable && !result.namespaceDirty) append(" permanent=true")
                 if (result.error.isNotBlank()) append(" os=").append(result.error)
             },
         )
@@ -177,13 +229,19 @@ class Mounter {
         "invalid_args", "invalid_source", "invalid_target" -> ErrorCodes.MOUNT_ARGS_INVALID
         "wait_zygote" -> ErrorCodes.MOUNT_ZYGOTE_WAIT_TIMEOUT
         "setns" -> ErrorCodes.MOUNT_SETNS_FAILED
-        "unmount_storage" -> ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
+        "target_identity" -> ErrorCodes.MOUNT_IDENTITY_MISMATCH
+        "unmount_storage", "baseline_recovery_failed" ->
+            ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
         "remount_storage", "remount_storage_slave", "mount_storage_self",
         "fuse_bypass_data_source", "fuse_bypass_obb_source",
         "fuse_bypass_data_target", "fuse_bypass_obb_target",
         -> ErrorCodes.MOUNT_BASELINE_REMOUNT_FAILED
+        "unmount_data_restriction_fuse", "unmount_data_restriction_storage" ->
+            ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
         "mount_rule" -> ErrorCodes.MOUNT_RULE_FAILED
-        "child_result_timeout" -> ErrorCodes.MOUNT_PROC_TIMEOUT
+        "child_result_timeout", "namespace_transaction_timeout" ->
+            ErrorCodes.MOUNT_PROC_TIMEOUT
+        "namespace_rollback_failed" -> ErrorCodes.MOUNT_ROLLBACK_FAILED
         else -> ErrorCodes.MOUNT_INTERNAL_FAILED
     }
 
@@ -473,5 +531,13 @@ class Mounter {
         val phaseName: String = "unknown",
         /** 目标命名空间可能残留部分效果。 */
         val namespaceDirty: Boolean = false,
+        /** 处置分类：是否值得重试（污染/永久失败为 false）。 */
+        val retryable: Boolean = false,
+        /** native 侧已终止目标应用。 */
+        val targetTerminated: Boolean = false,
+        /** server 侧发起过安全停止。 */
+        val forceStopAttempted: Boolean = false,
+        /** 安全停止是否成功。 */
+        val forceStopSucceeded: Boolean = false,
     )
 }

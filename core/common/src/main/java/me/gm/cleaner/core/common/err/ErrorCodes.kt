@@ -59,6 +59,12 @@ object ErrorCodes {
     /** 目标进程在事务期间退出。 */
     const val MOUNT_TARGET_GONE = "MOUNT.TARGET.GONE"
 
+    /** 目标进程身份复核失败：start_time 与采集时不一致，疑似 PID 已被系统复用。 */
+    const val MOUNT_IDENTITY_MISMATCH = "MOUNT.IDENTITY.MISMATCH"
+
+    /** namespace 污染且无法回滚，已按安全策略停止目标应用。 */
+    const val MOUNT_SAFETY_STOP = "MOUNT.SAFETY.STOP"
+
     /** 目标进程卡死被看门狗终止。 */
     const val MOUNT_TARGET_STUCK_KILLED = "MOUNT.TARGET.STUCK_KILLED"
 

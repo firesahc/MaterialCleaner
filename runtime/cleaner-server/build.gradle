@@ -36,4 +36,5 @@ dependencies {
     implementation "androidx.room:room-ktx:$roomVersion"
     ksp "androidx.room:room-compiler:$roomVersion"
     implementation "com.google.guava:guava:$rootProject.guavaVersion"
+    testImplementation 'junit:junit:4.13.2'
 }

@@ -399,11 +399,13 @@ object SystemService {
     }
 
     @JvmStatic
-    fun forceStopPackageNoThrow(packageName: String?, userId: Int) {
-        val am = activityManager ?: throw RemoteException("can't get IActivityManager")
-        try {
+    fun forceStopPackageNoThrow(packageName: String?, userId: Int): Boolean {
+        return try {
+            val am = activityManager ?: throw RemoteException("can't get IActivityManager")
             am.forceStopPackage(packageName, userId)
+            true
         } catch (e: Exception) {
+            false
         }
     }
 

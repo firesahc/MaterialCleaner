@@ -198,6 +198,12 @@ class VfsLayerController {
                     "lastMountFailureSource" to (lastFailure?.source ?: ""),
                     "lastMountFailureTarget" to (lastFailure?.target ?: ""),
                     "topErrorCode" to lastMountErrorCode,
+                    "lastMountRetryable" to (lastFailure?.retryable ?: false).toString(),
+                    "lastMountNamespaceDirty" to (lastFailure?.namespaceDirty ?: false).toString(),
+                    "lastMountForceStopAttempted" to
+                            (lastFailure?.forceStopAttempted ?: false).toString(),
+                    "lastMountForceStopSucceeded" to
+                            (lastFailure?.forceStopSucceeded ?: false).toString(),
                 ),
             )
         } else {
