@@ -40,17 +40,27 @@ object SnapshotPublisher {
         val policy = RuntimeRedirectPolicyFactory.build(userIds)
         VfsRuntimeConfigStore.updatePolicy(policy)
 
-        val policyPublished = publishRedirectPolicy(policy)
-        val readOnlyPublished = publishReadOnly(policy)
-        val mountPointsPublished = publishConfiguredMountPoints(policy)
+        // 关键三件套批量提交：全部写入成功后才统一发信号，
+        // 避免 Hook 观察到半批状态造成三层不一致。
+        val batchResult = SnapshotBatchCommitter.commit(
+            publications = listOf(
+                redirectPolicyPublication(policy),
+                readOnlyPublication(policy),
+                mountPointsPublication(policy),
+            ),
+            writeSnapshot = { name, content -> DataBus.writeSnapshot(name, content) },
+            signal = { name -> DataBus.signal(name) },
+        )
         val capsPublished = publishPlatformCapabilities()
         // 关键快照（策略/只读/挂载点）决定架构有效性；
         // platform_capabilities 是信息性快照，发布失败不影响架构正常运行。
-        val criticalPublished = policyPublished && readOnlyPublished && mountPointsPublished
+        val criticalPublished = batchResult.successful
         if (!capsPublished) {
             Log.w(TAG, "publishAll: platform_capabilities snapshot failed (non-critical)")
         }
-        Log.i(TAG, "publishAll: done, generation=${policy.generation}, critical=$criticalPublished, caps=$capsPublished")
+        Log.i(TAG, "publishAll: done, generation=${policy.generation}, " +
+                "written=${batchResult.snapshotsWritten}, signaled=${batchResult.signalsDelivered}, " +
+                "caps=$capsPublished")
         return criticalPublished
     }
 
@@ -82,9 +92,15 @@ object SnapshotPublisher {
 
         val snapshot = RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
-        val policyPublished = publishRedirectPolicy(snapshot)
-        val mountPointsPublished = publishConfiguredMountPoints(snapshot)
-        return policyPublished && mountPointsPublished
+        val batchResult = SnapshotBatchCommitter.commit(
+            publications = listOf(
+                redirectPolicyPublication(snapshot),
+                mountPointsPublication(snapshot),
+            ),
+            writeSnapshot = { name, content -> DataBus.writeSnapshot(name, content) },
+            signal = { name -> DataBus.signal(name) },
+        )
+        return batchResult.successful
     }
 
     /**
@@ -101,10 +117,16 @@ object SnapshotPublisher {
         val snapshot = RuntimeRedirectPolicyFactory.buildStopped()
         VfsRuntimeConfigStore.updatePolicy(snapshot)
 
-        val policyPublished = publishRedirectPolicy(snapshot)
-        val readOnlyPublished = publishReadOnly(snapshot)
-        val mountPointsPublished = publishConfiguredMountPoints(snapshot)
-        val published = policyPublished && readOnlyPublished && mountPointsPublished
+        val batchResult = SnapshotBatchCommitter.commit(
+            publications = listOf(
+                redirectPolicyPublication(snapshot),
+                readOnlyPublication(snapshot),
+                mountPointsPublication(snapshot),
+            ),
+            writeSnapshot = { name, content -> DataBus.writeSnapshot(name, content) },
+            signal = { name -> DataBus.signal(name) },
+        )
+        val published = batchResult.successful
         Log.i(TAG, "publishStopped: generation=${snapshot.generation}, published=$published")
         return published
     }
@@ -174,6 +196,31 @@ object SnapshotPublisher {
         }.toString())
         return written && signaled
     }
+
+    // ── 批量提交的 publication 构建 ──
+
+    private fun redirectPolicyPublication(snapshot: RedirectPolicySnapshot): SnapshotPublication =
+        SnapshotPublication(
+            snapshotName = DataBus.SNAPSHOT_REDIRECT_POLICY,
+            content = serializeRedirectPolicy(snapshot),
+            signalName = DataBus.SIGNAL_REDIRECT_POLICY_CHANGED,
+        )
+
+    private fun readOnlyPublication(snapshot: RedirectPolicySnapshot): SnapshotPublication =
+        SnapshotPublication(
+            snapshotName = DataBus.SNAPSHOT_READ_ONLY,
+            content = serializeReadOnly(snapshot),
+            signalName = DataBus.SIGNAL_READ_ONLY_CHANGED,
+        )
+
+    private fun mountPointsPublication(snapshot: RedirectPolicySnapshot): SnapshotPublication =
+        SnapshotPublication(
+            snapshotName = DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS,
+            content = serializeConfiguredMountPoints(
+                RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot)
+            ),
+            signalName = DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED,
+        )
 
     // ── JSON 序列化 ──
 

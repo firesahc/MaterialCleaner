@@ -2,6 +2,7 @@ package me.gm.cleaner.runtime.server.hookbridge
 
 import android.os.IBinder
 import android.os.RemoteException
+import android.os.SystemClock
 import android.util.Log
 import me.gm.cleaner.runtime.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
@@ -17,6 +18,10 @@ object CleanerHooksClient {
     private var deathRecipient: IBinder.DeathRecipient? = null
     @Volatile
     private var server: CleanerServer? = null
+
+    /** 最近一次 Bridge 重连尝试的单调时钟时间；0 表示从未尝试。 */
+    @Volatile
+    private var lastBridgeAttemptUptimeMs: Long = 0L
 
     fun onStart(server: CleanerServer) {
         this.server = server
@@ -91,10 +96,22 @@ object CleanerHooksClient {
 
     /**
      * 尝试重新建立 Hooks 服务连接。
-     * 获取新 binder、创建 service stub、设置死亡回调（递归通知 orchestrator）。
-     * @return true 如果成功建立连接，false 如果获取 binder 失败
+     * 获取到 binder 并包装 service stub 后，会通过回调通知 orchestrator。
+     *
+     * @param respectThrottle 懒调用路径（如 whileAlive）应保持 true 以限制
+     *   App 冻结/重启期间的无边界 Binder 查询；协调器恢复路径自带长周期
+     *   退避与冷却，显式传 false 绕过本层节流。
+     * @return true 表示成功建立连接，false 表示获取 binder 失败或被节流
      */
-    fun tryReconnect(ctx: CleanerServer): Boolean {
+    fun tryReconnect(ctx: CleanerServer, respectThrottle: Boolean = true): Boolean {
+        val nowUptimeMs = SystemClock.elapsedRealtime()
+        if (respectThrottle && !HookBridgeReconnectThrottlePolicy.shouldAttempt(
+                nowUptimeMs, lastBridgeAttemptUptimeMs)
+        ) {
+            Log.i("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: throttled")
+            return false
+        }
+        lastBridgeAttemptUptimeMs = nowUptimeMs
         Log.i("MC_REDIRECT", "[CleanerHooksClient] tryReconnect: attempting...")
         server = ctx
         return establishConnection(ctx, "tryReconnect")

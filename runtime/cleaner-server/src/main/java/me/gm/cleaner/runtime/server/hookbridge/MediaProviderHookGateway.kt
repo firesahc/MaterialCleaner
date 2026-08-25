@@ -28,7 +28,8 @@ object MediaProviderHookGateway {
     }
 
     fun tryReconnect(server: CleanerServer): Boolean =
-        CleanerHooksClient.tryReconnect(server)
+        // 协调器已有有界退避与冷却，不能再由懒调用节流消耗恢复次数。
+        CleanerHooksClient.tryReconnect(server, respectThrottle = false)
 
     @JvmStatic
     fun whileAlive(action: Consumer<ICleanerHooksService>) {
