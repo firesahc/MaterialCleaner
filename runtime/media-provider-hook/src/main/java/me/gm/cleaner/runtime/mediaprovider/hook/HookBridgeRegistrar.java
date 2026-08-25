@@ -14,14 +14,26 @@ final class HookBridgeRegistrar {
     }
 
     static boolean registerHooksCallback(Context context, IBinder binder) {
+        NativeHookStatus.INSTANCE.markBridgeRegistering();
         try {
             final Bundle extras = new Bundle();
             extras.putBinder("binder", binder);
             context.getContentResolver().call(HOOKS_URI, "register_hooks_callback", null, extras);
+            NativeHookStatus.INSTANCE.markBridgeRegistered();
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to register hooks callback", e);
+            NativeHookStatus.INSTANCE.markBridgeFailed(describeThrowable(e));
             return false;
         }
+    }
+
+    /** 供 markBridgeFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */
+    private static String describeThrowable(Exception e) {
+        final String message = e.getMessage();
+        if (message == null || message.isEmpty()) {
+            return e.getClass().getName();
+        }
+        return e.getClass().getName() + ": " + message;
     }
 }

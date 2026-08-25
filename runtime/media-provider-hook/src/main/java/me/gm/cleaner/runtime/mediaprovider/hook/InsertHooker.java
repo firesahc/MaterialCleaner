@@ -13,6 +13,7 @@ import android.util.Log;
 import androidx.annotation.RequiresApi;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -21,8 +22,19 @@ import de.robv.android.xposed.XposedHelpers;
 import me.gm.cleaner.core.storage.redirect.databus.DataBus;
 import org.json.JSONObject;
 
+/**
+ * MediaProvider insertFile Hook。
+ *
+ * <p>继承 {@link AbstractGuardedHook} 获得统一防护：任何 handler 异常不外抛、
+ * 参数回滚、每方法熔断 —— 与 FuseJavaGate 同进程统一异常策略。
+ * 本 Hook 对 args 槽位的修改只发生在 {@link MediaStore.MediaColumns#DATA}
+ * 重定向一步且位于方法末尾，异常路径上由 {@link AbstractGuardedHook} 的
+ * 槽位快照兜底即可，无需额外 guardedArgIndexes（传空数组）；
+ * {@link #ensureUniqueFileColumns} 内部以「先算后写」隔离 ContentValues 写入，
+ * 中途异常时宿主拿到未污染的 values。
+ */
 @RequiresApi(api = Build.VERSION_CODES.Q)
-public class InsertHooker extends XC_MethodHook {
+public class InsertHooker extends AbstractGuardedHook {
     private final static String DIRECTORY_THUMBNAILS = ".thumbnails";
 
     private final static int IMAGES_MEDIA = 1;
@@ -65,6 +77,7 @@ public class InsertHooker extends XC_MethodHook {
     private final ClassLoader mClassLoader;
 
     public InsertHooker(MediaProviderHook hook, ClassLoader classLoader) {
+        super("InsertHooker", "insertFile", new int[0]);
         mHook = hook;
         mClassLoader = classLoader;
     }
@@ -81,7 +94,7 @@ public class InsertHooker extends XC_MethodHook {
     }
 
     @Override
-    protected void beforeHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+    protected void handleBefore(XC_MethodHook.MethodHookParam param) throws Throwable {
         if (mHook.isFuseThread()) {
             Log.d("MC_REDIRECT", "[InsertHooker] Skipping - on FUSE thread");
             return;
@@ -150,8 +163,18 @@ public class InsertHooker extends XC_MethodHook {
                 || values.getAsString(MediaStore.MediaColumns.DATA).isEmpty();
     }
 
+    /**
+     * 补全缺失的文件列并计算唯一 DATA 路径。
+     *
+     * <p><b>先算后写：</b>全部计算与写入作用于 {@code working} 副本，
+     * 全部成功后才在方法末尾一次性回写 {@code values}；
+     * 中途任何异常时 {@code values} 保持进入时原状，
+     * 由 AbstractGuardedHook 兜底 return 后宿主拿到未污染的 values。
+     */
     private void ensureUniqueFileColumns(Object mp, int match, Uri uri,
                                          ContentValues values, String mimeType) {
+        // 先算后写：working 是 values 的副本，所有中间计算只作用于它。
+        final ContentValues working = new ContentValues(values);
         var defaultPrimary = Environment.DIRECTORY_DOWNLOADS;
         String defaultSecondary = null;
         switch (match) {
@@ -193,14 +216,14 @@ public class InsertHooker extends XC_MethodHook {
         }
         // Give ourselves reasonable defaults when missing
         if (TextUtils.isEmpty(values.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))) {
-            values.put(MediaStore.MediaColumns.DISPLAY_NAME, String.valueOf(System.currentTimeMillis()));
+            working.put(MediaStore.MediaColumns.DISPLAY_NAME, String.valueOf(System.currentTimeMillis()));
         }
         // Use default directories when missing
         if (TextUtils.isEmpty(values.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))) {
             if (defaultSecondary != null) {
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, defaultPrimary + "/" + defaultSecondary);
+                working.put(MediaStore.MediaColumns.RELATIVE_PATH, defaultPrimary + "/" + defaultSecondary);
             } else {
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, defaultPrimary + "/");
+                working.put(MediaStore.MediaColumns.RELATIVE_PATH, defaultPrimary + "/");
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -212,27 +235,27 @@ public class InsertHooker extends XC_MethodHook {
             final var fileUtilsClass = XposedHelpers.findClass(
                     "com.android.providers.media.util.FileUtils", mClassLoader);
             final var isFuseThread = (boolean) XposedHelpers.callMethod(mp, "isFuseThread");
-            XposedHelpers.callStaticMethod(fileUtilsClass, "sanitizeValues", values, !isFuseThread);
+            XposedHelpers.callStaticMethod(fileUtilsClass, "sanitizeValues", working, !isFuseThread);
             XposedHelpers.callStaticMethod(
-                    fileUtilsClass, "computeDataFromValues", values, volumePath, isFuseThread);
+                    fileUtilsClass, "computeDataFromValues", working, volumePath, isFuseThread);
 
-            var res = new File(values.getAsString(MediaStore.MediaColumns.DATA));
+            var res = new File(working.getAsString(MediaStore.MediaColumns.DATA));
             res = (File) XposedHelpers.callStaticMethod(
                     fileUtilsClass, "buildUniqueFile",
                     res.getParentFile(), mimeType, res.getName());
 
-            values.put(MediaStore.MediaColumns.DATA, res.getAbsolutePath());
+            working.put(MediaStore.MediaColumns.DATA, res.getAbsolutePath());
         } else {
             final var resolvedVolumeName = (String) XposedHelpers.callMethod(
                     mp, "resolveVolumeName", uri);
 
             final var relativePath = XposedHelpers.callMethod(
                     mp, "sanitizePath",
-                    values.getAsString(MediaStore.MediaColumns.RELATIVE_PATH)
+                    working.getAsString(MediaStore.MediaColumns.RELATIVE_PATH)
             );
             final var displayName = XposedHelpers.callMethod(
                     mp, "sanitizeDisplayName",
-                    values.getAsString(MediaStore.MediaColumns.DISPLAY_NAME)
+                    working.getAsString(MediaStore.MediaColumns.DISPLAY_NAME)
             );
 
             var res = (File) XposedHelpers.callMethod(
@@ -242,7 +265,16 @@ public class InsertHooker extends XC_MethodHook {
             res = (File) XposedHelpers.callStaticMethod(
                     FileUtils.class, "buildUniqueFile", res, mimeType, displayName);
 
-            values.put(MediaStore.MediaColumns.DATA, res.getAbsolutePath());
+            working.put(MediaStore.MediaColumns.DATA, res.getAbsolutePath());
+        }
+
+        // 全部计算成功，一次性回写：values 最终状态与旧成功路径一致
+        // （逐键覆盖 + 移除 working 中被删除的键）。
+        values.putAll(working);
+        for (final String key : new ArrayList<>(values.keySet())) {
+            if (!working.containsKey(key)) {
+                values.remove(key);
+            }
         }
     }
 

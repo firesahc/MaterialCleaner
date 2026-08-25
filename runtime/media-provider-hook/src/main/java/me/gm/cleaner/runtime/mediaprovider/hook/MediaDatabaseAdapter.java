@@ -64,40 +64,58 @@ public class MediaDatabaseAdapter {
     private void initScanHook() {
         final var callMethod = XposedHelpers.findMethodExact(
                 mMediaProviderClass, "call", String.class, String.class, Bundle.class);
-        XposedBridge.hookMethod(callMethod, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(final XC_MethodHook.MethodHookParam param) throws Throwable {
-                final var method = (String) param.args[0];
-                final var arg = (String) param.args[1];
-                final var extras = (Bundle) param.args[2];
-                if (!SCAN_FILE_CALL.equals(method)) {
-                    return;
-                }
-                final File file;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    if (arg == null) {
-                        return;
-                    }
-                    file = new File(arg);
-                } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
-                    final var uri = (Uri) extras.getParcelable(Intent.EXTRA_STREAM);
-                    if (uri == null) {
-                        return;
-                    }
-                    file = new File(uri.getPath());
-                } else {
-                    return;
-                }
-                final var callingPackage = ((ContentProvider) param.thisObject).getCallingPackage();
-                final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(
-                        callingPackage, file.getPath());
-                if (localMountedPath != null && !file.getPath().equals(localMountedPath)) {
-                    applyScanPath(param, extras, localMountedPath);
-                    Log.i("MC_REDIRECT", "[MediaDatabaseAdapter] scan_file redirected (local cache): "
-                            + file.getPath() + " -> " + localMountedPath);
-                }
+        XposedBridge.hookMethod(callMethod, new ScanCallHooker());
+    }
+
+    /**
+     * scan_file Hook：把 MediaProvider 的扫描路径重定向到本地挂载路径。
+     *
+     * <p>继承 {@link AbstractGuardedHook} 获得统一防护：任何 handler 异常不外抛、
+     * 参数回滚、每方法熔断 —— 与 FuseJavaGate 同进程统一异常策略。
+     *
+     * <p>参数回滚说明：R 分支重定向写入 {@code args[1]}（scan 路径槽位），
+     * 由 guardedArgIndexes={1} 自动快照回滚；Q 分支的
+     * {@code extras.putParcelable(Intent.EXTRA_STREAM, ...)} 修改的是 Bundle
+     * 内部状态而非槽位引用，无法走槽位快照 —— 但该写入是 handler 的最后一步、
+     * 其后仅剩日志调用，异常窗口为零，无需额外回滚。
+     */
+    private class ScanCallHooker extends AbstractGuardedHook {
+        ScanCallHooker() {
+            super("ScanCallHooker", "call:scan_file", new int[]{1});
+        }
+
+        @Override
+        protected void handleBefore(XC_MethodHook.MethodHookParam param) {
+            final var method = (String) param.args[0];
+            final var arg = (String) param.args[1];
+            final var extras = (Bundle) param.args[2];
+            if (!SCAN_FILE_CALL.equals(method)) {
+                return;
             }
-        });
+            final File file;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (arg == null) {
+                    return;
+                }
+                file = new File(arg);
+            } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+                final var uri = (Uri) extras.getParcelable(Intent.EXTRA_STREAM);
+                if (uri == null) {
+                    return;
+                }
+                file = new File(uri.getPath());
+            } else {
+                return;
+            }
+            final var callingPackage = ((ContentProvider) param.thisObject).getCallingPackage();
+            final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(
+                    callingPackage, file.getPath());
+            if (localMountedPath != null && !file.getPath().equals(localMountedPath)) {
+                applyScanPath(param, extras, localMountedPath);
+                Log.i("MC_REDIRECT", "[MediaDatabaseAdapter] scan_file redirected (local cache): "
+                        + file.getPath() + " -> " + localMountedPath);
+            }
+        }
     }
 
     private void applyScanPath(final XC_MethodHook.MethodHookParam param,

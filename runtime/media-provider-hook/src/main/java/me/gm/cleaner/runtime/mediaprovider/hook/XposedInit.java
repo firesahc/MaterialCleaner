@@ -81,6 +81,9 @@ public class XposedInit implements IXposedHookLoadPackage {
                 Log.e("MC_REDIRECT", "[XposedInit] Re-registration failed (attempt " + attempts[0] + ")");
                 if (attempts[0] < 10) {
                     long delay = Math.min(1000L << (attempts[0] - 1), 30000L);
+                    // 风暴抑制路径：标记重试已调度（RETRYING），实际尝试由
+                    // 下轮 run() 内的 registerHooksCallback 走 REGISTERING 状态。
+                    NativeHookStatus.INSTANCE.markBridgeRetryScheduled(attempts[0]);
                     handler.postDelayed(this, delay);
                 }
             }

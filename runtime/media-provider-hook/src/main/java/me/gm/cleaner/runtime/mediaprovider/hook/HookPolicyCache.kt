@@ -1,6 +1,7 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
 import android.util.Log
+import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import org.json.JSONObject
@@ -123,13 +124,21 @@ object HookPolicyCache {
             try {
                 parseRedirectPolicy(policyJson)
                 lastPolicySignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
+                NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
                 Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
                         "packages=${ruleCache.size}, users=${ruleCache.values.sumOf { it.size }}")
             } catch (e: Exception) {
                 Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
+                NativeHookStatus.markPolicyCacheFailed(
+                    ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                )
             }
         } else {
             Log.w(TAG, "initFromDataBus: no redirect_policy snapshot available")
+            NativeHookStatus.markPolicyCacheFailed(
+                ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
+                "redirect_policy snapshot missing at init", 0L
+            )
         }
 
         // 读取 read_only.json
@@ -138,13 +147,21 @@ object HookPolicyCache {
             try {
                 parseReadOnly(roJson)
                 lastReadOnlySignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
+                NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
                 Log.i(TAG, "initFromDataBus: loaded read_only, generation=$readOnlyGeneration, " +
                         "packages=${readOnlyCache.size}")
             } catch (e: Exception) {
                 Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
+                NativeHookStatus.markPolicyCacheFailed(
+                    ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                )
             }
         } else {
             Log.w(TAG, "initFromDataBus: no read_only snapshot available")
+            NativeHookStatus.markPolicyCacheFailed(
+                ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
+                "read_only snapshot missing at init", 0L
+            )
         }
 
         // 读取 platform_capabilities.json → 缓存关键能力
@@ -205,6 +222,7 @@ object HookPolicyCache {
             cachedSupportedNativeHookMode = root.optString("supportedNativeHookMode", "NONE")
             capabilitiesGeneration = generation
             capabilitiesPublisherEpoch = publisherEpoch
+            NativeHookStatus.markPolicyCacheHealthy(capabilitiesGeneration)
             Log.i(TAG, "loadPlatformCapabilities: sdk=$cachedSdkVersionInt, " +
                     "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable, " +
                     "fuseJniLoadMode=$cachedFuseJniLoadMode, " +
@@ -212,6 +230,10 @@ object HookPolicyCache {
                     "epoch=$capabilitiesPublisherEpoch, generation=$capabilitiesGeneration")
         } catch (e: Exception) {
             Log.e(TAG, "loadPlatformCapabilities: failed", e)
+            NativeHookStatus.markPolicyCacheFailed(
+                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
+                describeThrowable(e), capabilitiesGeneration
+            )
         }
     }
 
@@ -237,8 +259,12 @@ object HookPolicyCache {
                 try {
                     parseRedirectPolicy(policyJson)
                     lastPolicySignalTimestamp = policySignalTime
+                    NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
                 } catch (e: Exception) {
                     Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
+                    NativeHookStatus.markPolicyCacheFailed(
+                        ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                    )
                 }
             }
         }
@@ -250,8 +276,12 @@ object HookPolicyCache {
                 try {
                     parseReadOnly(roJson)
                     lastReadOnlySignalTimestamp = roSignalTime
+                    NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
                 } catch (e: Exception) {
                     Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
+                    NativeHookStatus.markPolicyCacheFailed(
+                        ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                    )
                 }
             }
         }
@@ -323,6 +353,7 @@ object HookPolicyCache {
                 FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation)
                 configuredMountPointsGeneration = generation
                 configuredMountPointsPublisherEpoch = publisherEpoch
+                NativeHookStatus.markPolicyCacheHealthy(configuredMountPointsGeneration)
                 return true
             }
 
@@ -333,9 +364,14 @@ object HookPolicyCache {
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, " +
                     "epoch=$publisherEpoch, generation=$generation")
+            NativeHookStatus.markPolicyCacheHealthy(configuredMountPointsGeneration)
             return true
         } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
+            NativeHookStatus.markPolicyCacheFailed(
+                ErrorCodes.HOOK_JAVA_CACHE_COMMIT_NATIVE_FAILED,
+                describeThrowable(e), configuredMountPointsGeneration
+            )
             return false
         }
     }
@@ -518,5 +554,11 @@ object HookPolicyCache {
             return true
         }
         return newGeneration > currentGeneration
+    }
+
+    /** 供 markPolicyCacheFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */
+    private fun describeThrowable(e: Throwable): String {
+        val message = e.message?.takeIf { it.isNotBlank() }
+        return if (message == null) e.javaClass.name else "${e.javaClass.name}: $message"
     }
 }

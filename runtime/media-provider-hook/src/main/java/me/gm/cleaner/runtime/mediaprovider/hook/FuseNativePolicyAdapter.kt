@@ -1,6 +1,7 @@
 package me.gm.cleaner.runtime.mediaprovider.hook
 
 import android.util.Log
+import me.gm.cleaner.core.common.err.ErrorCodes
 
 /**
  * FUSE Native Hook 的策略适配器。
@@ -105,8 +106,44 @@ object FuseNativePolicyAdapter {
 
     fun initializeInlineHook(): String {
         ensureInlineLibraryLoaded()
-        return InlineHookConfig.initializeXHook()
+        val statusJson = InlineHookConfig.initializeXHook()
+        reportNativeFailureIfAny(statusJson)
+        return statusJson
     }
+
+    /**
+     * 将 native init() 返回的 lastError 自由文本映射为 [ErrorCodes.HOOK_FUSE_*] 统一错误码，
+     * 写入 NativeHookStatus.inline 段；未匹配的文本不强行归类。
+     */
+    private fun reportNativeFailureIfAny(statusJson: String) {
+        val failureCode = mapNativeLastErrorToCode(statusJson) ?: return
+        NativeHookStatus.markInlineNativeFailure(failureCode, extractNativeLastError(statusJson))
+    }
+
+    internal fun mapNativeLastErrorToCode(statusJson: String): String? {
+        val root = runCatching { org.json.JSONObject(statusJson) }.getOrNull() ?: return null
+        if (root.optBoolean("coreAvailable", false)) {
+            return null
+        }
+        val message = root.optString("lastError")
+        return when {
+            message.contains("dlopen", ignoreCase = true) ||
+                    message.contains("symbol handle unavailable", ignoreCase = true) ->
+                ErrorCodes.HOOK_FUSE_LIB_LOAD_FAILED
+            message.contains("GOT hook failed", ignoreCase = true) ->
+                ErrorCodes.HOOK_FUSE_GOT_PATCH_FAILED
+            message.contains("failed to find", ignoreCase = true) ||
+                    message.contains("symbols missing", ignoreCase = true) ->
+                ErrorCodes.HOOK_FUSE_SYMBOL_MISSING
+            message.contains("FUSE not available", ignoreCase = true) ->
+                ErrorCodes.HOOK_FUSE_CAPABILITY_UNAVAILABLE
+            else -> null
+        }
+    }
+
+    private fun extractNativeLastError(statusJson: String): String = runCatching {
+        org.json.JSONObject(statusJson).optString("lastError")
+    }.getOrDefault("")
 
     @Synchronized
     private fun ensureInlineLibraryLoaded() {

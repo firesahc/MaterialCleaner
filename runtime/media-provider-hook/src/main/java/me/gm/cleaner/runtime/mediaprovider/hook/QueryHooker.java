@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.provider.MediaStore.Files.FileColumns;
 import android.util.ArraySet;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -15,7 +16,15 @@ import java.util.function.Function;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
-public class QueryHooker extends XC_MethodHook {
+/**
+ * MediaProvider query Hook。
+ *
+ * <p>继承 {@link AbstractGuardedHook} 获得统一防护：任何 handler 异常不外抛、
+ * 参数回滚、每方法熔断 —— 与 FuseJavaGate 同进程统一异常策略，
+ * 保证宿主 MediaProvider 不因本 Hook 崩溃。
+ * 本 Hook 无需回滚的 args 槽位（只读查询参数），guardedArgIndexes 为空。
+ */
+public class QueryHooker extends AbstractGuardedHook {
     private static final String INCLUDED_DEFAULT_DIRECTORIES = "android:included-default-directories";
     private static final int TYPE_QUERY = 0;
     private final MediaProviderHook mHook;
@@ -23,13 +32,14 @@ public class QueryHooker extends XC_MethodHook {
     private final ClassLoader mClassLoader;
 
     public QueryHooker(MediaProviderHook hook, MediaProviderHooksService service, ClassLoader classLoader) {
+        super("QueryHooker", "query", new int[0]);
         mHook = hook;
         mService = service;
         mClassLoader = classLoader;
     }
 
     @Override
-    protected void beforeHookedMethod(XC_MethodHook.MethodHookParam param) throws Throwable {
+    protected void handleBefore(XC_MethodHook.MethodHookParam param) throws Throwable {
         if (mHook.isFuseThread()) {
             return;
         }
@@ -105,28 +115,32 @@ public class QueryHooker extends XC_MethodHook {
             XposedHelpers.callStaticMethod(databaseUtilsClass, "recoverAbusiveSelection", query);
         }
 
-        final Cursor c;
-        try {
-            c = (Cursor) XposedHelpers.callMethod(
-                    qb, "query", helper, dataProjection, query, signal);
+        /** QUERY */
+        // try-with-resources 保证任何分支退出（含 dataColumn == -1 的提前返回与
+        // 遍历中途异常）都关闭 cursor，修复旧代码在提前 return 路径上的泄漏。
+        final ArrayList<String> data;
+        try (Cursor c = (Cursor) XposedHelpers.callMethod(
+                qb, "query", helper, dataProjection, query, signal)) {
+            if (c.getCount() == 0) {
+                // querying nothing.
+                return;
+            }
+            final var dataColumn = c.getColumnIndex(FileColumns.DATA);
+            if (dataColumn == -1) {
+                return;
+            }
+            data = new ArrayList<>();
+            while (c.moveToNext()) {
+                data.add(c.getString(dataColumn));
+            }
         } catch (XposedHelpers.InvocationTargetError e) {
             // IllegalArgumentException that thrown from the media provider. Nothing I can do.
+            // 预期宿主异常：计数进入 guardedHooks.swallowedHostExceptions 后静默放行，
+            // 不计入熔断失败（避免常态化业务异常触发冷却）。
+            NativeHookStatus.INSTANCE.markGuardedHostExceptionSwallowed();
+            Log.d("MC_REDIRECT", "[QueryHooker] Swallowed host exception from query", e);
             return;
         }
-        if (c.getCount() == 0) {
-            // querying nothing.
-            c.close();
-            return;
-        }
-        final var dataColumn = c.getColumnIndex(FileColumns.DATA);
-        if (dataColumn == -1) {
-            return;
-        }
-        final var data = new ArrayList<String>();
-        while (c.moveToNext()) {
-            data.add(c.getString(dataColumn));
-        }
-        c.close();
 
         /** RECORD */
         final var threadLocal = (ThreadLocal<?>) XposedHelpers.getObjectField(
