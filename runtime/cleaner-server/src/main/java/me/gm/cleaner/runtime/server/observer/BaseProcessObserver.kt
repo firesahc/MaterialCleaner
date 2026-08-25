@@ -73,6 +73,9 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun getLastMountFailure(): Mounter.MountFailure? = mounter.getLastMountFailure()
 
+    /** 最近一次挂载失败对应的统一错误码（ErrorCodes 注册表），无失败时为空串。 */
+    fun getLastMountErrorCode(): String = mounter.getLastMountErrorCode()
+
     fun resetAllMounts() {
         mounter.resetAllMounts()
     }

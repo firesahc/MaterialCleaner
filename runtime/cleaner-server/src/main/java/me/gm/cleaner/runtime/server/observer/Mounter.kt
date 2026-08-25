@@ -3,6 +3,7 @@ package me.gm.cleaner.runtime.server.observer
 import android.app.ActivityManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import android.util.ArrayMap
 import android.util.ArraySet
 import android.util.Log
@@ -11,7 +12,11 @@ import com.google.common.collect.Multimaps
 import com.google.common.collect.SetMultimap
 import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
+import me.gm.cleaner.core.common.err.ErrorCodes
+import me.gm.cleaner.core.common.err.ErrorEvent
+import me.gm.cleaner.core.common.err.ErrorLogThrottle
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
+import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
 import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -38,6 +43,12 @@ class Mounter {
     /** 每 pid 重试计数，达到 MAX_MOUNT_RETRIES 后放弃 */
     private val mountRetryCount = mutableMapOf<Int, Int>()
     private var lastMountFailure: MountFailure? = null
+
+    /**
+     * 错误日志节流：同一错误码 30 秒内只完整输出一次，
+     * 防止挂载风暴（如 EBUSY 循环）刷屏掩盖其他层故障信号。
+     */
+    private val errorLogThrottle = ErrorLogThrottle()
 
     fun mountForAllPackages(): Boolean =
         VfsRuntimeConfigStore.shouldMountForAllPackages()
@@ -107,6 +118,7 @@ class Mounter {
         } else {
             mountFailedPids.add(pid)
             failureCount.incrementAndGet()
+            recordMountFailureLocked(packageName, pid, uid, result)
             lastMountFailure = MountFailure(
                 timeMillis = System.currentTimeMillis(),
                 packageName = packageName,
@@ -118,10 +130,61 @@ class Mounter {
                 failedIndex = result.failedIndex,
                 source = result.source,
                 target = result.target,
+                phaseName = result.phaseName,
+                namespaceDirty = result.namespaceDirty,
             )
             scheduleMountRetryLocked(packageName, pid, uid)
         }
         return result.success
+    }
+
+    /**
+     * 将 native 挂载失败结果归一化为 [ErrorEvent]：
+     * 结构化字段（stage→错误码映射）保证机器可读，规则坐标仅入事件与诊断包。
+     */
+    private fun recordMountFailureLocked(
+        packageName: String,
+        pid: Int,
+        uid: Int,
+        result: RuntimeFileUtils.BindMountResult
+    ) {
+        val event = ErrorEvent(
+            code = errorCodeForStage(result.stage),
+            errno = result.errno,
+            subject = "$packageName/pid:$pid",
+            pathDigest = if (result.failedIndex >= 0) {
+                // 规则坐标以索引形式进入事件；明文路径保留在 MountFailure 供诊断包使用。
+                "rule#${result.failedIndex}"
+            } else {
+                null
+            },
+            atElapsed = SystemClock.elapsedRealtime(),
+            detail = buildString {
+                append("stage=").append(result.stage)
+                if (result.phase >= 0) append(" phase=").append(result.phaseName)
+                if (result.namespaceDirty) append(" dirty=true")
+                if (result.error.isNotBlank()) append(" os=").append(result.error)
+            },
+        )
+        if (errorLogThrottle.tryAcquire(event.code, event.atElapsed)) {
+            Log.w("MC_REDIRECT", "[Mounter] mount failed pkg=$packageName ${event.toCompactString()}")
+        }
+        ServerErrorJournal.record(event)
+    }
+
+    /** native 失败阶段到统一错误码的映射。 */
+    private fun errorCodeForStage(stage: String): String = when (stage) {
+        "invalid_args", "invalid_source", "invalid_target" -> ErrorCodes.MOUNT_ARGS_INVALID
+        "wait_zygote" -> ErrorCodes.MOUNT_ZYGOTE_WAIT_TIMEOUT
+        "setns" -> ErrorCodes.MOUNT_SETNS_FAILED
+        "unmount_storage" -> ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
+        "remount_storage", "remount_storage_slave", "mount_storage_self",
+        "fuse_bypass_data_source", "fuse_bypass_obb_source",
+        "fuse_bypass_data_target", "fuse_bypass_obb_target",
+        -> ErrorCodes.MOUNT_BASELINE_REMOUNT_FAILED
+        "mount_rule" -> ErrorCodes.MOUNT_RULE_FAILED
+        "child_result_timeout" -> ErrorCodes.MOUNT_PROC_TIMEOUT
+        else -> ErrorCodes.MOUNT_INTERNAL_FAILED
     }
 
     /**
@@ -375,6 +438,11 @@ class Mounter {
         lastMountFailure
     }
 
+    /** 最近一次挂载失败对应的统一错误码；无失败时返回空串。 */
+    fun getLastMountErrorCode(): String = synchronized(lock) {
+        lastMountFailure?.let { errorCodeForStage(it.stage) } ?: ""
+    }
+
     fun onDestroy() {
         thread.quit()
     }
@@ -401,5 +469,9 @@ class Mounter {
         val failedIndex: Int = -1,
         val source: String = "",
         val target: String = "",
+        /** native 事务阶段名，用于快速定位故障环节。 */
+        val phaseName: String = "unknown",
+        /** 目标命名空间可能残留部分效果。 */
+        val namespaceDirty: Boolean = false,
     )
 }

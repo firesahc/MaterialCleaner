@@ -159,6 +159,7 @@ class VfsLayerController {
             val mountTotalAttempts = observer.getTotalMountAttempts()
             val mountFailureCount = observer.getMountFailureCount()
             val lastFailure = observer.getLastMountFailure()
+            val lastMountErrorCode = observer.getLastMountErrorCode()
             val state = if (mountFailedPids > 0) {
                 LayerState.DEGRADED
             } else {
@@ -196,6 +197,7 @@ class VfsLayerController {
                     "lastMountFailureIndex" to (lastFailure?.failedIndex ?: -1).toString(),
                     "lastMountFailureSource" to (lastFailure?.source ?: ""),
                     "lastMountFailureTarget" to (lastFailure?.target ?: ""),
+                    "topErrorCode" to lastMountErrorCode,
                 ),
             )
         } else {

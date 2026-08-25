@@ -226,6 +226,14 @@ object RuntimeFileUtils {
         val failedIndex: Int = -1,
         val source: String = "",
         val target: String = "",
+        /** socket wire 协议版本；旧版 native 无此字段时为 0。 */
+        val schemaVersion: Int = 0,
+        /** 事务阶段数值，见 native MountPhase；-1 表示未知。 */
+        val phase: Int = -1,
+        /** 事务阶段名（args/zygote_wait/namespace/baseline/rules/report/unknown）。 */
+        val phaseName: String = "unknown",
+        /** 目标命名空间可能残留部分效果（预留：当前实现恒 false）。 */
+        val namespaceDirty: Boolean = false,
     ) {
         val reason: String
             get() = if (success) {
@@ -233,11 +241,13 @@ object RuntimeFileUtils {
             } else {
                 buildList {
                     add("stage=$stage")
+                    if (phase >= 0) add("phase=$phaseName")
                     if (errno != 0) add("errno=$errno")
                     if (error.isNotBlank()) add("error=$error")
                     if (failedIndex >= 0) add("index=$failedIndex")
-                    if (source.isNotBlank()) add("source=$source")
-                    if (target.isNotBlank()) add("target=$target")
+                    if (namespaceDirty) add("dirty=true")
+                    // source/target 为挂载规则坐标，仅进入结构化字段与诊断包，
+                    // 不再拼接进 reason 以免明文路径进入常规日志。
                 }.joinToString(", ")
             }
 
@@ -252,6 +262,10 @@ object RuntimeFileUtils {
                     failedIndex = root.optInt("failedIndex", -1),
                     source = root.optString("source", ""),
                     target = root.optString("target", ""),
+                    schemaVersion = root.optInt("schemaVersion", 0),
+                    phase = root.optInt("phase", -1),
+                    phaseName = root.optString("phaseName", "unknown"),
+                    namespaceDirty = root.optBoolean("namespaceDirty", false),
                 )
             }
         }
