@@ -118,60 +118,100 @@ object HookPolicyCache {
     fun initFromDataBus() {
         Log.i(TAG, "initFromDataBus: loading snapshots...")
 
-        // 读取 redirect_policy.json
-        val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
-        if (policyJson != null) {
-            try {
-                parseRedirectPolicy(policyJson)
-                lastPolicySignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
-                NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
-                Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
-                        "packages=${ruleCache.size}, users=${ruleCache.values.sumOf { it.size }}")
-            } catch (e: Exception) {
-                Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
-                NativeHookStatus.markPolicyCacheFailed(
-                    ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
-                )
-            }
-        } else {
-            Log.w(TAG, "initFromDataBus: no redirect_policy snapshot available")
-            NativeHookStatus.markPolicyCacheFailed(
-                ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                "redirect_policy snapshot missing at init", 0L
-            )
-        }
+        // 读取 redirect_policy.json：游标在读取前捕获水位，
+        // 消费期间新到的 signal 不会被误标为已处理。
+        val policyOutcome = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = lastPolicySignalTimestamp,
+            captureSignalTimestamp = {
+                HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
+            },
+            consumeSnapshot = {
+                val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
+                if (policyJson == null) {
+                    Log.w(TAG, "initFromDataBus: no redirect_policy snapshot available")
+                    NativeHookStatus.markPolicyCacheFailed(
+                        ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
+                        "redirect_policy snapshot missing at init", 0L
+                    )
+                    SnapshotConsumeOutcome(succeeded = true, changed = false)
+                } else {
+                    try {
+                        parseRedirectPolicy(policyJson)
+                        NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
+                        Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
+                                "packages=${ruleCache.size}, users=${ruleCache.values.sumOf { it.size }}")
+                        SnapshotConsumeOutcome(succeeded = true, changed = true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
+                        NativeHookStatus.markPolicyCacheFailed(
+                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                        )
+                        SnapshotConsumeOutcome(succeeded = false)
+                    }
+                }
+            },
+        )
+        lastPolicySignalTimestamp = policyOutcome.acknowledgedTimestamp
 
         // 读取 read_only.json
-        val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
-        if (roJson != null) {
-            try {
-                parseReadOnly(roJson)
-                lastReadOnlySignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
-                NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
-                Log.i(TAG, "initFromDataBus: loaded read_only, generation=$readOnlyGeneration, " +
-                        "packages=${readOnlyCache.size}")
-            } catch (e: Exception) {
-                Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
-                NativeHookStatus.markPolicyCacheFailed(
-                    ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
-                )
-            }
-        } else {
-            Log.w(TAG, "initFromDataBus: no read_only snapshot available")
-            NativeHookStatus.markPolicyCacheFailed(
-                ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                "read_only snapshot missing at init", 0L
-            )
-        }
+        val roOutcome = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = lastReadOnlySignalTimestamp,
+            captureSignalTimestamp = {
+                HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
+            },
+            consumeSnapshot = {
+                val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
+                if (roJson == null) {
+                    Log.w(TAG, "initFromDataBus: no read_only snapshot available")
+                    NativeHookStatus.markPolicyCacheFailed(
+                        ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
+                        "read_only snapshot missing at init", 0L
+                    )
+                    SnapshotConsumeOutcome(succeeded = true, changed = false)
+                } else {
+                    try {
+                        parseReadOnly(roJson)
+                        NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
+                        Log.i(TAG, "initFromDataBus: loaded read_only, generation=$readOnlyGeneration, " +
+                                "packages=${readOnlyCache.size}")
+                        SnapshotConsumeOutcome(succeeded = true, changed = true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
+                        NativeHookStatus.markPolicyCacheFailed(
+                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                        )
+                        SnapshotConsumeOutcome(succeeded = false)
+                    }
+                }
+            },
+        )
+        lastReadOnlySignalTimestamp = roOutcome.acknowledgedTimestamp
 
         // 读取 platform_capabilities.json → 缓存关键能力
-        loadPlatformCapabilities()
-        lastCapabilitiesSignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+        val capsOutcome = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = lastCapabilitiesSignalTimestamp,
+            captureSignalTimestamp = {
+                HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+            },
+            consumeSnapshot = {
+                loadPlatformCapabilities()
+                SnapshotConsumeOutcome(succeeded = true, changed = true)
+            },
+        )
+        lastCapabilitiesSignalTimestamp = capsOutcome.acknowledgedTimestamp
 
         // 读取 configured_mount_points.json → 推送到 native
-        if (loadAndPushConfiguredMountPoints(force = false)) {
-            lastMountSignalTimestamp = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
-        }
+        val mountOutcome = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = lastMountSignalTimestamp,
+            captureSignalTimestamp = {
+                HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+            },
+            consumeSnapshot = {
+                val pushed = loadAndPushConfiguredMountPoints(force = false)
+                SnapshotConsumeOutcome(succeeded = pushed, changed = pushed)
+            },
+        )
+        lastMountSignalTimestamp = mountOutcome.acknowledgedTimestamp
     }
 
     /**
@@ -252,47 +292,82 @@ object HookPolicyCache {
      * 两者不能混用，否则时间戳会长期大于 generation，导致状态判断失真。
      */
     fun refreshChangedSnapshotsFromDataBus() {
-        val policySignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
-        if (policySignalTime > lastPolicySignalTimestamp) {
-            val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
-            if (policyJson != null) {
-                try {
-                    parseRedirectPolicy(policyJson)
-                    lastPolicySignalTimestamp = policySignalTime
-                    NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
-                } catch (e: Exception) {
-                    Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
-                    NativeHookStatus.markPolicyCacheFailed(
-                        ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
-                    )
-                }
-            }
+        // 外层粗判避免无谓 IO；游标在真正消费前再次捕获水位，
+        // 吸收粗判与读取之间新到的 signal，防止新一代被误标已处理。
+        val policyObserved = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
+        if (policyObserved > lastPolicySignalTimestamp) {
+            val policyResult = consumeAfterSignalCapture(
+                currentAcknowledgedTimestamp = lastPolicySignalTimestamp,
+                captureSignalTimestamp = {
+                    HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_REDIRECT_POLICY_CHANGED)
+                },
+                consumeSnapshot = {
+                    val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
+                    if (policyJson == null) {
+                        SnapshotConsumeOutcome(succeeded = true, changed = false)
+                    } else {
+                        try {
+                            parseRedirectPolicy(policyJson)
+                            NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
+                            SnapshotConsumeOutcome(succeeded = true, changed = true)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
+                            NativeHookStatus.markPolicyCacheFailed(
+                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                            )
+                            SnapshotConsumeOutcome(succeeded = false)
+                        }
+                    }
+                },
+            )
+            lastPolicySignalTimestamp = policyResult.acknowledgedTimestamp
         }
 
-        val roSignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
-        if (roSignalTime > lastReadOnlySignalTimestamp) {
-            val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
-            if (roJson != null) {
-                try {
-                    parseReadOnly(roJson)
-                    lastReadOnlySignalTimestamp = roSignalTime
-                    NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
-                } catch (e: Exception) {
-                    Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
-                    NativeHookStatus.markPolicyCacheFailed(
-                        ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
-                    )
-                }
-            }
+        val roObserved = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
+        if (roObserved > lastReadOnlySignalTimestamp) {
+            val roResult = consumeAfterSignalCapture(
+                currentAcknowledgedTimestamp = lastReadOnlySignalTimestamp,
+                captureSignalTimestamp = {
+                    HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_READ_ONLY_CHANGED)
+                },
+                consumeSnapshot = {
+                    val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
+                    if (roJson == null) {
+                        SnapshotConsumeOutcome(succeeded = true, changed = false)
+                    } else {
+                        try {
+                            parseReadOnly(roJson)
+                            NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
+                            SnapshotConsumeOutcome(succeeded = true, changed = true)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
+                            NativeHookStatus.markPolicyCacheFailed(
+                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                            )
+                            SnapshotConsumeOutcome(succeeded = false)
+                        }
+                    }
+                },
+            )
+            lastReadOnlySignalTimestamp = roResult.acknowledgedTimestamp
         }
 
         // platform_capabilities 变更（极少发生，但仍支持运行时重检测）
-        val capsSignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+        val capsObserved = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
         var forceMountRefresh = false
-        if (capsSignalTime > lastCapabilitiesSignalTimestamp) {
-            loadPlatformCapabilities()
-            lastCapabilitiesSignalTimestamp = capsSignalTime
-            forceMountRefresh = true
+        if (capsObserved > lastCapabilitiesSignalTimestamp) {
+            val capsResult = consumeAfterSignalCapture(
+                currentAcknowledgedTimestamp = lastCapabilitiesSignalTimestamp,
+                captureSignalTimestamp = {
+                    HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
+                },
+                consumeSnapshot = {
+                    loadPlatformCapabilities()
+                    SnapshotConsumeOutcome(succeeded = true, changed = true)
+                },
+            )
+            lastCapabilitiesSignalTimestamp = capsResult.acknowledgedTimestamp
+            forceMountRefresh = capsResult.changed
         }
 
         tryRefreshNativeMountPoints(force = forceMountRefresh)
@@ -301,16 +376,24 @@ object HookPolicyCache {
     /**
      * 尝试从 DataBus 刷新 native 挂载点。
      * 先比较 signal timestamp（上次通知时间），如果未变化则跳过；
-     * 如果变化则读取 snapshot，内部再比较 snapshot generation（策略代数）。
+     * 如果变化则经信号游标读取 snapshot，内部再比较 snapshot generation（策略代数）。
      */
     fun tryRefreshNativeMountPoints(force: Boolean = false) {
         val mountSignalTime = HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
         if (!force && mountSignalTime <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0) {
             return  // signal 未变更
         }
-        if (loadAndPushConfiguredMountPoints(force)) {
-            lastMountSignalTimestamp = mountSignalTime
-        }
+        val mountResult = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = lastMountSignalTimestamp,
+            captureSignalTimestamp = {
+                HookDataBusBridge.getSignalTimestamp(DataBus.SIGNAL_CONFIGURED_MOUNT_POINTS_CHANGED)
+            },
+            consumeSnapshot = {
+                val pushed = loadAndPushConfiguredMountPoints(force)
+                SnapshotConsumeOutcome(succeeded = pushed, changed = pushed)
+            },
+        )
+        lastMountSignalTimestamp = mountResult.acknowledgedTimestamp
     }
 
     // ═══════════════════════════════════════════════════════════
