@@ -8,10 +8,13 @@ build
 /captures
 /out
 .externalNativeBuild
+
 .omo
 .learnings/
 /AGENTS.md
-/Document/
+
+/notes/
+/data/
 
 # Xposed module generated dex
 app/src/main/assets/main.jar
@@ -24,3 +27,6 @@ build_tmp_mainjar/
 
 # Backup directories from refactoring
 *.bak/
+
+.classpath
+.project
