@@ -138,6 +138,7 @@
     <string name="service_status_recorded_processes">%d 个进程</string>
     <string name="service_status_exceptions">%d 个异常</string>
     <string name="service_status_attempts">%d 次尝试</string>
+    <string name="service_status_top_error_code">最近错误：%1$s</string>
     <string name="service_status_retry_with_max">第 %1$d/%2$d 次尝试</string>
     <string name="service_status_retry">第 %d 次尝试</string>
     <string name="service_status_problem_detail">问题：%1$s - %2$s</string>

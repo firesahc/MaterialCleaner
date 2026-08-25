@@ -30,6 +30,23 @@ class RuntimeStatusAggregator(
         root.put("dataBus", status.dataBus.toJson())
         root.put("controlPlane", status.controlPlane.toJson())
         root.put("health", status.health.name)
+        // 最近错误事件流水：与 DiagnosticArchive 的 errors/journal.jsonl 同源。
+        root.put(
+            "recentErrors",
+            org.json.JSONArray().apply {
+                ServerErrorJournal.snapshot().forEach { event ->
+                    put(JSONObject().apply {
+                        put("code", event.code)
+                        put("atElapsed", event.atElapsed)
+                        if (event.errno != 0) put("errno", event.errno)
+                        event.subject?.let { put("subject", it) }
+                        event.pathDigest?.let { put("pathDigest", it) }
+                        if (event.generation > 0L) put("generation", event.generation)
+                        event.detail?.let { put("detail", it) }
+                    })
+                }
+            }
+        )
         return root.toString(2)
     }
 

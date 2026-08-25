@@ -5,6 +5,7 @@ import android.os.ParcelFileDescriptor
 import android.system.Os
 import android.util.Log
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
+import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -48,6 +49,7 @@ object DiagnosticArchive {
             addText(zip, "summary.txt", buildSummary(server))
             addText(zip, "summary_zh-CN.txt", buildSummaryZhCn(server))
             addStatus(zip, server)
+            addErrorJournal(zip)
             addDataBus(zip)
             addLogcat(zip)
             addAutoLogs(zip)
@@ -336,6 +338,35 @@ object DiagnosticArchive {
             "status/platform_capabilities.json")
         addSnapshotIfExists(zip, DataBus.SNAPSHOT_CONFIGURED_MOUNT_POINTS,
             "status/configured_mount_points.json")
+    }
+
+    /**
+     * 导出结构化错误事件流水（JSON Lines，每行一个 ErrorEvent 的紧凑表示）。
+     * 与 orchestrated_status.json 中的 recentErrors 数组同源，
+     * 供离线工具按错误码归并统计。
+     */
+    private fun addErrorJournal(zip: ZipOutputStream) {
+        runCatching {
+            val events = ServerErrorJournal.snapshot()
+            if (events.isEmpty()) {
+                addText(zip, "errors/journal.jsonl", "")
+                return
+            }
+            val lines = events.joinToString(separator = "\n") { event ->
+                JSONObject().apply {
+                    put("code", event.code)
+                    put("atElapsed", event.atElapsed)
+                    if (event.errno != 0) put("errno", event.errno)
+                    event.subject?.let { put("subject", it) }
+                    event.pathDigest?.let { put("pathDigest", it) }
+                    if (event.generation > 0L) put("generation", event.generation)
+                    event.detail?.let { put("detail", it) }
+                }.toString()
+            }
+            addText(zip, "errors/journal.jsonl", lines)
+        }.onFailure {
+            addText(zip, "errors/journal_error.txt", it.stackTraceToString())
+        }
     }
 
     private fun addDataBus(zip: ZipOutputStream) {

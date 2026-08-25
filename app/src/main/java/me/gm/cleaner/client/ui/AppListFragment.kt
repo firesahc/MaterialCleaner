@@ -517,6 +517,10 @@ class AppListFragment : BaseServiceSettingsFragment() {
         if (failedPids > 0 || failures > 0) {
             parts += ctx.getString(R.string.service_status_exceptions, maxOf(failedPids, failures))
         }
+        // 统一错误码下钻：让用户与支持人员无需导出诊断包即可定位故障类别。
+        layer.metrics["topErrorCode"]?.takeIf { it.isNotBlank() }?.let { code ->
+            parts += ctx.getString(R.string.service_status_top_error_code, code)
+        }
         if (attempts > 0) {
             parts += ctx.getString(R.string.service_status_attempts, attempts)
         }

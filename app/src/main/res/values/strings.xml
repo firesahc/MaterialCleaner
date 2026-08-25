@@ -163,6 +163,7 @@
     <string name="service_status_recorded_processes">%d processes</string>
     <string name="service_status_exceptions">%d exceptions</string>
     <string name="service_status_attempts">%d attempts</string>
+    <string name="service_status_top_error_code">Last error: %1$s</string>
     <string name="service_status_retry_with_max">Attempt %1$d/%2$d</string>
     <string name="service_status_retry">Attempt %d</string>
     <string name="service_status_problem_detail">Issue: %1$s - %2$s</string>
