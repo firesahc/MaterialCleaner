@@ -63,6 +63,16 @@ ext {
             ':core:storage-redirect-databus',
             ':platform:hidden-api',
     ]
+
+    // 各随行模块的标志性类（斜杠路径形式）：buildXposedMainJar 的 CI 门禁
+    // 据此断言 DEX 中包含每个模块的锚点类，防止打包清单漂移静默通过。
+    xposedRuntimeAnchorClasses = [
+        ':core:ipc-contract'            : 'me/gm/cleaner/model/OrchestratedStatus',
+        ':core:common'                  : 'me/gm/cleaner/core/common/err/ErrorCodes',
+        ':core:storage-redirect-domain' : 'me/gm/cleaner/core/storage/redirect/domain/MountRules',
+        ':core:storage-redirect-databus': 'me/gm/cleaner/core/storage/redirect/databus/DataBus',
+        ':platform:hidden-api'          : 'api/SystemService',
+    ]
 }
 
 tasks.register('clean', Delete) {

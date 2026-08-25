@@ -105,6 +105,10 @@ def buildMainJarTask = tasks.register('buildXposedMainJar') {
         module.buildDir.path + '/intermediates/aar_main_jar/debug/classes.jar'
     }
     inputs.files mainJarInputs
+    // 锚点类清单变更必须使门禁失效重跑
+    inputs.property('xposedRuntimeAnchorClasses') {
+        rootProject.ext.xposedRuntimeAnchorClasses.toString()
+    }
 
     // 输出：main.jar
     def outputJar = "${projectDir}/src/main/assets/main.jar"
@@ -168,6 +172,29 @@ def buildMainJarTask = tasks.register('buildXposedMainJar') {
         } else {
             throw new GradleException("main.jar 生成失败")
         }
+
+        // ── Step 3: CI 门禁——随行模块锚点类断言 ──
+        // 逐模块校验标志性类已进入 DEX，防止打包清单漂移导致
+        // Hook 进程 NoClassDefFoundError 整体失效（该故障发生在
+        // 运行时可观测体系生效之前，必须在构建期拦截）。
+        def dexFiles = dexDir.listFiles().findAll { it.name.endsWith('.dex') }
+        if (dexFiles.isEmpty()) {
+            throw new GradleException("main.jar 门禁失败：DEX 文件不存在")
+        }
+        def dexBuffer = new java.io.ByteArrayOutputStream()
+        dexFiles.each { dexBuffer.write(it.bytes) }
+        def dexText = new String(dexBuffer.toByteArray(), java.nio.charset.StandardCharsets.US_ASCII)
+        def anchorClasses = rootProject.ext.xposedRuntimeAnchorClasses as Map
+        def missingAnchors = anchorClasses
+                .findAll { module, anchor -> !dexText.contains(anchor) }
+        if (!missingAnchors.isEmpty()) {
+            def detail = missingAnchors.collect { module, anchor ->
+                "${module} 缺少锚点类 ${anchor}"
+            }.join('; ')
+            throw new GradleException("main.jar 门禁失败：${detail}。" +
+                    "请核对根项目 xposedRuntimeModules 清单与对应模块的实现依赖。")
+        }
+        logger.lifecycle("✅ main.jar 门禁通过: ${anchorClasses.size()} 个随行模块锚点类全部就位")
     }
 }
 
