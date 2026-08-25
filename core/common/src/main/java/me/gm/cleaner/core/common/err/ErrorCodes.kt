@@ -65,6 +65,9 @@ object ErrorCodes {
     /** namespace 污染且无法回滚，已按安全策略停止目标应用。 */
     const val MOUNT_SAFETY_STOP = "MOUNT.SAFETY.STOP"
 
+    /** 共享进程内各包的挂载签名不一致，无法按包隔离，已拒绝挂载并恢复 baseline。 */
+    const val MOUNT_SHARED_PROCESS_CONFLICT = "MOUNT.SHARED.PROCESS_CONFLICT"
+
     /** 目标进程卡死被看门狗终止。 */
     const val MOUNT_TARGET_STUCK_KILLED = "MOUNT.TARGET.STUCK_KILLED"
 

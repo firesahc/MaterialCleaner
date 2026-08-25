@@ -239,6 +239,7 @@ class Mounter {
         "unmount_data_restriction_fuse", "unmount_data_restriction_storage" ->
             ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
         "mount_rule" -> ErrorCodes.MOUNT_RULE_FAILED
+        "conflicting_process_rules" -> ErrorCodes.MOUNT_SHARED_PROCESS_CONFLICT
         "child_result_timeout", "namespace_transaction_timeout" ->
             ErrorCodes.MOUNT_PROC_TIMEOUT
         "namespace_rollback_failed" -> ErrorCodes.MOUNT_ROLLBACK_FAILED
@@ -356,10 +357,102 @@ class Mounter {
             }
         }
         for (procInfo in procList) {
-            procInfo.pkgList.forEach { packageName ->
-                bindMountLocked(packageName, procInfo.pid, procInfo.uid)
+            val userId = procInfo.uid.toUserId()
+            // bind_mount 会重建整个进程的 /storage namespace，不能对 pkgList 逐包调用，
+            // 否则最后一个未配置包会清除前面已经应用的规则。
+            val selection = ProcessMountSelectionPolicy.resolve(
+                packageNames = procInfo.pkgList,
+                redirectRuleSignature = { packageName ->
+                    VfsRuntimeConfigStore.getMountRules(packageName, userId)?.let { rules ->
+                        rules.sources.zip(rules.targets)
+                    }
+                },
+                shouldUnmountDataRestriction = { packageName ->
+                    !isFuseBpfEnabled &&
+                            VfsRuntimeConfigStore
+                                .shouldRecordExternalAppSpecificStorage(packageName)
+                },
+            )
+            when (selection) {
+                ProcessMountSelectionPolicy.Selection.None -> Unit
+                is ProcessMountSelectionPolicy.Selection.Conflict ->
+                    handleProcessRuleConflictLocked(procInfo, selection.packageNames)
+                is ProcessMountSelectionPolicy.Selection.Selected -> {
+                    val equivalentPackages = procInfo.pkgList
+                        .filter { it != selection.packageName }
+                    equivalentPackages.forEach { packageName ->
+                        clearProcessPackageStateLocked(packageName, procInfo.pid)
+                    }
+                    if (bindMountLocked(selection.packageName, procInfo.pid, procInfo.uid)) {
+                        // 等价包与代表包共享同一 namespace，登记相同的 pid 与目录。
+                        equivalentPackages.forEach { packageName ->
+                            val rules = VfsRuntimeConfigStore.getMountRules(packageName, userId)
+                                ?: return@forEach
+                            pidRecords.put(packageName, procInfo.pid)
+                            if (!mkdirRecords.containsKey(packageName)) {
+                                mkdirRecords.putAll(packageName, getMkdirList(rules))
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    /** 清理等价包在该进程上的状态登记；目录登记由统一的 removeMountDirsLocked 管理。 */
+    private fun clearProcessPackageStateLocked(packageName: String, pid: Int) {
+        pidRecords.remove(packageName, pid)
+        mountRetryCount.remove(pid)
+    }
+
+    /**
+     * 共享进程内各包挂载签名冲突的显式降级：
+     * 拒绝挂载任何一方，执行空规则事务恢复 baseline 清干净现状，
+     * 并产出 MOUNT.SHARED.PROCESS_CONFLICT 错误事件供状态卡与诊断包定位。
+     */
+    private fun handleProcessRuleConflictLocked(
+        procInfo: ActivityManager.RunningAppProcessInfo,
+        conflictingPackages: Set<String>,
+    ) {
+        procInfo.pkgList.forEach { packageName ->
+            pidRecords.remove(packageName, procInfo.pid)
+            mountRetryCount.remove(procInfo.pid)
+        }
+        totalAttempts.incrementAndGet()
+        val reset = RuntimeFileUtils.bind_mount_result(
+            pid = procInfo.pid,
+            uid = procInfo.uid,
+            unmountDataRestriction = false,
+            fuseBypass = false,
+            sources = emptyArray(),
+            targets = emptyArray(),
+        )
+        failureCount.incrementAndGet()
+        val packageSummary = conflictingPackages.sorted().joinToString(",")
+        val resetSummary = if (reset.success) "baseline restored" else "reset=${reset.reason}"
+        lastMountFailure = MountFailure(
+            timeMillis = System.currentTimeMillis(),
+            packageName = packageSummary,
+            pid = procInfo.pid,
+            uid = procInfo.uid,
+            reason = "conflicting shared-process rules; $resetSummary",
+            stage = "conflicting_process_rules",
+            errno = reset.errno,
+        )
+        ServerErrorJournal.record(
+            ErrorEvent(
+                code = ErrorCodes.MOUNT_SHARED_PROCESS_CONFLICT,
+                errno = reset.errno,
+                subject = "$packageSummary/pid:${procInfo.pid}",
+                atElapsed = SystemClock.elapsedRealtime(),
+                detail = resetSummary,
+            )
+        )
+        Log.e(
+            "MC_REDIRECT",
+            "[Mounter] rejected conflicting rules for shared pid=${procInfo.pid} " +
+                    "packages=$packageSummary, $resetSummary",
+        )
     }
 
     fun notifyProcessKilled(packageName: String, pid: Int) {
