@@ -94,20 +94,14 @@ def buildMainJarTask = tasks.register('buildXposedMainJar') {
     group = 'Cleaner'
 
     // 依赖 Hook runtime 及 main.jar 必要依赖编译完成
+    // 模块清单单一真源来自根项目 xposedRuntimeModules
+    def xposedRuntimeModules = rootProject.ext.xposedRuntimeModules
     dependsOn ':runtime:media-provider-hook:syncDebugLibJars'
-    dependsOn ':core:ipc-contract:syncDebugLibJars'
-    dependsOn ':core:storage-redirect-domain:syncDebugLibJars'
-    dependsOn ':core:storage-redirect-databus:syncDebugLibJars'
-    dependsOn ':platform:hidden-api:syncDebugLibJars'
+    dependsOn xposedRuntimeModules.collect { it + ':syncDebugLibJars' }
 
     // 输入：Hook runtime 及必要依赖 classes.jar
-    def mainJarInputs = [
-            project(':runtime:media-provider-hook'),
-            project(':core:ipc-contract'),
-            project(':core:storage-redirect-domain'),
-            project(':core:storage-redirect-databus'),
-            project(':platform:hidden-api'),
-    ].collect { module ->
+    def mainJarInputs = ([project(':runtime:media-provider-hook')] +
+            xposedRuntimeModules.collect { project(it) }).collect { module ->
         module.buildDir.path + '/intermediates/aar_main_jar/debug/classes.jar'
     }
     inputs.files mainJarInputs

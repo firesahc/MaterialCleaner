@@ -19,12 +19,9 @@ android {
 }
 
 dependencies {
-    implementation project(':core:common')
+    // main.jar 随行模块清单由根项目 xposedRuntimeModules 统一声明
+    rootProject.xposedRuntimeModules.each { implementation project(it) }
     testImplementation 'junit:junit:4.13.2'
-    implementation project(':core:ipc-contract')
-    implementation project(':core:storage-redirect-domain')
-    implementation project(':core:storage-redirect-databus')
-    implementation project(':platform:hidden-api')
     compileOnly files('../../app/libs/api-82.jar')
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
 }

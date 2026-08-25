@@ -51,6 +51,18 @@ ext {
     versionName = '4.0.0'
     javaVersion = JavaVersion.VERSION_17
     ndkVersion = '26.1.10909125'
+
+    // Hook runtime 打包进 main.jar 时必须随行的模块清单（单一真源）：
+    // media-provider-hook 的 implementation 依赖与 app 的 buildXposedMainJar
+    // d8 输入均由此展开，遗漏任何一项都会导致 Hook 进程
+    // NoClassDefFoundError 整体失效。
+    xposedRuntimeModules = [
+            ':core:ipc-contract',
+            ':core:common',
+            ':core:storage-redirect-domain',
+            ':core:storage-redirect-databus',
+            ':platform:hidden-api',
+    ]
 }
 
 tasks.register('clean', Delete) {
