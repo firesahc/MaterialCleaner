@@ -258,7 +258,10 @@ object ServerStateMachine {
             return
         }
 
-        _state.value = ServerState.STARTING
+        // 注意：此处不得提前置 STARTING——recoverIfTargetRunning 会把
+        // STARTING 视为"已有恢复进行中"而自我放弃（历史缺陷：死亡后
+        // 永久卡在 STARTING、所有后续恢复被拒）。状态转换由恢复函数
+        // 通过 STARTING 去重检查后自行完成。
         scope.launch {
             delay(backoffMillis(crashCount))
             recoverIfTargetRunning(ctx, LaunchReason.RECOVERY)
