@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import com.topjohnwu.superuser.Shell
+import me.gm.cleaner.client.ClientErrorJournal
 import me.gm.cleaner.client.ServerStateMachine
 import me.gm.cleaner.client.ServiceBootStateStore
 import me.gm.cleaner.dao.AppLabelCache
@@ -30,6 +31,7 @@ class App : Application() {
         ServicePreferences.init(dpsContext)
         ServiceMoreOptionsPreferences.init(dpsContext)
         ServiceBootStateStore.init(dpsContext)
+        ClientErrorJournal.init(dpsContext)
         ServerStateMachine.init(this)
         Shell.setDefaultBuilder(
             Shell.Builder.create()

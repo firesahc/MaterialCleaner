@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
+import me.gm.cleaner.client.ClientErrorJournal
 import me.gm.cleaner.client.OrchestratedLayerStatus
 import me.gm.cleaner.client.OrchestratedRuntimeStatus
 import java.io.File
@@ -26,6 +27,9 @@ import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+
+/** App 进程侧错误事件流水在诊断包中的条目名。 */
+private const val CLIENT_JOURNAL_ENTRY = "client/errors/journal.jsonl"
 
 fun Fragment.exportDiagnosticsArchiveAndShare(context: Context) {
     AlertDialog.Builder(context)
@@ -53,6 +57,7 @@ private fun Fragment.createDiagnosticsArchiveAndShare(context: Context) {
                 .getOrNull()
             if (pfd != null) {
                 copyFromServerArchive(pfd, logFile)
+                appendClientJournalEntry(logFile)
             } else {
                 createFallbackArchive(logFile)
             }
@@ -93,6 +98,41 @@ private fun copyFromServerArchive(pfd: ParcelFileDescriptor, target: File) {
     }
 }
 
+/**
+ * 向已生成的诊断包追加 App 进程侧错误事件流水
+ * （client/errors/journal.jsonl，与 server 端 errors/journal.jsonl 同格式）。
+ *
+ * Java 标准库不支持向现有 zip 追加条目，采用全量重写：
+ * 读出原包全部条目后连同新条目一起重新压缩。
+ */
+private fun appendClientJournalEntry(zipFile: File) {
+    val content = ClientErrorJournal.exportJsonL()
+    if (content.isBlank()) return
+    runCatching {
+        val entries = mutableListOf<Pair<String, ByteArray>>()
+        java.util.zip.ZipInputStream(java.io.FileInputStream(zipFile)).use { zin ->
+            var entry = zin.nextEntry
+            while (entry != null) {
+                entries += entry.name to zin.readBytes()
+                entry = zin.nextEntry
+            }
+        }
+        java.util.zip.ZipOutputStream(java.io.FileOutputStream(zipFile)).use { zout ->
+            for ((name, bytes) in entries) {
+                if (name == CLIENT_JOURNAL_ENTRY) continue
+                zout.putNextEntry(java.util.zip.ZipEntry(name))
+                zout.write(bytes)
+                zout.closeEntry()
+            }
+            zout.putNextEntry(java.util.zip.ZipEntry(CLIENT_JOURNAL_ENTRY))
+            zout.write(content.toByteArray(Charsets.UTF_8))
+            zout.closeEntry()
+        }
+    }.onFailure {
+        if (BuildConfig.DEBUG) Log.w("CleanerTest", "append client journal failed", it)
+    }
+}
+
 private fun createFallbackArchive(target: File) {
     ZipOutputStream(FileOutputStream(target)).use { zip ->
         val status = runCatching { CleanerClient.getOrchestratedStatus() }
@@ -100,6 +140,11 @@ private fun createFallbackArchive(target: File) {
         addTextEntry(zip, "privacy.txt", fallbackPrivacyNotice())
         addTextEntry(zip, "manifest.txt", buildFallbackManifest())
         addTextEntry(zip, "summary_zh-CN.txt", buildFallbackSummaryZhCn(status))
+        addTextEntry(
+            zip,
+            "client/errors/journal.jsonl",
+            ClientErrorJournal.exportJsonL()
+        )
         addCommandEntry(
             zip,
             "logs/app_logcat_threadtime_recent.txt",
