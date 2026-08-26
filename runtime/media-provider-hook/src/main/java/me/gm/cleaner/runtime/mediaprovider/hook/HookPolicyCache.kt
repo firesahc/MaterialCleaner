@@ -577,11 +577,10 @@ object HookPolicyCache {
             denylist = denySet
         }
 
-        // 解析偏好标记
+        // 解析偏好标记；native 侧应用由挂载点全量刷新（commitPolicy）统一原子完成。
         recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false)
         aggressivelyPromptForReadingMediaFiles =
             root.optBoolean("aggressivelyPromptForReadingMediaFiles", false)
-        FuseNativePolicyAdapter.applyRecordExternalAppSpecificStorage(recordExternalAppSpecificStorage)
     }
 
     private fun extractUserIdFromPath(path: String): Int {

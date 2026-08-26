@@ -46,27 +46,16 @@ object FuseNativePolicyAdapter {
                     "Native hook not ready, state=" + NativeHookStatus.currentInlineState()
                 )
             }
-            applyRecordExternalAppSpecificStorage(HookPolicyCache.recordExternalAppSpecificStorage)
-            InlineHookConfig.setMountPoint(points)
+            // 单次 JNI 调用原子应用两维度，消除分次调用的不一致窗口。
+            InlineHookConfig.commitPolicy(
+                points, HookPolicyCache.recordExternalAppSpecificStorage
+            )
             NativeHookStatus.markMountPointsApplySucceeded(generation, points.size)
             Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
         } catch (t: Throwable) {
             NativeHookStatus.markMountPointsApplyFailed(generation, points.size, t)
             Log.e(TAG, "applyConfiguredMountPoints failed: count=${points.size}, generation=$generation", t)
             throw t
-        }
-    }
-
-    fun applyRecordExternalAppSpecificStorage(value: Boolean): Boolean {
-        if (!NativeHookStatus.isInlinePolicyBridgeAvailable()) {
-            return false
-        }
-        return try {
-            InlineHookConfig.setRecordExternalAppSpecificStorage(value)
-            true
-        } catch (t: Throwable) {
-            Log.w(TAG, "applyRecordExternalAppSpecificStorage ignored because native hook is unavailable", t)
-            false
         }
     }
 
@@ -90,9 +79,7 @@ object FuseNativePolicyAdapter {
             val nativeStatus = initializeInlineHook()
             NativeHookStatus.markInlineLoadSucceeded(nativeStatus)
             if (NativeHookStatus.isInlinePolicyBridgeAvailable()) {
-                applyRecordExternalAppSpecificStorage(
-                    HookPolicyCache.recordExternalAppSpecificStorage
-                )
+                // 记录偏好变化经全量刷新统一应用（commitPolicy 原子生效）。
                 HookPolicyCache.tryRefreshNativeMountPoints(force = true)
             } else {
                 scheduleNextInlineRetry(now, retryCount)

@@ -63,9 +63,8 @@ jint JNI_OnLoad(JavaVM *jvm, void *v __unused) {
     auto a = AY_OBFUSCATE("a"); // "a" - short method name
     auto init = AY_OBFUSCATE("init"); // "init"
     JNINativeMethod methods[] = {
-            {a, AY_OBFUSCATE("([Ljava/lang/String;)V"), (void *) bpf_hook::setMountPoint}, // "([Ljava/lang/String;)V"
-            {a, AY_OBFUSCATE( // "(Z)V"
-                        "(Z)V"),                        (void *) bpf_hook::setRecordExternalAppSpecificStorage},
+            {a, AY_OBFUSCATE("([Ljava/lang/String;Z)V"), // "([Ljava/lang/String;Z)V"
+             (void *) bpf_hook::commitPolicy},
             {init, AY_OBFUSCATE("()Ljava/lang/String;"), (void *) xhook_init_jni},
     };
     if (env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0]))) {

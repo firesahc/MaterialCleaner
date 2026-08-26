@@ -1,6 +1,8 @@
 #include <dlfcn.h>
 #include <elf.h>
+#include <atomic>
 #include <cstdint>
+#include <set>
 #include <libgen.h>
 #include <link.h>
 #include <sstream>
@@ -52,15 +54,18 @@ namespace bpf_hook {
     static constexpr char FUSE_HOOK_PATH_REGEX[] = ".*(libfuse_jni\\.so|MediaProvider\\.apk).*";
     static constexpr char FUSE_JNI_SONAME[] = "libfuse_jni.so";
 
-    bool isFuseBpfEnabled = false;
-    std::set<std::string> mountPoint = {};
-    std::shared_mutex mountPointMutex;
-    bool recordExternalAppSpecificStorage = false;
+    // Hook 线程与 JNI 写线程跨线程访问：relaxed 原子保证无撕裂且及时可见，
+    // 单变量间无顺序依赖，无需更强的同步序。
+    static std::atomic_bool isFuseBpfEnabled{false};
+    static std::set<std::string> mountPoint = {};
+    static std::shared_mutex mountPointMutex;
+    static std::atomic_bool recordExternalAppSpecificStorage{false};
 
     bool (*old_StartsWith)(std::string_view s, std::string_view prefix);
 
     bool new_StartsWith(std::string_view s, std::string_view prefix) {
-        if (!isFuseBpfEnabled && recordExternalAppSpecificStorage &&
+        if (!isFuseBpfEnabled.load(std::memory_order_relaxed) &&
+            recordExternalAppSpecificStorage.load(std::memory_order_relaxed) &&
             prefix == PRIMARY_VOLUME_PREFIX) {
             auto path = std::string(s);
             if (isPackageOwnedPath(path)) {
@@ -100,8 +105,9 @@ namespace bpf_hook {
     bool (*old_IsFuseBpfEnabled)();
 
     bool new_IsFuseBpfEnabled() {
-        isFuseBpfEnabled = old_IsFuseBpfEnabled();
-        return isFuseBpfEnabled;
+        const bool enabled = old_IsFuseBpfEnabled();
+        isFuseBpfEnabled.store(enabled, std::memory_order_relaxed);
+        return enabled;
     }
 
     thread_local fuse_req_t fuse_req;
@@ -118,7 +124,8 @@ namespace bpf_hook {
 
     void new_fuse_bpf_install(struct fuse *fuse, struct fuse_entry_param *e,
                               const std::string &child_path, int &backing_fd) {
-        if (recordExternalAppSpecificStorage || (fuse_req != nullptr && fuse_req->ctx.uid == 0)) {
+        if (recordExternalAppSpecificStorage.load(std::memory_order_relaxed) ||
+            (fuse_req != nullptr && fuse_req->ctx.uid == 0)) {
             return;
         }
         return old_fuse_bpf_install(fuse, e, child_path, backing_fd);
@@ -952,28 +959,39 @@ namespace bpf_hook {
         // 先在锁外完成解析与集合构建，成功后在临界区内一次性交换：
         // 消除 clear 后逐条插入的长临界区，且任何异常路径都保留旧表不产生空窗。
         std::set<std::string> new_mount_points;
-        for (int i = 0, length = env->GetArrayLength(value); i < length; i++) {
+        const jsize length = env->GetArrayLength(value);
+        if (env->ExceptionCheck()) return;
+
+        for (jsize i = 0; i < length; i++) {
             auto jpath = (jstring) env->GetObjectArrayElement(value, i);
+            if (env->ExceptionCheck()) return;
             if (jpath == nullptr) continue;
             const char *path = env->GetStringUTFChars(jpath, nullptr);
-            if (path == nullptr) { env->DeleteLocalRef(jpath); continue; }
+            if (path == nullptr) {
+                env->DeleteLocalRef(jpath);
+                return;
+            }
 
             std::string parent = path;
+            env->ReleaseStringUTFChars(jpath, path);
+            env->DeleteLocalRef(jpath);
+            if (env->ExceptionCheck()) return;
+
             while (true) {
                 if (!new_mount_points.insert(parent).second) {
                     break;
                 }
-                char *mutable_path = strdup(parent.c_str());
-                char *dir = dirname(mutable_path);
-                parent = dir;
-                free(mutable_path);
+                // find_last_of 替代 strdup+dirname：无堆分配且语义等价。
+                const auto separator = parent.find_last_of('/');
+                if (separator == std::string::npos || separator == 0) {
+                    parent = "/";
+                } else {
+                    parent.resize(separator);
+                }
                 if (parent == PRIMARY_VOLUME_PREFIX || parent == "/") {
                     break;
                 }
             }
-
-            env->ReleaseStringUTFChars(jpath, path);
-            env->DeleteLocalRef(jpath);
         }
 
         // 构建期间若有 JNI 异常挂起，清除并放弃本次更新，保留旧配置。
@@ -989,6 +1007,16 @@ namespace bpf_hook {
     }
 
     void setRecordExternalAppSpecificStorage(JNIEnv *env, jclass clazz, jboolean value) {
-        recordExternalAppSpecificStorage = value;
+        recordExternalAppSpecificStorage.store(value == JNI_TRUE, std::memory_order_relaxed);
+    }
+
+    /**
+     * 单次调用原子应用策略的两个维度：挂载点集合与记录偏好。
+     * 消除 Java 侧分两次 JNI 调用时"F 新挂载点 + 旧偏好"的不一致窗口。
+     * 任一解析异常保留上一份有效配置。
+     */
+    void commitPolicy(JNIEnv *env, jclass clazz, jobjectArray value, jboolean record) {
+        setRecordExternalAppSpecificStorage(env, clazz, record);
+        setMountPoint(env, clazz, value);
     }
 }  // namespace bpf_hook
