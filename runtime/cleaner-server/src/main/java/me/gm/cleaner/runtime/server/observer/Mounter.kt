@@ -71,8 +71,10 @@ class Mounter {
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
         totalAttempts.incrementAndGet()
+        // 代际标注：使 mount 与 FUSE apply（同代际快照）可在日志中直接配对。
+        val policyGeneration = VfsRuntimeConfigStore.currentPolicy().generation
         Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid " +
-                "attempt=${totalAttempts.get()}")
+                "attempt=${totalAttempts.get()} gen=$policyGeneration")
         val userId = uid.toUserId()
         val recordExternalAppSpecificStorage =
             VfsRuntimeConfigStore.shouldRecordExternalAppSpecificStorage(packageName)

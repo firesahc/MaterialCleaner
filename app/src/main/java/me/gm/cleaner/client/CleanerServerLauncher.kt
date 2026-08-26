@@ -129,18 +129,13 @@ object CleanerServerLauncher {
 
     private fun reloadServerConfiguration() {
         val svc = CleanerClient.service ?: return
-        runCatching { svc.notifyPreferencesChanged() }
-            .onFailure { Log.w(TAG, "notifyPreferencesChanged failed", it) }
+        // 单次收敛通知：notifySrChanged 内部已覆盖偏好重载、快照发布
+        // 与 VFS 重挂的完整副作用链；多次 notify 会形成发布/重挂回环
+        // （真机实测一次恢复触发 3 轮 remount）。
         runCatching { svc.notifySrChanged() }
             .onFailure { Log.w(TAG, "notifySrChanged failed", it) }
         runCatching { svc.notifyReadOnlyChanged() }
             .onFailure { Log.w(TAG, "notifyReadOnlyChanged failed", it) }
-
-        val packages = ServicePreferences.srPackages.toTypedArray()
-        if (packages.isNotEmpty()) {
-            runCatching { svc.remount(packages) }
-                .onFailure { Log.w(TAG, "remount failed", it) }
-        }
     }
 
     /** 服务监督域失败事件入库：App 进程侧独立留痕（与 server 端 journal 分进程）。 */

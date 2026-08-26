@@ -87,10 +87,20 @@ object SnapshotPublisher {
      * 规则变更时必须保持两者 generation/publisherEpoch 一致，避免 Hook
      * 和 native 层看到来自不同策略代数的事实。
      */
-    fun publishStorageRedirectPolicySet(): Boolean {
+    /**
+     * 使用同一份策略快照同时发布规则和 configured_mount_points。
+     *
+     * 规则变更时必须保持两者 generation/publisherEpoch 一致，避免 Hook
+     * 和 native 层看到来自不同策略代数的事实。
+     *
+     * @param policy 传入时复用调用方已构建并更新到 VfsRuntimeConfigStore 的
+     *   同一份快照，保证 remount 与发布使用同一代策略（顺序治理）。
+     */
+    @JvmOverloads
+    fun publishStorageRedirectPolicySet(policy: RedirectPolicySnapshot? = null): Boolean {
         if (!DataBus.ensureInitialized()) return false
 
-        val snapshot = RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
         val batchResult = SnapshotBatchCommitter.commit(
             publications = listOf(

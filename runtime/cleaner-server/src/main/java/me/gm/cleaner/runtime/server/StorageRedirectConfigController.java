@@ -7,9 +7,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import api.SystemService;
 import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
+import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore;
 
 /**
  * Handles storage redirect configuration change commands.
@@ -30,18 +32,26 @@ public class StorageRedirectConfigController {
     public void onPreferencesChanged() {
         final var previousPackages = currentStorageRedirectPackages();
         reloadSharedPreferencesFromDisk();
+        // 顺序治理：先构建并更新内存策略（Mounter 的数据源），
+        // VFS remount 先切，发布快照与 Hook 刷新后置——上层切换不领先于底层挂载视图。
+        VfsRuntimeConfigStore.INSTANCE.refreshPolicy(
+                (java.util.List<java.lang.Integer>) (java.util.List<?>) java.util.Arrays.asList(SystemService.getUserIdsNoThrow()));
+        remountAffectedStorageRedirectPackages(previousPackages);
         SnapshotPublisher.INSTANCE.publishRedirectPolicy();
         MediaProviderHookGateway.refreshPolicyFromDataBus();
-        remountAffectedStorageRedirectPackages(previousPackages);
     }
 
     public void onStorageRedirectChanged() {
         final var previousPackages = currentStorageRedirectPackages();
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
-        SnapshotPublisher.INSTANCE.publishStorageRedirectPolicySet();
-        MediaProviderHookGateway.refreshPolicyFromDataBus();
+        // 同 M1：refreshPolicy 前置 → VFS 先切 → 发布同一份策略快照 → Hook 异步跟进。
+        final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot =
+                VfsRuntimeConfigStore.INSTANCE.refreshPolicy(
+                        (java.util.List<java.lang.Integer>) (java.util.List<?>) java.util.Arrays.asList(SystemService.getUserIdsNoThrow()));
         remountAffectedStorageRedirectPackages(previousPackages);
+        SnapshotPublisher.INSTANCE.publishStorageRedirectPolicySet(snapshot);
+        MediaProviderHookGateway.refreshPolicyFromDataBus();
     }
 
     public void onReadOnlyChanged() {
