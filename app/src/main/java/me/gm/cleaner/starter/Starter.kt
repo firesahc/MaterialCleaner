@@ -17,6 +17,12 @@ object Starter {
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "Starter.writeDataFiles: dir=${dir.absolutePath}")
         val starter = copyStarter(context, dir.resolve("starter"))
         val sh = writeScript(context, dir.resolve("start.sh"), starter)
+        // 一致性断言：start.sh 必须指向当前安装的 APK。覆盖安装会更换
+        // /data/app 下的存放目录，若脚本因任何原因未被正确刷新，
+        // 服务将以失效路径拉起并报 Can't access——宁可显式失败也不静默使用旧脚本。
+        check(java.io.File(sh).readText().contains(context.applicationInfo.sourceDir)) {
+            "start.sh does not point to the current apk: $sh"
+        }
         command = "sh $sh"
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "Starter.writeDataFiles: command=$command")
     }
