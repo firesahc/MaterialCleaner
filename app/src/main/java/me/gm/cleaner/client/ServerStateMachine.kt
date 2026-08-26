@@ -1,6 +1,7 @@
 package me.gm.cleaner.client
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
+import me.gm.cleaner.core.common.err.ErrorCodes
+import me.gm.cleaner.core.common.err.ErrorEvent
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -39,6 +42,8 @@ enum class StopSource { USER }
 object ServerStateMachine {
     private const val TAG = "MC/StateMachine"
     private const val MAX_RECOVERY_RETRIES = 5
+    private const val WATCHDOG_INTERVAL_MS = 5_000L
+    private const val WATCHDOG_FAILURE_THRESHOLD = 3
 
     private val _state = MutableStateFlow(ServerState.STOPPED)
     val state: StateFlow<ServerState> = _state.asStateFlow()
@@ -50,10 +55,72 @@ object ServerStateMachine {
     private var appContext: Context? = null
     private var crashCount = 0
 
+    /** 假死监督的连续超时计数；任一次成功探测即清零。 */
+    @Volatile
+    private var unresponsiveCount = 0
+
+    @Volatile
+    private var watchdogStarted = false
+
     fun init(context: Context) {
         appContext = context.applicationContext
         ServiceBootStateStore.ensureInitialized(context)
+        startWatchdog()
         if (BuildConfig.DEBUG) Log.d(TAG, "initialized")
+    }
+
+    /**
+     * 假死监督循环：进程存活但 Binder 无响应的失效模式不会触发
+     * Binder 死亡回调，必须由周期性带超时探测主动发现。
+     * 仅当目标态为运行中且状态机已进入 RUNNING 时才实际探测。
+     */
+    private fun startWatchdog() {
+        if (watchdogStarted) return
+        watchdogStarted = true
+        scope.launch {
+            while (true) {
+                delay(WATCHDOG_INTERVAL_MS)
+                runCatching { ensureResponsive() }
+                    .onFailure { Log.e(TAG, "watchdog cycle failed", it) }
+            }
+        }
+    }
+
+    fun ensureResponsive() {
+        // 启动中的慢初始化由 launch 流程自身的 binder timeout 兜底，
+        // watchdog 只监督已进入 RUNNING 的稳态服务。
+        if (!ServiceBootStateStore.shouldRun()) return
+        if (_state.value != ServerState.RUNNING) return
+
+        if (CleanerClient.pingBinderWithTimeout()) {
+            unresponsiveCount = 0
+            return
+        }
+
+        unresponsiveCount++
+        Log.w(
+            TAG,
+            "watchdog: server unresponsive ($unresponsiveCount/$WATCHDOG_FAILURE_THRESHOLD)"
+        )
+        if (unresponsiveCount < WATCHDOG_FAILURE_THRESHOLD) return
+
+        // 连续超时判定假死：强停并走既有恢复流程重新拉起。
+        unresponsiveCount = 0
+        val ctx = appContext ?: return
+        Log.e(TAG, "watchdog: server presumed hung, force restarting")
+        ClientErrorJournal.record(
+            ErrorEvent(
+                code = ErrorCodes.SUP_WATCHDOG_RESTART,
+                subject = "watchdog",
+                atElapsed = SystemClock.elapsedRealtime(),
+                detail = "ping timeout x$WATCHDOG_FAILURE_THRESHOLD",
+            )
+        )
+        scope.launch {
+            CleanerClient.killServerProcess()
+            delay(backoffMillis(1))
+            recoverIfTargetRunning(ctx, LaunchReason.RECOVERY)
+        }
     }
 
     val isServiceOpen: Boolean

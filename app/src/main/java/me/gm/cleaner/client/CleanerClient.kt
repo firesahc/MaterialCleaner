@@ -10,6 +10,9 @@ import kotlinx.coroutines.delay
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.model.LayerStatus
 import me.gm.cleaner.server.ICleanerService
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 data class OrchestratedLayerStatus(
     val state: String = "UNAVAILABLE",
@@ -36,6 +39,17 @@ data class OrchestratedRuntimeStatus(
 }
 
 object CleanerClient {
+    /** 存活探测超时：超过此时长仍未返回即判定 server 假死。 */
+    const val PING_TIMEOUT_MS: Long = 3_000L
+
+    /**
+     * 探测专用串行守护线程：假死时同步 Binder 调用会永久阻塞，
+     * 必须与监督方隔离，避免拖垮公共线程池。
+     */
+    private val pingExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "CleanerPingProbe").apply { isDaemon = true }
+    }
+
     private val _serverVersionLiveData: MutableLiveData<Int> = MutableLiveData(-1)
     val serverVersionLiveData: LiveData<Int> = _serverVersionLiveData
     var serverVersion: Int
@@ -68,6 +82,19 @@ object CleanerClient {
         if (BuildConfig.DEBUG) Log.d("CleanerTest", "pingBinder: result=$result")
         return result
     }
+
+    /**
+     * 带超时的存活探测。
+     *
+     * server 假死持锁时，同步 Binder 调用可能永久阻塞——探测放到独立
+     * 守护线程上执行并限时等待，保证监督方总能获得确定性结论；
+     * 超时后滞留的探测线程随进程退出回收（串行单线程，无池污染）。
+     */
+    fun pingBinderWithTimeout(timeoutMs: Long = PING_TIMEOUT_MS): Boolean =
+        runCatching {
+            CompletableFuture.supplyAsync({ pingBinder() }, pingExecutor)
+                .get(timeoutMs, TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
 
     /**
      * 服务"完全开启"统一判定。
@@ -167,7 +194,13 @@ object CleanerClient {
 
     /** 通过 root shell 杀死所有 cleaner_server 进程 */
     fun killServerProcess() {
-        Shell.cmd("ps -A | grep cleaner_server | tr -s ' ' | cut -d' ' -f2 | while read pid; do kill -9 \$pid 2>/dev/null; done").exec()
+        // 身份加固：kill 前校验 /proc/<pid>/cmdline 确实包含 cleaner_server，
+        // 收敛 ps 与 kill 之间 PID 被系统复用导致误杀无关进程的 TOCTOU 窗口。
+        Shell.cmd(
+            "for pid in \$(ps -A | grep cleaner_server | tr -s ' ' | cut -d' ' -f2); do " +
+                "grep -q cleaner_server /proc/\$pid/cmdline 2>/dev/null && kill -9 \$pid 2>/dev/null; " +
+                "done"
+        ).exec()
     }
 
     /** 等待 Binder 就绪，最多重试 [maxRetries] 次，每次间隔 [delayMs] */
