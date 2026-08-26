@@ -207,6 +207,7 @@ tasks.whenTaskAdded { task ->
 
 dependencies {
     implementation project(':core:ipc-contract')
+    implementation project(':core:common')
     implementation project(':core:config-store')
     implementation project(':core:storage-redirect-domain')
     implementation project(':runtime:media-provider-hook')

@@ -1,6 +1,7 @@
 package me.gm.cleaner.client
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.gm.cleaner.core.common.err.ErrorCodes
+import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.starter.Starter
 
@@ -83,7 +86,9 @@ object CleanerServerLauncher {
 
         val result = Shell.cmd(Starter.command).exec()
         if (!result.isSuccess) {
-            Log.e(TAG, "launch($reason): shell command failed: ${result.err.joinToString()}")
+            val detail = result.err.joinToString().take(200)
+            Log.e(TAG, "launch($reason): shell command failed: $detail")
+            recordSupFailure(ErrorCodes.SUP_START_FAILED, "$reason shell failed", detail)
             CleanerClient.resetConnection()
             return false
         }
@@ -91,6 +96,10 @@ object CleanerServerLauncher {
 
         if (!waitForBinder(isLaunchStillValid)) {
             Log.e(TAG, "launch($reason): binder timeout")
+            recordSupFailure(
+                ErrorCodes.SUP_PROC_DEAD, "$reason binder timeout",
+                "starter exited but server binder never came up",
+            )
             CleanerClient.resetConnection()
             CleanerClient.killServerProcess()
             return false
@@ -132,5 +141,17 @@ object CleanerServerLauncher {
             runCatching { svc.remount(packages) }
                 .onFailure { Log.w(TAG, "remount failed", it) }
         }
+    }
+
+    /** 服务监督域失败事件入库：App 进程侧独立留痕（与 server 端 journal 分进程）。 */
+    private fun recordSupFailure(code: String, reason: String, detail: String) {
+        ClientErrorJournal.record(
+            ErrorEvent(
+                code = code,
+                subject = reason,
+                atElapsed = SystemClock.elapsedRealtime(),
+                detail = detail,
+            )
+        )
     }
 }

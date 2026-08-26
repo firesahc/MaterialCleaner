@@ -172,4 +172,7 @@ object ErrorCodes {
 
     /** root 服务拉起失败。 */
     const val SUP_START_FAILED = "SUP.START.FAILED"
+
+    /** watchdog 判定 root 服务假死，已强制终止并重启。 */
+    const val SUP_WATCHDOG_RESTART = "SUP.WATCHDOG.RESTART"
 }
