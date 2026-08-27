@@ -30,3 +30,4 @@ build_tmp_mainjar/
 
 .classpath
 .project
+.settings/
