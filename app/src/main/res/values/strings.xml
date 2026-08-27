@@ -129,6 +129,8 @@
     <string name="toast_starting">Starting</string>
     <string name="toast_stopped">Stopped</string>
     <string name="service_stopped_manually">Service stopped. Tap Start Service to resume.</string>
+    <string name="status_details_expand">Expand status details</string>
+    <string name="status_details_collapse">Collapse status details</string>
     <string name="service_status_stopped_title">Storage redirect stopped</string>
     <string name="service_status_stopped_configured">%d apps configured. Start the service to resume redirect.</string>
     <string name="service_status_healthy_configured_title">Storage redirect is running</string>

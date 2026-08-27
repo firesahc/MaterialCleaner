@@ -104,6 +104,8 @@
     <string name="toast_starting">正在启动</string>
     <string name="toast_stopped">已停止</string>
     <string name="service_stopped_manually">服务已停止，点击"启动服务"恢复</string>
+    <string name="status_details_expand">展开状态详情</string>
+    <string name="status_details_collapse">收起状态详情</string>
     <string name="service_status_stopped_title">存储重定向已停止</string>
     <string name="service_status_stopped_configured">已配置 %d 个应用，启动服务后恢复重定向</string>
     <string name="service_status_healthy_configured_title">存储重定向运行正常</string>

@@ -48,8 +48,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
     private var statusTitle: TextView? = null
     private var statusSubtitle: TextView? = null
     private var btnToggleServer: MaterialButton? = null
+    private var btnToggleStatusDetails: ImageView? = null
 
-    // 三层详情控件
+    // 五层详情控件
     private var statusDetails: View? = null
     private var l1Indicator: ImageView? = null
     private var l1Text: TextView? = null
@@ -65,6 +66,16 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     private var orchestratedStatus: OrchestratedRuntimeStatus? = null
 
+    private var isStatusDetailsExpanded = false
+    private var areStatusDetailsAvailable = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        isStatusDetailsExpanded = savedInstanceState?.getBoolean(
+            SAVED_STATUS_DETAILS_EXPANDED,
+        ) ?: false
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -75,6 +86,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
         statusSubtitle = view.findViewById(R.id.status_subtitle)
         btnToggleServer = view.findViewById(R.id.btn_toggle_server)
         statusDetails = view.findViewById(R.id.status_details)
+        btnToggleStatusDetails = view.findViewById(R.id.btn_toggle_status_details)
         l1Indicator = view.findViewById(R.id.l1_indicator)
         l1Text = view.findViewById(R.id.l1_text)
         l2Indicator = view.findViewById(R.id.l2_indicator)
@@ -125,6 +137,13 @@ class AppListFragment : BaseServiceSettingsFragment() {
             } else {
                 stopServer()
             }
+        }
+
+        // 状态详情收起/展开箭头
+        btnToggleStatusDetails?.setOnClickListener {
+            if (!areStatusDetailsAvailable) return@setOnClickListener
+            isStatusDetailsExpanded = !isStatusDetailsExpanded
+            renderStatusDetailsExpansion()
         }
 
         // "新建挂载" button → navigate to MountAppPickerFragment
@@ -196,6 +215,11 @@ class AppListFragment : BaseServiceSettingsFragment() {
         return view
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(SAVED_STATUS_DETAILS_EXPANDED, isStatusDetailsExpanded)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         // Refresh mounted apps list when returning from mount creation/edit
@@ -220,8 +244,32 @@ class AppListFragment : BaseServiceSettingsFragment() {
 
     // ---------------------------------------------------------------
 
+    private fun setStatusDetailsAvailable(available: Boolean) {
+        areStatusDetailsAvailable = available
+        renderStatusDetailsExpansion()
+    }
+
+    private fun renderStatusDetailsExpansion() {
+        val showDetails = areStatusDetailsAvailable && isStatusDetailsExpanded
+        statusDetails?.visibility = if (showDetails) View.VISIBLE else View.GONE
+        btnToggleStatusDetails?.apply {
+            visibility = if (areStatusDetailsAvailable) View.VISIBLE else View.INVISIBLE
+            isEnabled = areStatusDetailsAvailable
+            isClickable = areStatusDetailsAvailable
+            isFocusable = areStatusDetailsAvailable
+            rotationX = if (isStatusDetailsExpanded) 180F else 0F
+            contentDescription = context.getString(
+                if (isStatusDetailsExpanded) {
+                    R.string.status_details_collapse
+                } else {
+                    R.string.status_details_expand
+                },
+            )
+        }
+    }
+
     /**
-     * 更新三层状态卡的显示，三个层级对应真实存储重定向架构：
+     * 更新五层状态卡的显示，各层级对应真实存储重定向架构：
      *
      * Level 1 — VFS bind mount（Mount Namespace 层）
      *   cleaner_server 进程通过 fork() → setns() → mount(MS_BIND)
@@ -260,7 +308,7 @@ class AppListFragment : BaseServiceSettingsFragment() {
             } else {
                 ctx.getString(R.string.service_stopped_manually)
             }
-            statusDetails?.visibility = android.view.View.GONE
+            setStatusDetailsAvailable(false)
             statusCause?.visibility = android.view.View.GONE
             btnToggleServer?.text = ctx.getString(R.string.btn_start_service)
             statusDot?.setImageResource(R.drawable.ic_baseline_error_24)
@@ -270,8 +318,8 @@ class AppListFragment : BaseServiceSettingsFragment() {
             return
         }
 
-        // ── 正常显示：五层详情 ──
-        statusDetails?.visibility = android.view.View.VISIBLE
+        // ── 正常显示：五层详情（默认收起，点击箭头展开） ──
+        setStatusDetailsAvailable(true)
         btnToggleServer?.text = ctx.getString(
             if (serverState == ServerState.RUNNING || serverState == ServerState.STARTING) {
                 R.string.btn_stop_service
@@ -795,5 +843,9 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 adapter.submitList(mounted)
             }
         }
+    }
+
+    companion object {
+        private const val SAVED_STATUS_DETAILS_EXPANDED = "status_details_expanded"
     }
 }
