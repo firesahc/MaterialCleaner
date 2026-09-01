@@ -15,3 +15,7 @@ android {
     }
     namespace 'me.gm.cleaner.core.storage.redirect.domain'
 }
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}
