@@ -25,6 +25,7 @@ import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
@@ -37,6 +38,7 @@ import me.gm.cleaner.client.ServerState
 import me.gm.cleaner.client.StartSource
 import me.gm.cleaner.client.StopSource
 import me.gm.cleaner.client.XposedConnectionState
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.util.fitsSystemWindowInsets
 
@@ -74,6 +76,19 @@ class AppListFragment : BaseServiceSettingsFragment() {
         isStatusDetailsExpanded = savedInstanceState?.getBoolean(
             SAVED_STATUS_DETAILS_EXPANDED,
         ) ?: false
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                ConfiguredPolicyStoreProvider.instance.snapshots.collect {
+                    viewModel.updateAppsRuleCount()
+                    refreshOrchestratedStatus()
+                    updateServiceStatus()
+                }
+            }
+        }
     }
 
     override fun onCreateView(

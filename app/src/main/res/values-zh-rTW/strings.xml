@@ -220,6 +220,10 @@
         <item quantity="other">%s 已卸載，是否立即刪除它（們）的設置？</item>
     </plurals>
     <string name="storage_redirect_not_saved">未保存</string>
+    <string name="storage_redirect_policy_conflict">配置已被其他操作修改，請重新載入後再保存。</string>
+    <string name="storage_redirect_policy_corrupt">配置源已損壞，修改未保存。</string>
+    <string name="storage_redirect_policy_invalid">規則無效，修改未保存。</string>
+    <string name="storage_redirect_policy_write_failed">配置寫入失敗，請重試。</string>
     <string name="storage_redirect_status_header">運行狀態</string>
     <string name="storage_redirect_status_summary_prefix">此應用正在運行，其進程 id：%s。</string>
     <string name="storage_redirect_status_summary_suffix_mounted">已為所有進程掛載 \uD83D\uDE0B</string>

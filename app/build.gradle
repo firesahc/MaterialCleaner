@@ -236,7 +236,7 @@ dependencies {
     implementation 'com.takisoft.preferencex:preferencex-colorpicker:1.1.0'
     implementation 'dev.rikka.rikkax.preference:simplemenu-preference:1.0.3'
     implementation 'dev.rikka.ndk.thirdparty:cxx:1.2.0'
-    def kotlinxCoroutinesVersion = '1.7.3'
+    def kotlinxCoroutinesVersion = rootProject.kotlinxCoroutinesVersion
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinxCoroutinesVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$kotlinxCoroutinesVersion"
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'

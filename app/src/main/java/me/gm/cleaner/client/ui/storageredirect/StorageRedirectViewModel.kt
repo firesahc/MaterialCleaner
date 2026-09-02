@@ -25,7 +25,13 @@ import me.gm.cleaner.R
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getSharedProcessPackages
 import me.gm.cleaner.client.getSharedUserIdPackages
-import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.ConfigSourceHealth
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
+import me.gm.cleaner.core.config.PolicyStoreFailureKind
+import me.gm.cleaner.core.config.PolicyStoreResult
+import me.gm.cleaner.core.config.replaceReadOnlyRules
+import me.gm.cleaner.core.config.replaceRedirectRules
+import me.gm.cleaner.core.storage.redirect.domain.ReadOnlyRule
 import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.net.NetworkConnectionState
@@ -36,6 +42,58 @@ import me.gm.cleaner.widget.recyclerview.DiffArrayList
 
 class StorageRedirectViewModel(private val application: Application, state: SavedStateHandle) :
     AndroidViewModel(application) {
+    private companion object {
+        const val LOADED_REDIRECT_REVISION = "configured_redirect_revision"
+        const val LOADED_READ_ONLY_REVISION = "configured_read_only_revision"
+        const val LOADED_REDIRECT_HEALTH = "configured_redirect_health"
+        const val LOADED_READ_ONLY_HEALTH = "configured_read_only_health"
+        const val LOADED_REDIRECT_DIAGNOSTICS = "configured_redirect_diagnostics"
+        const val LOADED_READ_ONLY_DIAGNOSTICS = "configured_read_only_diagnostics"
+        const val LOADED_MOUNT_RULES = "configured_mount_rules"
+        const val LOADED_READ_ONLY_PATHS = "configured_read_only_paths"
+    }
+
+    private var loadedRedirectRevision: String = state
+        .get<Bundle>(LOADED_REDIRECT_REVISION)
+        ?.getString("value")
+        .orEmpty()
+    private var loadedReadOnlyRevision: String = state
+        .get<Bundle>(LOADED_READ_ONLY_REVISION)
+        ?.getString("value")
+        .orEmpty()
+    private var loadedRedirectHealth: ConfigSourceHealth = state
+        .get<Bundle>(LOADED_REDIRECT_HEALTH)
+        ?.getString("value")
+        ?.let { runCatching { ConfigSourceHealth.valueOf(it) }.getOrNull() }
+        ?: ConfigSourceHealth.MISSING
+    private var loadedReadOnlyHealth: ConfigSourceHealth = state
+        .get<Bundle>(LOADED_READ_ONLY_HEALTH)
+        ?.getString("value")
+        ?.let { runCatching { ConfigSourceHealth.valueOf(it) }.getOrNull() }
+        ?: ConfigSourceHealth.MISSING
+    private var loadedRedirectDiagnostics: List<String> =
+        state.get<Bundle>(LOADED_REDIRECT_DIAGNOSTICS)
+            ?.getStringArrayList("value")
+            .orEmpty()
+    private var loadedReadOnlyDiagnostics: List<String> =
+        state.get<Bundle>(LOADED_READ_ONLY_DIAGNOSTICS)
+            ?.getStringArrayList("value")
+            .orEmpty()
+    private var loadedMountRules: List<Pair<String, String>> = state
+        .get<Bundle>(LOADED_MOUNT_RULES)
+        ?.let { bundle ->
+            val source = bundle.getStringArrayList("source").orEmpty()
+            val target = bundle.getStringArrayList("target").orEmpty()
+            source.zip(target)
+        }
+        .orEmpty()
+    private var loadedReadOnlyPaths: List<String> =
+        state.get<Bundle>(LOADED_READ_ONLY_PATHS)
+            ?.getStringArrayList("value")
+            .orEmpty()
+    private var settingsBaselineInitialized: Boolean =
+        state.get<Bundle>(LOADED_MOUNT_RULES) != null
+
     private val savedModeMap: HashBiMap<Int, Mode> = HashBiMap.create(
         mapOf(
             0 to Mode.Welcome,
@@ -57,6 +115,33 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         }
         state.setSavedStateProvider(::readOnlyPaths.name) {
             bundleOf(::readOnlyPaths.name to _readOnlyPathsLiveData.value!!)
+        }
+        state.setSavedStateProvider(LOADED_REDIRECT_REVISION) {
+            bundleOf("value" to loadedRedirectRevision)
+        }
+        state.setSavedStateProvider(LOADED_READ_ONLY_REVISION) {
+            bundleOf("value" to loadedReadOnlyRevision)
+        }
+        state.setSavedStateProvider(LOADED_REDIRECT_HEALTH) {
+            bundleOf("value" to loadedRedirectHealth.name)
+        }
+        state.setSavedStateProvider(LOADED_READ_ONLY_HEALTH) {
+            bundleOf("value" to loadedReadOnlyHealth.name)
+        }
+        state.setSavedStateProvider(LOADED_REDIRECT_DIAGNOSTICS) {
+            bundleOf("value" to ArrayList(loadedRedirectDiagnostics))
+        }
+        state.setSavedStateProvider(LOADED_READ_ONLY_DIAGNOSTICS) {
+            bundleOf("value" to ArrayList(loadedReadOnlyDiagnostics))
+        }
+        state.setSavedStateProvider(LOADED_MOUNT_RULES) {
+            bundleOf(
+                "source" to ArrayList(loadedMountRules.map { it.first }),
+                "target" to ArrayList(loadedMountRules.map { it.second }),
+            )
+        }
+        state.setSavedStateProvider(LOADED_READ_ONLY_PATHS) {
+            bundleOf("value" to ArrayList(loadedReadOnlyPaths))
         }
     }
 
@@ -120,7 +205,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
                 R.string.storage_redirect_status_summary_prefix,
                 packageStatus.pids.joinToString(context.getString(R.string.delimiter))
             )
-            if (ServicePreferences.getPackageSrCount(packageName) == 0) {
+            if (loadedMountRules.isEmpty()) {
                 return@async
             }
             val mountedPids = mutableListOf<Int>()
@@ -287,15 +372,41 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         _mountRulesLiveData.value = _mountRulesLiveData.value!!.also { action(it) }
     }
 
-    fun writeMountRules(packageInfo: PackageInfo) {
+    fun hasUnsavedChanges(): Boolean =
+        mountRules != loadedMountRules || readOnlyPaths != loadedReadOnlyPaths
+
+    fun hasUnsavedMountRules(): Boolean = mountRules != loadedMountRules
+
+    fun hasUnsavedReadOnlyPaths(): Boolean = readOnlyPaths != loadedReadOnlyPaths
+
+    fun configuredMountRules(): List<Pair<String, String>> = loadedMountRules
+
+    fun writeMountRules(packageInfo: PackageInfo): PolicyStoreResult {
+        if (!hasUnsavedMountRules()) {
+            return PolicyStoreResult(
+                success = true,
+                changed = false,
+                revision = loadedRedirectRevision,
+            )
+        }
         val packageNames = sharedProcessPackageNamesOrSelf(packageInfo)
-        ServicePreferences.putStorageRedirect(mountRules, packageNames)
+        val result = ConfiguredPolicyStoreProvider.instance.updateRedirect(loadedRedirectRevision) {
+            it.replaceRedirectRules(mountRules, packageNames)
+        }
+        if (!result.success) {
+            Log.e("MC/Test", "writeMountRules: policy update failed: ${result.error}")
+            return result
+        }
+        loadedRedirectRevision = result.revision
+        loadedRedirectHealth = ConfigSourceHealth.VALID
+        loadedRedirectDiagnostics = emptyList()
+        loadedMountRules = mountRules.toList()
         Log.i(
             "MC/Test",
             "writeMountRules: service=${CleanerClient.service != null}, " +
                     "ruleCount=${mountRules.size}, packages=$packageNames"
         )
-        CleanerClient.service?.let { service ->
+        if (result.changed) CleanerClient.service?.let { service ->
             try {
                 service.notifySrChanged()
                 Log.i("MC/Test", "writeMountRules: notifySrChanged success")
@@ -303,6 +414,7 @@ class StorageRedirectViewModel(private val application: Application, state: Save
                 Log.e("MC/Test", "writeMountRules: notifySrChanged failed", e)
             }
         }
+        return result
     }
 
     private val _readOnlyPathsLiveData: MutableLiveData<DiffArrayList<String?>> =
@@ -326,22 +438,38 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         _readOnlyPathsLiveData.value = _readOnlyPathsLiveData.value!!.also { action(it) }
     }
 
-    fun writeReadOnlyPaths(packageInfo: PackageInfo) {
+    fun writeReadOnlyPaths(packageInfo: PackageInfo): PolicyStoreResult {
+        if (!hasUnsavedReadOnlyPaths()) {
+            return PolicyStoreResult(
+                success = true,
+                changed = false,
+                revision = loadedReadOnlyRevision,
+            )
+        }
         val packageNames = sharedUserIdPackageNamesOrSelf(packageInfo)
-        ServicePreferences.putReadOnly(
-            readOnlyPaths, packageNames
-        )
+        val result = ConfiguredPolicyStoreProvider.instance.updateReadOnly(loadedReadOnlyRevision) {
+            it.replaceReadOnlyRules(readOnlyPaths, packageNames)
+        }
+        if (!result.success) {
+            Log.e("MC/Test", "writeReadOnlyPaths: policy update failed: ${result.error}")
+            return result
+        }
+        loadedReadOnlyRevision = result.revision
+        loadedReadOnlyHealth = ConfigSourceHealth.VALID
+        loadedReadOnlyDiagnostics = emptyList()
+        loadedReadOnlyPaths = readOnlyPaths.toList()
         Log.i(
             "MC/Test",
             "writeReadOnlyPaths: service=${CleanerClient.service != null}, " +
                     "readOnlyCount=${readOnlyPaths.size}, packages=$packageNames"
         )
-        try {
+        if (result.changed) try {
             CleanerClient.service?.notifyReadOnlyChanged()
             Log.i("MC/Test", "writeReadOnlyPaths: notifyReadOnlyChanged success")
         } catch (e: Exception) {
             Log.e("MC/Test", "writeReadOnlyPaths: notifyReadOnlyChanged failed", e)
         }
+        return result
     }
 
     private val _appCategoryFlow: MutableStateFlow<NetworkConnectionState<AppCategory?>> =
@@ -355,8 +483,42 @@ class StorageRedirectViewModel(private val application: Application, state: Save
         }
 
     fun initSettings(pi: PackageInfo) {
-        mountRules = ServicePreferences.getPackageSrZipped(pi.packageName)
-        readOnlyPaths = ServicePreferences.getPackageReadOnly(pi.packageName)
+        val snapshot = ConfiguredPolicyStoreProvider.instance.readSnapshot()
+        val redirect = snapshot.redirect
+        val readOnly = snapshot.readOnly
+        val configuredMountRules = redirect.envelope.redirectPolicies
+            .firstOrNull { it.scope.packageName == pi.packageName }
+            ?.rules
+            ?.map { it.source to it.target }
+            .orEmpty()
+        val configuredReadOnlyPaths = readOnly.envelope.readOnlyRules
+            .filter { it.scope.packageName == pi.packageName }
+            .map(ReadOnlyRule::visiblePath)
+        loadedRedirectRevision = redirect.revision
+        loadedReadOnlyRevision = readOnly.revision
+        loadedRedirectHealth = redirect.health
+        loadedReadOnlyHealth = readOnly.health
+        loadedRedirectDiagnostics = redirect.diagnostics
+        loadedReadOnlyDiagnostics = readOnly.diagnostics
+        loadedMountRules = configuredMountRules
+        loadedReadOnlyPaths = configuredReadOnlyPaths
+        settingsBaselineInitialized = true
+        mountRules = configuredMountRules
+        readOnlyPaths = configuredReadOnlyPaths
+    }
+
+    /** 只在尚未恢复配置基线时读取一次磁盘，避免覆盖进程恢复后的草稿。 */
+    fun ensureSettingsInitialized(pi: PackageInfo) {
+        if (!settingsBaselineInitialized) {
+            initSettings(pi)
+        }
+    }
+
+    fun policyFailureMessage(failureKind: PolicyStoreFailureKind?): Int = when (failureKind) {
+        PolicyStoreFailureKind.CORRUPT_SOURCE -> R.string.storage_redirect_policy_corrupt
+        PolicyStoreFailureKind.REVISION_CONFLICT -> R.string.storage_redirect_policy_conflict
+        PolicyStoreFailureKind.INVALID_MUTATION -> R.string.storage_redirect_policy_invalid
+        PolicyStoreFailureKind.IO_FAILURE, null -> R.string.storage_redirect_policy_write_failed
     }
 
     fun initMountWizard(pi: PackageInfo) {

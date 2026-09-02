@@ -11,6 +11,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.IntDef
 import androidx.core.net.toUri
@@ -37,7 +38,6 @@ import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_EXIT
 import me.gm.cleaner.client.ui.storageredirect.ExitMode.Companion.SAVE_AND_REMOUNT_AND_EXIT
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
-import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.StorageRedirectFragmentBinding
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.Website
@@ -56,8 +56,7 @@ class StorageRedirectFragment : BaseFragment() {
     private val args: StorageRedirectFragmentArgs by navArgs()
     private val viewModel: StorageRedirectViewModel by viewModels()
     private val preferenceChanged: Boolean
-        get() = ServicePreferences.getPackageSrZipped(args.pi.packageName) != viewModel.mountRules ||
-                ServicePreferences.getPackageReadOnly(args.pi.packageName) != viewModel.readOnlyPaths
+        get() = viewModel.hasUnsavedChanges()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,6 +150,7 @@ class StorageRedirectFragment : BaseFragment() {
             }
         }
 
+        viewModel.ensureSettingsInitialized(args.pi)
         if (savedInstanceState == null) {
             if (args.pi.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 &&
                 ("android.media" == args.pi.sharedUserId ||
@@ -180,7 +180,6 @@ class StorageRedirectFragment : BaseFragment() {
                     LEVEL_INFO, getString(R.string.storage_redirect_warn_no_storage_permissions)
                 )
             }
-            viewModel.initSettings(args.pi)
             if (ServiceMoreOptionsPreferences.openWizardByDefault) {
                 viewModel.mode = Mode.Wizard
             } else if (viewModel.mountRules.isNotEmpty()) {
@@ -335,7 +334,7 @@ class StorageRedirectFragment : BaseFragment() {
                         .show(childFragmentManager, null)
                 } else {
                     val dirOps = viewModel.wizard.getRecommendDirOps(
-                        ServicePreferences.getPackageSrZipped(args.pi.packageName),
+                        viewModel.configuredMountRules(),
                         viewModel.mountRules
                     )
                     if (dirOps.isEmpty()) {
@@ -485,11 +484,17 @@ class StorageRedirectFragment : BaseFragment() {
 
             SAVE_AND_EXIT -> {
                 if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
-                lifecycleScope.launch {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val failureMessageRes = savePolicies(args.pi)
+                    if (failureMessageRes != null) {
+                        Toast.makeText(
+                            requireContext(),
+                            getString(failureMessageRes),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        return@launch
+                    }
                     withContext(Dispatchers.IO) {
-                        viewModel.ensureSharedPackagesLoaded(args.pi)
-                        viewModel.writeMountRules(args.pi)
-                        viewModel.writeReadOnlyPaths(args.pi)
                         viewModel.permissionToGrant.entries.forEach { (permission, grant) ->
                             if (grant != PackageManager.PERMISSION_GRANTED &&
                                 viewModel.isRuntime(permission)
@@ -506,11 +511,17 @@ class StorageRedirectFragment : BaseFragment() {
 
             SAVE_AND_REMOUNT_AND_EXIT -> {
                 if (BuildConfig.DEBUG) Log.i("CleanerTest", "StorageRedirect: save rules for ${args.pi.packageName}")
-                lifecycleScope.launch {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val failureMessageRes = savePolicies(args.pi)
+                    if (failureMessageRes != null) {
+                        Toast.makeText(
+                            requireContext(),
+                            getString(failureMessageRes),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        return@launch
+                    }
                     withContext(Dispatchers.IO) {
-                        viewModel.ensureSharedPackagesLoaded(args.pi)
-                        viewModel.writeMountRules(args.pi)
-                        viewModel.writeReadOnlyPaths(args.pi)
                         viewModel.permissionToGrant.entries.forEach { (permission, grant) ->
                             if (grant != PackageManager.PERMISSION_GRANTED) {
                                 viewModel.setPackagePermission(
@@ -530,6 +541,17 @@ class StorageRedirectFragment : BaseFragment() {
             }
 
             EXIT -> findNavController().navigateUp()
+        }
+    }
+
+    private suspend fun savePolicies(packageInfo: android.content.pm.PackageInfo): Int? {
+        return withContext(Dispatchers.IO) {
+            viewModel.ensureSharedPackagesLoaded(packageInfo)
+            val redirectResult = viewModel.writeMountRules(packageInfo)
+            val readOnlyResult = viewModel.writeReadOnlyPaths(packageInfo)
+            listOf(redirectResult, readOnlyResult)
+                .firstOrNull { !it.success }
+                ?.let { viewModel.policyFailureMessage(it.failureKind) }
         }
     }
 }

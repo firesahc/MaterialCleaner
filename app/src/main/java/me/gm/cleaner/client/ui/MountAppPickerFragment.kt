@@ -10,13 +10,19 @@ import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.MenuCompat
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.asLiveData
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView.Adapter.StateRestorationPolicy
 import com.google.android.material.appbar.AppBarLayout
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import me.gm.cleaner.R
 import me.gm.cleaner.app.BaseFragment
 import me.gm.cleaner.app.ConfirmationDialog
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.MountAppPickerFragmentBinding
 import me.gm.cleaner.util.buildStyledTitle
@@ -33,6 +39,17 @@ class MountAppPickerFragment : BaseFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                ConfiguredPolicyStoreProvider.instance.snapshots.collect {
+                    viewModel.updateAppsRuleCount()
+                }
+            }
+        }
     }
 
     override fun onCreateView(

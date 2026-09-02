@@ -246,6 +246,10 @@
         <item quantity="other">%s are uninstalled. Would you like to remove their settings now?</item>
     </plurals>
     <string name="storage_redirect_not_saved">Not saved</string>
+    <string name="storage_redirect_policy_conflict">The policy changed elsewhere. Reload it before saving.</string>
+    <string name="storage_redirect_policy_corrupt">The policy configuration is corrupted. Changes were not saved.</string>
+    <string name="storage_redirect_policy_invalid">The policy rules are invalid. Changes were not saved.</string>
+    <string name="storage_redirect_policy_write_failed">The policy could not be saved. Try again.</string>
     <string name="storage_redirect_status_header">STATUS</string>
     <string name="storage_redirect_status_summary_prefix">The app is running. Its pid: %s.</string>
     <string name="storage_redirect_status_summary_suffix_mounted">Mounted for all processes \uD83D\uDE0B</string>
