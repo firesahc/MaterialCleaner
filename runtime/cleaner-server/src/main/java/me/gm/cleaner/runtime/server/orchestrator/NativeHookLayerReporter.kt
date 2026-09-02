@@ -78,6 +78,11 @@ object NativeHookLayerReporter {
                 "configuredMountPointsGeneration" to nativeGen.toString(),
                 "snapshotConfiguredMountPointsGeneration" to snapshotGen.toString(),
                 "nativePolicySynced" to policySynced.toString(),
+                "nativePolicyApplicationState" to nativeStatus.applicationState,
+                "nativeRedirectPolicyState" to nativeStatus.redirectPolicyState,
+                "nativeReadOnlyPolicyState" to nativeStatus.readOnlyPolicyState,
+                "nativeAppliedRedirectRevision" to nativeStatus.appliedRedirectRevision,
+                "nativeAppliedReadOnlyRevision" to nativeStatus.appliedReadOnlyRevision,
                 "nativeHookModeMismatch" to nativeHookModeMismatch.toString(),
                 "platformSupportedNativeHookMode" to platformNativeHookMode,
                 "nativeStatusSource" to nativeStatus.statusSource,
@@ -101,6 +106,7 @@ object NativeHookLayerReporter {
                 "fuseReqUserdataHooked" to nativeStatus.fuseReqUserdataHooked.toString(),
                 "fuseBpfInstallHooked" to nativeStatus.fuseBpfInstallHooked.toString(),
                 "lastMountPointsApplySuccess" to nativeStatus.lastApplySuccess.toString(),
+                "nativePolicyAppliedToExecutor" to nativeStatus.lastApplySuccess.toString(),
                 "lastMountPointsApplyGeneration" to nativeStatus.lastApplyGeneration.toString(),
                 "lastMountPointsApplyCount" to nativeStatus.lastApplyCount.toString(),
                 "fuseJavaGateDiscoveredCount" to nativeStatus.fuseJavaGateDiscoveredCount.toString(),
@@ -183,6 +189,16 @@ object NativeHookLayerReporter {
                 lastApplyGeneration = policy?.optLong("lastApplyGeneration", 0L) ?: 0L,
                 lastApplyCount = policy?.optInt("lastApplyCount", 0) ?: 0,
                 lastApplyError = policy?.optString("lastApplyError", "") ?: "",
+                applicationState = policy?.optString("applicationState", "PENDING")
+                    ?: "PENDING",
+                redirectPolicyState = policyCache?.optString("redirectState", "PENDING")
+                    ?: "PENDING",
+                readOnlyPolicyState = policyCache?.optString("readOnlyState", "PENDING")
+                    ?: "PENDING",
+                appliedRedirectRevision =
+                    policy?.optString("appliedRedirectRevision", "") ?: "",
+                appliedReadOnlyRevision =
+                    policyCache?.optString("readOnlyAppliedRevision", "") ?: "",
                 fuseLibraryLoaded = native?.optBoolean("fuseLibraryLoaded", false) ?: false,
                 fuseLibraryName = native?.optString("fuseLibraryName", "") ?: "",
                 hookMode = native?.optString("hookMode", "UNKNOWN") ?: "UNKNOWN",
@@ -240,6 +256,11 @@ object NativeHookLayerReporter {
         val lastApplyGeneration: Long = 0L,
         val lastApplyCount: Int = 0,
         val lastApplyError: String = "",
+        val applicationState: String = "PENDING",
+        val redirectPolicyState: String = "PENDING",
+        val readOnlyPolicyState: String = "PENDING",
+        val appliedRedirectRevision: String = "",
+        val appliedReadOnlyRevision: String = "",
         val fuseLibraryLoaded: Boolean = false,
         val fuseLibraryName: String = "",
         val hookMode: String = "UNKNOWN",

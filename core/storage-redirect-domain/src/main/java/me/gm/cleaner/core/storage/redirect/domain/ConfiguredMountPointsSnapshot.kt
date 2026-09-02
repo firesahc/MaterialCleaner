@@ -10,6 +10,7 @@ package me.gm.cleaner.core.storage.redirect.domain
  * @property generation 策略代数（与来源 RedirectPolicySnapshot.generation 一致）
  * @property publisherEpoch 发布者本轮生命周期标识；与来源 RedirectPolicySnapshot 一致
  * @property createdAt 快照创建时间戳
+ * @property redirectRevision 挂载点投影来源的重定向配置 revision
  * @property points 所有配置的目标挂载点路径列表
  */
 data class ConfiguredMountPointsSnapshot(
@@ -18,5 +19,7 @@ data class ConfiguredMountPointsSnapshot(
     val publisherEpoch: String = "",
     val createdAt: Long = 0L,
     val publisher: String = "",
+    /** 该挂载点投影来源的持久配置 revision。 */
+    val redirectRevision: String = "",
     val points: List<String> = emptyList(),
 )

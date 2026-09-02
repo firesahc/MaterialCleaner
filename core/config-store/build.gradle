@@ -19,8 +19,11 @@ android {
 }
 
 dependencies {
+    api project(':core:storage-redirect-domain')
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
     implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"
     implementation "androidx.preference:preference-ktx:$rootProject.preferenceVersion"
     api "androidx.security:security-crypto-ktx:$rootProject.securityCryptoVersion"
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20231013'
 }

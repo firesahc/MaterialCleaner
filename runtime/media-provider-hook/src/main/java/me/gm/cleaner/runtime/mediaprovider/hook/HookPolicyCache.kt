@@ -41,6 +41,8 @@ object HookPolicyCache {
     @Volatile
     private var readOnlyPublisherEpoch: String = ""
     @Volatile
+    private var readOnlyRevision: String = ""
+    @Volatile
     private var lastReadOnlySignalTimestamp: Long = 0L
 
     // ── Rule 缓存 ──
@@ -51,6 +53,8 @@ object HookPolicyCache {
     @Volatile
     private var policyPublisherEpoch: String = ""
     @Volatile
+    private var redirectRevision: String = ""
+    @Volatile
     private var lastPolicySignalTimestamp: Long = 0L
 
     // ── Configured Mount Points（推送到 native） ──
@@ -58,6 +62,8 @@ object HookPolicyCache {
     private var configuredMountPointsGeneration: Long = 0L
     @Volatile
     private var configuredMountPointsPublisherEpoch: String = ""
+    @Volatile
+    private var configuredMountPointsRevision: String = ""
     @Volatile
     private var lastMountSignalTimestamp: Long = 0L
 
@@ -129,6 +135,9 @@ object HookPolicyCache {
                 val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
                 if (policyJson == null) {
                     Log.w(TAG, "initFromDataBus: no redirect_policy snapshot available")
+                    NativeHookStatus.markRedirectPolicyFailed(
+                        "", "redirect_policy snapshot missing at init"
+                    )
                     NativeHookStatus.markPolicyCacheFailed(
                         ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
                         "redirect_policy snapshot missing at init", 0L
@@ -143,6 +152,10 @@ object HookPolicyCache {
                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                     } catch (e: Exception) {
                         Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
+                        NativeHookStatus.markRedirectPolicyFailed(
+                            extractSnapshotRevision(policyJson, "redirectRevision"),
+                            describeThrowable(e),
+                        )
                         NativeHookStatus.markPolicyCacheFailed(
                             ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
                         )
@@ -163,6 +176,9 @@ object HookPolicyCache {
                 val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
                 if (roJson == null) {
                     Log.w(TAG, "initFromDataBus: no read_only snapshot available")
+                    NativeHookStatus.markReadOnlyPolicyFailed(
+                        "", "read_only snapshot missing at init"
+                    )
                     NativeHookStatus.markPolicyCacheFailed(
                         ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
                         "read_only snapshot missing at init", 0L
@@ -177,6 +193,10 @@ object HookPolicyCache {
                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                     } catch (e: Exception) {
                         Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
+                        NativeHookStatus.markReadOnlyPolicyFailed(
+                            extractSnapshotRevision(roJson, "readOnlyRevision"),
+                            describeThrowable(e),
+                        )
                         NativeHookStatus.markPolicyCacheFailed(
                             ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
                         )
@@ -304,6 +324,9 @@ object HookPolicyCache {
                 consumeSnapshot = {
                     val policyJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY)
                     if (policyJson == null) {
+                        NativeHookStatus.markRedirectPolicyFailed(
+                            "", "redirect_policy snapshot missing during refresh"
+                        )
                         SnapshotConsumeOutcome(succeeded = true, changed = false)
                     } else {
                         try {
@@ -312,6 +335,10 @@ object HookPolicyCache {
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
                         } catch (e: Exception) {
                             Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
+                            NativeHookStatus.markRedirectPolicyFailed(
+                                extractSnapshotRevision(policyJson, "redirectRevision"),
+                                describeThrowable(e),
+                            )
                             NativeHookStatus.markPolicyCacheFailed(
                                 ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
                             )
@@ -333,6 +360,9 @@ object HookPolicyCache {
                 consumeSnapshot = {
                     val roJson = HookDataBusBridge.readSnapshot(DataBus.SNAPSHOT_READ_ONLY)
                     if (roJson == null) {
+                        NativeHookStatus.markReadOnlyPolicyFailed(
+                            "", "read_only snapshot missing during refresh"
+                        )
                         SnapshotConsumeOutcome(succeeded = true, changed = false)
                     } else {
                         try {
@@ -341,6 +371,10 @@ object HookPolicyCache {
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
                         } catch (e: Exception) {
                             Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
+                            NativeHookStatus.markReadOnlyPolicyFailed(
+                                extractSnapshotRevision(roJson, "readOnlyRevision"),
+                                describeThrowable(e),
+                            )
                             NativeHookStatus.markPolicyCacheFailed(
                                 ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
                             )
@@ -433,17 +467,21 @@ object HookPolicyCache {
             if (pointsArr == null || pointsArr.length() == 0) {
                 Log.i(TAG, "loadConfiguredMountPoints: empty points, clearing native mountPoint, generation=$generation")
                 // 空数组必须显式推送到 native，用于清除残留 mountPoint。
-                FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation)
+                val revision = root.optString("redirectRevision", "")
+                FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation, revision)
                 configuredMountPointsGeneration = generation
                 configuredMountPointsPublisherEpoch = publisherEpoch
+                configuredMountPointsRevision = revision
                 NativeHookStatus.markPolicyCacheHealthy(configuredMountPointsGeneration)
                 return true
             }
 
             val points = Array(pointsArr.length()) { pointsArr.getString(it) }
-            FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation)
+            val revision = root.optString("redirectRevision", "")
+            FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation, revision)
             configuredMountPointsGeneration = generation
             configuredMountPointsPublisherEpoch = publisherEpoch
+            configuredMountPointsRevision = revision
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, " +
                     "epoch=$publisherEpoch, generation=$generation")
@@ -451,6 +489,12 @@ object HookPolicyCache {
             return true
         } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
+            NativeHookStatus.markMountPointsApplyFailed(
+                extractSnapshotGeneration(json),
+                0,
+                extractSnapshotRevision(json, "redirectRevision"),
+                e,
+            )
             NativeHookStatus.markPolicyCacheFailed(
                 ErrorCodes.HOOK_JAVA_CACHE_COMMIT_NATIVE_FAILED,
                 describeThrowable(e), configuredMountPointsGeneration
@@ -524,6 +568,7 @@ object HookPolicyCache {
         val root = JSONObject(json)
         val generation = root.optLong("generation", 0L)
         val publisherEpoch = root.optString("publisherEpoch", "")
+        val revision = root.optString("redirectRevision", "")
         if (!shouldAcceptSnapshot(publisherEpoch, generation, policyPublisherEpoch, policyGeneration)) {
             Log.d(TAG, "parseRedirectPolicy: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
@@ -566,6 +611,8 @@ object HookPolicyCache {
         ruleCache = newCache
         policyGeneration = generation
         policyPublisherEpoch = publisherEpoch
+        redirectRevision = revision
+        NativeHookStatus.markRedirectPolicyApplied(revision, generation, newCache.isNotEmpty())
 
         // 解析 denylist
         val denyArr = root.optJSONArray("denylist")
@@ -595,6 +642,7 @@ object HookPolicyCache {
         val root = JSONObject(json)
         val generation = root.optLong("generation", 0L)
         val publisherEpoch = root.optString("publisherEpoch", "")
+        val revision = root.optString("readOnlyRevision", "")
         if (!shouldAcceptSnapshot(publisherEpoch, generation, readOnlyPublisherEpoch, readOnlyGeneration)) {
             Log.d(TAG, "parseReadOnly: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
@@ -620,6 +668,8 @@ object HookPolicyCache {
         readOnlyCache = newCache
         readOnlyGeneration = generation
         readOnlyPublisherEpoch = publisherEpoch
+        readOnlyRevision = revision
+        NativeHookStatus.markReadOnlyPolicyApplied(revision, generation, newCache.isNotEmpty())
     }
 
     private fun shouldAcceptSnapshot(
@@ -643,4 +693,13 @@ object HookPolicyCache {
         val message = e.message?.takeIf { it.isNotBlank() }
         return if (message == null) e.javaClass.name else "${e.javaClass.name}: $message"
     }
+
+    private fun extractSnapshotRevision(json: String, key: String): String = runCatching {
+        JSONObject(json).optString(key, "")
+    }.getOrDefault("")
+
+    private fun extractSnapshotGeneration(json: String): Long = runCatching {
+        JSONObject(json).optLong("generation", 0L)
+    }.getOrDefault(0L)
+
 }

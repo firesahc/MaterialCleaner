@@ -33,13 +33,26 @@ object FuseNativePolicyAdapter {
     @Volatile
     private var inlineLibraryLoaded = false
 
-    fun applyConfiguredMountPoints(points: Array<String>, generation: Long) {
+    fun applyConfiguredMountPoints(
+        points: Array<String>,
+        generation: Long,
+        redirectRevision: String,
+    ) {
+        NativeHookStatus.markMountPointsApplyStarted(redirectRevision)
+        var unsupported = false
         try {
             if (disableInlineIfUnsupportedByPlatform()) {
-                throw IllegalStateException(
+                unsupported = true
+                val unsupportedError = IllegalStateException(
                     "Native hook disabled by PlatformCapabilities, state=" +
                             NativeHookStatus.currentInlineState()
                 )
+                NativeHookStatus.markMountPointsApplyUnsupported(
+                    redirectRevision,
+                    points.size,
+                    unsupportedError,
+                )
+                throw unsupportedError
             }
             if (!retryInlineHookInitialization()) {
                 throw IllegalStateException(
@@ -50,10 +63,21 @@ object FuseNativePolicyAdapter {
             InlineHookConfig.commitPolicy(
                 points, HookPolicyCache.recordExternalAppSpecificStorage
             )
-            NativeHookStatus.markMountPointsApplySucceeded(generation, points.size)
+            NativeHookStatus.markMountPointsApplySucceeded(
+                generation,
+                points.size,
+                redirectRevision,
+            )
             Log.i(TAG, "applyConfiguredMountPoints: count=${points.size}, generation=$generation")
         } catch (t: Throwable) {
-            NativeHookStatus.markMountPointsApplyFailed(generation, points.size, t)
+            if (!unsupported) {
+                NativeHookStatus.markMountPointsApplyFailed(
+                    generation,
+                    points.size,
+                    redirectRevision,
+                    t,
+                )
+            }
             Log.e(TAG, "applyConfiguredMountPoints failed: count=${points.size}, generation=$generation", t)
             throw t
         }

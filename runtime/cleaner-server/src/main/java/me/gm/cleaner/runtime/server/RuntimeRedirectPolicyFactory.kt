@@ -2,17 +2,21 @@ package me.gm.cleaner.runtime.server
 
 import android.util.Log
 import me.gm.cleaner.core.common.RuntimeFileUtils
+import me.gm.cleaner.core.config.ConfigSourceHealth
+import me.gm.cleaner.core.config.ConfiguredPolicySnapshot
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
 import me.gm.cleaner.core.storage.redirect.domain.RedirectRule
-import java.io.File
+import me.gm.cleaner.core.storage.redirect.domain.StoragePolicyEnvelope
 import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
 
 /**
  * 运行时重定向策略工厂。
  *
- * 从 ServicePreferences（配置仓库）生成 [RedirectPolicySnapshot]。
+ * 从 [ConfiguredPolicySnapshot]（配置门面的一次性读取结果）生成
+ * [RedirectPolicySnapshot]。
  * 使用单调递增的 [generationCounter] 确保代数独立性——不依赖系统时钟。
  */
 object RuntimeRedirectPolicyFactory {
@@ -27,15 +31,39 @@ object RuntimeRedirectPolicyFactory {
      * 每次调用生成一个新的 generation。
      */
     fun build(userIds: List<Int>): RedirectPolicySnapshot {
+        check(ConfiguredPolicyStoreProvider.isInitialized()) {
+            "ConfiguredPolicyStore 尚未初始化"
+        }
+        return build(ConfiguredPolicyStoreProvider.instance.readSnapshot(), userIds)
+    }
+
+    /** 使用一次读取的配置组合构建运行时快照，避免同一发布批次重复读取旧文件。 */
+    fun build(
+        configured: ConfiguredPolicySnapshot,
+        userIds: List<Int>,
+    ): RedirectPolicySnapshot {
         val now = System.currentTimeMillis()
         val gen = generationCounter.incrementAndGet()
         val rules = LinkedHashMap<String, Map<Int, List<RedirectRule>>>()
-        val readOnlyRules = buildReadOnlyRules()
+        val preferencesReady = ServicePreferences.isInitialized()
+        val configuredRedirect = configured.redirect
+        val configuredReadOnly = configured.readOnly
+        require(configuredRedirect.health != ConfigSourceHealth.CORRUPT) {
+            "重定向配置损坏: ${configuredRedirect.diagnostics.joinToString()}"
+        }
+        require(configuredReadOnly.health != ConfigSourceHealth.CORRUPT) {
+            "只读配置损坏: ${configuredReadOnly.diagnostics.joinToString()}"
+        }
+        val readOnlyRules = buildReadOnlyRules(configuredReadOnly.envelope)
 
-        for (packageName in ServicePreferences.srPackages) {
+        for (policy in configuredRedirect.envelope.redirectPolicies) {
+            val packageName = policy.scope.packageName
             val userRules = LinkedHashMap<Int, List<RedirectRule>>()
             for (userId in userIds) {
-                val zipped = ServicePreferences.getPackageSrZipped(packageName, userId)
+                val zipped = policy.rules.map { it.source to it.target }.map { (source, target) ->
+                    RuntimeFileUtils.getPathAsUser(source, userId) to
+                        RuntimeFileUtils.getPathAsUser(target, userId)
+                }
                 if (zipped.isNotEmpty()) {
                     val validRules = zipped.mapNotNull { (source, target) ->
                         buildRedirectRuleOrNull(packageName, userId, source, target)
@@ -56,13 +84,23 @@ object RuntimeRedirectPolicyFactory {
             publisherEpoch = publisherEpoch,
             createdAt = now,
             publisher = PUBLISHER_IDENTITY,
+            redirectRevision = configuredRedirect.revision,
+            readOnlyRevision = configuredReadOnly.revision,
             storageRedirectRules = rules,
             readOnlyRules = readOnlyRules,
-            denylist = ServicePreferences.denylist.toSet(),
-            recordSharedStorage = ServicePreferences.recordSharedStorage,
-            recordExternalAppSpecificStorage = ServicePreferences.recordExternalAppSpecificStorage,
-            aggressivelyPromptForReadingMediaFiles = ServicePreferences.aggressivelyPromptForReadingMediaFiles,
-            upsertRecords = ServicePreferences.upsert,
+            denylist = if (preferencesReady) ServicePreferences.denylist.toSet() else emptySet(),
+            recordSharedStorage = if (preferencesReady) ServicePreferences.recordSharedStorage else false,
+            recordExternalAppSpecificStorage = if (preferencesReady) {
+                ServicePreferences.recordExternalAppSpecificStorage
+            } else {
+                false
+            },
+            aggressivelyPromptForReadingMediaFiles = if (preferencesReady) {
+                ServicePreferences.aggressivelyPromptForReadingMediaFiles
+            } else {
+                false
+            },
+            upsertRecords = if (preferencesReady) ServicePreferences.upsert else true,
         )
     }
 
@@ -90,11 +128,15 @@ object RuntimeRedirectPolicyFactory {
         )
     }
 
-    private fun buildReadOnlyRules(): Map<String, List<String>> {
+    private fun buildReadOnlyRules(
+        envelope: StoragePolicyEnvelope,
+    ): Map<String, List<String>> {
         val rules = LinkedHashMap<String, List<String>>()
-        for ((packageName, paths) in ServicePreferences.getAllReadOnly()) {
+        for ((packageName, paths) in envelope.readOnlyRules.groupBy {
+            it.scope.packageName
+        }.mapValues { (_, values) -> values.map { it.visiblePath } }) {
             val validPaths = paths.mapNotNull { path ->
-                val normalized = normalizeExternalStoragePath(path)?.let {
+                val normalized = validateExternalStoragePath(path)?.let {
                     RuntimeFileUtils.getPathAsUser(it, 0)
                 }
                 if (normalized == null) {
@@ -119,8 +161,8 @@ object RuntimeRedirectPolicyFactory {
         source: String,
         target: String,
     ): RedirectRule? {
-        val normalizedSource = normalizeExternalStoragePath(source)
-        val normalizedTarget = normalizeExternalStoragePath(target)
+        val normalizedSource = validateExternalStoragePath(source)
+        val normalizedTarget = validateExternalStoragePath(target)
         if (normalizedSource == null || normalizedTarget == null) {
             Log.w(
                 "MC_REDIRECT",
@@ -129,28 +171,15 @@ object RuntimeRedirectPolicyFactory {
             )
             return null
         }
-        if (normalizedSource == normalizedTarget) {
-            Log.w(
-                "MC_REDIRECT",
-                "[RuntimeRedirectPolicyFactory] drop no-op rule pkg=$packageName " +
-                        "user=$userId path=$normalizedSource"
-            )
-            return null
-        }
         return RedirectRule(source = normalizedSource, target = normalizedTarget)
     }
 
-    private fun normalizeExternalStoragePath(path: String): String? {
-        val trimmed = path.trim()
-        if (trimmed.isEmpty() || '\u0000' in trimmed || !trimmed.startsWith("/")) {
+    /** 配置门面已经完成词法规范化；这里仅验证运行时卷边界。 */
+    private fun validateExternalStoragePath(path: String): String? {
+        if (path.isEmpty() || '\u0000' in path || !path.startsWith("/")) {
             return null
         }
-        val normalized = try {
-            File(trimmed).canonicalPath
-        } catch (e: Exception) {
-            File(trimmed).absolutePath
-        }
-        return normalized.takeIf {
+        return path.takeIf {
             RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, it)
         }
     }

@@ -149,6 +149,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        VfsRuntimeConfigStore.updatePolicy(snapshot)
 
         val json = serializeReadOnly(snapshot)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_READ_ONLY, json)
@@ -241,6 +242,8 @@ object SnapshotPublisher {
         root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
+        root.put("redirectRevision", snapshot.redirectRevision)
+        root.put("readOnlyRevision", snapshot.readOnlyRevision)
 
         // storageRedirectRules: { pkg: { userId: [{source, target}] } }
         val rulesObj = JSONObject()
@@ -286,6 +289,7 @@ object SnapshotPublisher {
         root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
+        root.put("readOnlyRevision", snapshot.readOnlyRevision)
 
         val roObj = JSONObject()
         for ((pkg, paths) in snapshot.readOnlyRules) {
@@ -305,6 +309,7 @@ object SnapshotPublisher {
         root.put("publisherEpoch", snapshot.publisherEpoch)
         root.put("createdAt", snapshot.createdAt)
         root.put("publisher", snapshot.publisher)
+        root.put("redirectRevision", snapshot.redirectRevision)
         root.put("points", JSONArray(snapshot.points as Collection<*>))
 
         return root.toString(2)

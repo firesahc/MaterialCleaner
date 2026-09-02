@@ -28,6 +28,7 @@ object RedirectPolicyDeriver {
             publisherEpoch = policy.publisherEpoch,
             createdAt = policy.createdAt,
             publisher = policy.publisher,
+            redirectRevision = policy.redirectRevision,
             points = points,
         )
     }
