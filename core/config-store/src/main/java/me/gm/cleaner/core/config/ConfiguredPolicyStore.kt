@@ -9,6 +9,9 @@ import me.gm.cleaner.core.storage.redirect.domain.RuleId
 import me.gm.cleaner.core.storage.redirect.domain.StoragePolicyEnvelope
 import me.gm.cleaner.core.storage.redirect.domain.StorageUserScope
 import me.gm.cleaner.core.storage.redirect.domain.StorageVolumeScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -46,10 +49,19 @@ data class ConfiguredPolicySnapshot(
     val readOnly: VersionedReadOnlyPolicy,
 )
 
+enum class PolicyStoreFailureKind {
+    CORRUPT_SOURCE,
+    REVISION_CONFLICT,
+    INVALID_MUTATION,
+    IO_FAILURE,
+}
+
 data class PolicyStoreResult(
     val success: Boolean,
-    val revision: String?,
-    val error: String?,
+    val changed: Boolean,
+    val revision: String,
+    val failureKind: PolicyStoreFailureKind? = null,
+    val error: String? = null,
 )
 
 /**
@@ -59,14 +71,14 @@ data class PolicyStoreResult(
  * 读取结果始终携带健康状态，调用方不得把 CORRUPT 当作空策略继续发布。
  */
 interface ConfiguredPolicyStore {
+    /** 只读配置状态；仅在成功持久化并回读后更新。 */
+    val snapshots: StateFlow<ConfiguredPolicySnapshot>
+
     fun readRedirect(): VersionedRedirectPolicy
 
     fun readReadOnly(): VersionedReadOnlyPolicy
 
-    fun readSnapshot(): ConfiguredPolicySnapshot = ConfiguredPolicySnapshot(
-        redirect = readRedirect(),
-        readOnly = readReadOnly(),
-    )
+    fun readSnapshot(): ConfiguredPolicySnapshot
 
     fun updateRedirect(
         expectedRevision: String?,
@@ -96,9 +108,30 @@ class FileConfiguredPolicyStore(
 ) : ConfiguredPolicyStore {
     private val redirectFile: File = baseDir.resolve(STORAGE_REDIRECT_FILE)
     private val readOnlyFile: File = baseDir.resolve(READ_ONLY_FILE)
+    private val _snapshots = MutableStateFlow(readSnapshotLocked())
+
+    override val snapshots: StateFlow<ConfiguredPolicySnapshot> = _snapshots.asStateFlow()
 
     @Synchronized
     override fun readRedirect(): VersionedRedirectPolicy {
+        return readRedirectLocked()
+    }
+
+    @Synchronized
+    override fun readReadOnly(): VersionedReadOnlyPolicy {
+        return readReadOnlyLocked()
+    }
+
+    /** redirect/read-only 必须在同一锁区间读取，避免快照混合两个文件的时刻。 */
+    @Synchronized
+    override fun readSnapshot(): ConfiguredPolicySnapshot = readSnapshotLocked()
+
+    private fun readSnapshotLocked(): ConfiguredPolicySnapshot = ConfiguredPolicySnapshot(
+        redirect = readRedirectLocked(),
+        readOnly = readReadOnlyLocked(),
+    )
+
+    private fun readRedirectLocked(): VersionedRedirectPolicy {
         val parsed = readJson(redirectFile)
         if (parsed.health == ConfigSourceHealth.MISSING) {
             return VersionedRedirectPolicy(
@@ -123,8 +156,7 @@ class FileConfiguredPolicyStore(
         )
     }
 
-    @Synchronized
-    override fun readReadOnly(): VersionedReadOnlyPolicy {
+    private fun readReadOnlyLocked(): VersionedReadOnlyPolicy {
         val parsed = readJson(readOnlyFile)
         if (parsed.health == ConfigSourceHealth.MISSING) {
             return VersionedReadOnlyPolicy(
@@ -154,12 +186,59 @@ class FileConfiguredPolicyStore(
         expectedRevision: String?,
         mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope,
     ): PolicyStoreResult {
-        val current = readRedirect()
-        return update(expectedRevision, current.revision, current.health) {
-            val updated = normalizeRedirectEnvelope(mutation(current.envelope))
-            requireRedirectOnly(updated)
+        val current = readRedirectLocked()
+        if (current.health == ConfigSourceHealth.CORRUPT) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.CORRUPT_SOURCE,
+                message = "配置源损坏: 无法更新",
+            )
+        }
+        if (expectedRevision != null && expectedRevision != current.revision) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.REVISION_CONFLICT,
+                message = "revision 冲突",
+            )
+        }
+        val updated = try {
+            normalizeRedirectEnvelope(mutation(current.envelope))
+        } catch (e: Exception) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.INVALID_MUTATION,
+                message = e.message ?: e.javaClass.simpleName,
+            )
+        }
+        val nextRevision = revisionOfRedirect(updated)
+        if (nextRevision == current.revision) {
+            return successUnchanged(current.revision)
+        }
+        return try {
             writeRedirect(updated)
-            revisionOfRedirect(updated)
+            val snapshot = readSnapshotLocked()
+            val persisted = snapshot.redirect
+            if (persisted.health == ConfigSourceHealth.CORRUPT || persisted.revision != nextRevision) {
+                return failure(
+                    currentRevision = current.revision,
+                    kind = PolicyStoreFailureKind.IO_FAILURE,
+                    message = "重定向配置写入后回读不一致",
+                )
+            }
+            _snapshots.value = snapshot
+            successChanged(persisted.revision)
+        } catch (e: IllegalArgumentException) {
+            failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.INVALID_MUTATION,
+                message = e.message ?: e.javaClass.simpleName,
+            )
+        } catch (e: Exception) {
+            failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.IO_FAILURE,
+                message = e.message ?: e.javaClass.simpleName,
+            )
         }
     }
 
@@ -168,35 +247,85 @@ class FileConfiguredPolicyStore(
         expectedRevision: String?,
         mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope,
     ): PolicyStoreResult {
-        val current = readReadOnly()
-        return update(expectedRevision, current.revision, current.health) {
-            val updated = normalizeReadOnlyEnvelope(mutation(current.envelope))
-            requireReadOnlyOnly(updated)
+        val current = readReadOnlyLocked()
+        if (current.health == ConfigSourceHealth.CORRUPT) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.CORRUPT_SOURCE,
+                message = "配置源损坏: 无法更新",
+            )
+        }
+        if (expectedRevision != null && expectedRevision != current.revision) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.REVISION_CONFLICT,
+                message = "revision 冲突",
+            )
+        }
+        val updated = try {
+            normalizeReadOnlyEnvelope(mutation(current.envelope))
+        } catch (e: Exception) {
+            return failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.INVALID_MUTATION,
+                message = e.message ?: e.javaClass.simpleName,
+            )
+        }
+        val nextRevision = revisionOfReadOnly(updated)
+        if (nextRevision == current.revision) {
+            return successUnchanged(current.revision)
+        }
+        return try {
             writeReadOnly(updated)
-            revisionOfReadOnly(updated)
+            val snapshot = readSnapshotLocked()
+            val persisted = snapshot.readOnly
+            if (persisted.health == ConfigSourceHealth.CORRUPT || persisted.revision != nextRevision) {
+                return failure(
+                    currentRevision = current.revision,
+                    kind = PolicyStoreFailureKind.IO_FAILURE,
+                    message = "只读配置写入后回读不一致",
+                )
+            }
+            _snapshots.value = snapshot
+            successChanged(persisted.revision)
+        } catch (e: IllegalArgumentException) {
+            failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.INVALID_MUTATION,
+                message = e.message ?: e.javaClass.simpleName,
+            )
+        } catch (e: Exception) {
+            failure(
+                currentRevision = current.revision,
+                kind = PolicyStoreFailureKind.IO_FAILURE,
+                message = e.message ?: e.javaClass.simpleName,
+            )
         }
     }
 
-    private fun update(
-        expectedRevision: String?,
+    private fun successUnchanged(revision: String): PolicyStoreResult = PolicyStoreResult(
+        success = true,
+        changed = false,
+        revision = revision,
+    )
+
+    private fun successChanged(revision: String): PolicyStoreResult = PolicyStoreResult(
+        success = true,
+        changed = true,
+        revision = revision,
+    )
+
+    private fun failure(
         currentRevision: String,
-        health: ConfigSourceHealth,
-        operation: () -> String,
-    ): PolicyStoreResult {
-        if (health == ConfigSourceHealth.CORRUPT) {
-            return PolicyStoreResult(false, currentRevision, "配置源损坏: 无法更新")
-        }
-        if (expectedRevision != null && expectedRevision != currentRevision) {
-            return PolicyStoreResult(false, currentRevision, "revision 冲突")
-        }
-        return try {
-            PolicyStoreResult(true, operation(), null)
-        } catch (e: Exception) {
-            // 写入失败时磁盘仍保留 currentRevision；把它返回给调用方，
-            // 便于诊断和下一次 CAS 重试，避免用 null 制造未知版本。
-            PolicyStoreResult(false, currentRevision, e.message ?: e.javaClass.simpleName)
-        }
-    }
+        kind: PolicyStoreFailureKind,
+        message: String,
+    ): PolicyStoreResult = PolicyStoreResult(
+        success = false,
+        changed = false,
+        revision = currentRevision,
+        failureKind = kind,
+        error = message,
+    )
 
     private data class JsonRead(val json: JSONObject?, val health: ConfigSourceHealth, val diagnostics: List<String>)
 
@@ -221,11 +350,16 @@ class FileConfiguredPolicyStore(
         val diagnostics = mutableListOf<String>()
         val packages = json.keys().asSequence().toList().sorted()
         packages.forEach { packageName ->
-            try {
-                val array = json.getJSONArray(packageName)
-                val rules = mutableListOf<OrderedRedirectRule>()
-                val occurrences = mutableMapOf<String, Int>()
-                for (index in 0 until array.length()) {
+            val array = try {
+                json.getJSONArray(packageName)
+            } catch (e: Exception) {
+                diagnostics += "redirect[$packageName]: ${e.message ?: "规则必须是数组"}"
+                return@forEach
+            }
+            val rules = mutableListOf<OrderedRedirectRule>()
+            val occurrences = mutableMapOf<String, Int>()
+            for (index in 0 until array.length()) {
+                try {
                     val pair = array.getJSONArray(index)
                     if (pair.length() < 2) throw IllegalArgumentException("规则必须包含 source 和 target")
                     val source = normalizePath(
@@ -245,17 +379,17 @@ class FileConfiguredPolicyStore(
                         type = type,
                         source = source,
                         target = target,
-                        orderIndex = index,
+                        orderIndex = rules.size,
                     )
+                } catch (e: Exception) {
+                    diagnostics += "redirect[$packageName][$index]: ${e.message ?: "无效规则"}"
                 }
-                if (rules.isNotEmpty()) {
-                    policies += OrderedRedirectPolicy(
-                        scope = PackageStorageScope(packageName, StorageUserScope.AllUsers),
-                        rules = rules,
-                    )
-                }
-            } catch (e: Exception) {
-                diagnostics += "redirect[$packageName]: ${e.message ?: "无效规则"}"
+            }
+            if (rules.isNotEmpty()) {
+                policies += OrderedRedirectPolicy(
+                    scope = PackageStorageScope(packageName, StorageUserScope.AllUsers),
+                    rules = rules,
+                )
             }
         }
         return RedirectConversion(policies, diagnostics)
@@ -268,10 +402,15 @@ class FileConfiguredPolicyStore(
         val rules = mutableListOf<ReadOnlyRule>()
         val diagnostics = mutableListOf<String>()
         json.keys().asSequence().toList().sorted().forEach { packageName ->
-            try {
-                val paths = json.getJSONArray(packageName)
-                val occurrences = mutableMapOf<String, Int>()
-                for (index in 0 until paths.length()) {
+            val paths = try {
+                json.getJSONArray(packageName)
+            } catch (e: Exception) {
+                diagnostics += "readOnly[$packageName]: ${e.message ?: "路径必须是数组"}"
+                return@forEach
+            }
+            val occurrences = mutableMapOf<String, Int>()
+            for (index in 0 until paths.length()) {
+                try {
                     val path = normalizePath(
                         paths.getString(index),
                         "readOnly[$packageName][$index]",
@@ -283,9 +422,9 @@ class FileConfiguredPolicyStore(
                         scope = PackageStorageScope(packageName, StorageUserScope.AllUsers),
                         visiblePath = path,
                     )
+                } catch (e: Exception) {
+                    diagnostics += "readOnly[$packageName][$index]: ${e.message ?: "无效路径"}"
                 }
-            } catch (e: Exception) {
-                diagnostics += "readOnly[$packageName]: ${e.message ?: "无效规则"}"
             }
         }
         return ReadOnlyConversion(rules, diagnostics)

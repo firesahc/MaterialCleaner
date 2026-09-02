@@ -7,14 +7,8 @@ import androidx.core.content.edit
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.preference.PreferenceManager
-import me.gm.cleaner.core.storage.redirect.domain.OrderedRedirectPolicy
-import me.gm.cleaner.core.storage.redirect.domain.OrderedRedirectRule
-import me.gm.cleaner.core.storage.redirect.domain.PackageStorageScope
 import me.gm.cleaner.core.storage.redirect.domain.ReadOnlyRule
-import me.gm.cleaner.core.storage.redirect.domain.RedirectRuleType
-import me.gm.cleaner.core.storage.redirect.domain.RuleId
 import me.gm.cleaner.core.storage.redirect.domain.StoragePolicyEnvelope
-import me.gm.cleaner.core.storage.redirect.domain.StorageUserScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -184,7 +178,7 @@ object ServicePreferences {
         }
         if (ConfiguredPolicyStoreProvider.isInitialized()) {
             val mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope = { current ->
-                current.withRedirectRules(rawRules, packageNames)
+                current.replaceRedirectRules(rawRules, packageNames)
             }
             if (inBatch) {
                 pendingRedirectPolicy = try {
@@ -203,8 +197,9 @@ object ServicePreferences {
                 Log.e(TAG, "Failed to update redirect policy: ${result.error}")
                 return
             }
-            invalidateSrCache()
-            notifyListeners()
+            if (result.changed) {
+                invalidateSrCache()
+            }
             return
         }
         val rules = JSONArray()
@@ -219,7 +214,7 @@ object ServicePreferences {
     fun removeStorageRedirect(packageNames: List<String>) {
         if (ConfiguredPolicyStoreProvider.isInitialized()) {
             val mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope = { current ->
-                current.withoutRedirectRules(packageNames)
+                current.removeRedirectRules(packageNames)
             }
             if (inBatch) {
                 pendingRedirectPolicy = mutation(
@@ -233,8 +228,9 @@ object ServicePreferences {
                 Log.e(TAG, "Failed to remove redirect policy: ${result.error}")
                 return
             }
-            invalidateSrCache()
-            notifyListeners()
+            if (result.changed) {
+                invalidateSrCache()
+            }
             return
         }
         val all = readStorageRedirect()
@@ -360,36 +356,38 @@ object ServicePreferences {
     @Synchronized
     fun endBatchOperation() {
         inBatch = false
-        var changed = false
         pendingRedirectPolicy?.let { pending ->
             if (ConfiguredPolicyStoreProvider.isInitialized()) {
                 val result = ConfiguredPolicyStoreProvider.instance.updateRedirect(null) { pending }
-                if (result.success) {
+                if (result.success && result.changed) {
                     invalidateSrCache()
-                    changed = true
                 } else {
-                    Log.e(TAG, "Failed to commit redirect policy batch: ${result.error}")
+                    if (!result.success) {
+                        Log.e(TAG, "Failed to commit redirect policy batch: ${result.error}")
+                    }
                 }
             } else {
                 Log.w(TAG, "ConfiguredPolicyStore 未初始化，跳过重定向批量提交")
             }
+            Unit
         }
         pendingReadOnlyPolicy?.let { pending ->
             if (ConfiguredPolicyStoreProvider.isInitialized()) {
                 val result = ConfiguredPolicyStoreProvider.instance.updateReadOnly(null) { pending }
-                if (result.success) {
+                if (result.success && result.changed) {
                     invalidateReadOnlyCache()
-                    changed = true
                 } else {
-                    Log.e(TAG, "Failed to commit read-only policy batch: ${result.error}")
+                    if (!result.success) {
+                        Log.e(TAG, "Failed to commit read-only policy batch: ${result.error}")
+                    }
                 }
             } else {
                 Log.w(TAG, "ConfiguredPolicyStore 未初始化，跳过只读批量提交")
             }
+            Unit
         }
         pendingRedirectPolicy = null
         pendingReadOnlyPolicy = null
-        if (changed) notifyListeners()
     }
 
     @Synchronized
@@ -400,7 +398,6 @@ object ServicePreferences {
         }
         try {
             writeUtf8Atomically(storageRedirectFile, json.toString())
-            notifyListeners()
         } catch (e: IOException) {
             Log.e(TAG, "Failed to write storage redirect", e)
         }
@@ -441,7 +438,7 @@ object ServicePreferences {
         }
         if (ConfiguredPolicyStoreProvider.isInitialized()) {
             val mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope = { current ->
-                current.withReadOnlyRules(rawRules, packageNames)
+                current.replaceReadOnlyRules(rawRules, packageNames)
             }
             if (inBatch) {
                 pendingReadOnlyPolicy = try {
@@ -460,8 +457,9 @@ object ServicePreferences {
                 Log.e(TAG, "Failed to update read-only policy: ${result.error}")
                 return
             }
-            invalidateReadOnlyCache()
-            notifyListeners()
+            if (result.changed) {
+                invalidateReadOnlyCache()
+            }
             return
         }
         val rules = JSONArray(rawRules)
@@ -475,7 +473,7 @@ object ServicePreferences {
     fun removeReadOnly(packageNames: List<String>) {
         if (ConfiguredPolicyStoreProvider.isInitialized()) {
             val mutation: (StoragePolicyEnvelope) -> StoragePolicyEnvelope = { current ->
-                current.withoutReadOnlyRules(packageNames)
+                current.removeReadOnlyRules(packageNames)
             }
             if (inBatch) {
                 pendingReadOnlyPolicy = mutation(
@@ -489,8 +487,9 @@ object ServicePreferences {
                 Log.e(TAG, "Failed to remove read-only policy: ${result.error}")
                 return
             }
-            invalidateReadOnlyCache()
-            notifyListeners()
+            if (result.changed) {
+                invalidateReadOnlyCache()
+            }
             return
         }
         val all = readReadOnly()
@@ -549,7 +548,6 @@ object ServicePreferences {
         readOnlyCache = json
         try {
             writeUtf8Atomically(readOnlyFile, json.toString())
-            notifyListeners()
         } catch (e: IOException) {
             Log.e(TAG, "Failed to write read-only config", e)
         }
@@ -628,59 +626,6 @@ object ServicePreferences {
     val upsert: Boolean
         get() = preferences.getBoolean(UPSERT_KEY, true)
 }
-
-private fun StoragePolicyEnvelope.withRedirectRules(
-    rawRules: List<Pair<String, String>>,
-    packageNames: List<String>,
-): StoragePolicyEnvelope {
-    val uniquePackageNames = packageNames.distinct()
-    val retained = redirectPolicies.filterNot { it.scope.packageName in uniquePackageNames }
-    val added = uniquePackageNames.map { packageName ->
-        OrderedRedirectPolicy(
-            scope = PackageStorageScope(packageName, StorageUserScope.AllUsers),
-            rules = rawRules.mapIndexed { index, (source, target) ->
-                OrderedRedirectRule(
-                    ruleId = RuleId("legacy-redirect-$packageName-$index"),
-                    type = if (source == target) RedirectRuleType.PRESERVE else RedirectRuleType.MAP,
-                    source = source,
-                    target = target,
-                    orderIndex = index,
-                )
-            },
-        )
-    }
-    return StoragePolicyEnvelope(redirectPolicies = retained + added)
-}
-
-private fun StoragePolicyEnvelope.withoutRedirectRules(
-    packageNames: List<String>,
-): StoragePolicyEnvelope = StoragePolicyEnvelope(
-    redirectPolicies = redirectPolicies.filterNot { it.scope.packageName in packageNames },
-)
-
-private fun StoragePolicyEnvelope.withReadOnlyRules(
-    rawRules: List<String>,
-    packageNames: List<String>,
-): StoragePolicyEnvelope {
-    val uniquePackageNames = packageNames.distinct()
-    val retained = readOnlyRules.filterNot { it.scope.packageName in uniquePackageNames }
-    val added = uniquePackageNames.flatMap { packageName ->
-        rawRules.mapIndexed { index, path ->
-            ReadOnlyRule(
-                ruleId = RuleId("legacy-readonly-$packageName-$index"),
-                scope = PackageStorageScope(packageName, StorageUserScope.AllUsers),
-                visiblePath = path,
-            )
-        }
-    }
-    return StoragePolicyEnvelope(readOnlyRules = retained + added)
-}
-
-private fun StoragePolicyEnvelope.withoutReadOnlyRules(
-    packageNames: List<String>,
-): StoragePolicyEnvelope = StoragePolicyEnvelope(
-    readOnlyRules = readOnlyRules.filterNot { it.scope.packageName in packageNames },
-)
 
 private val APP_DATA_DIR_PATHS: Pattern by lazy {
     Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/)?([^/]+)?(/.*)?")

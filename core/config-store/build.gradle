@@ -23,6 +23,7 @@ dependencies {
     implementation "androidx.core:core-ktx:$rootProject.coreVersion"
     implementation "androidx.lifecycle:lifecycle-common:$rootProject.lifecycleVersion"
     implementation "androidx.preference:preference-ktx:$rootProject.preferenceVersion"
+    api "org.jetbrains.kotlinx:kotlinx-coroutines-core:$rootProject.kotlinxCoroutinesVersion"
     api "androidx.security:security-crypto-ktx:$rootProject.securityCryptoVersion"
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20231013'

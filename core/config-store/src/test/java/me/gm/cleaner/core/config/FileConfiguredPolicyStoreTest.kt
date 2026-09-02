@@ -37,6 +37,63 @@ class FileConfiguredPolicyStoreTest {
     }
 
     @Test
+    fun snapshotsStartWithTheCompleteDiskState() {
+        temporaryFolder.newFile("storage_redirect").writeText(
+            "{\"pkg\":[[\"/source\",\"/target\"]]}",
+            Charsets.UTF_8,
+        )
+        temporaryFolder.newFile("read_only").writeText(
+            "{\"pkg\":[\"/protected\"]}",
+            Charsets.UTF_8,
+        )
+        val store = FileConfiguredPolicyStore(temporaryFolder.root)
+
+        assertEquals(store.readSnapshot(), store.snapshots.value)
+        assertEquals(ConfigSourceHealth.VALID, store.snapshots.value.redirect.health)
+        assertEquals(ConfigSourceHealth.VALID, store.snapshots.value.readOnly.health)
+    }
+
+    @Test
+    fun unchangedMutationDoesNotWriteOrPublish() {
+        val file = temporaryFolder.newFile("storage_redirect")
+        val original = "{\"pkg\":[[\"/source\",\"/target\"]]}"
+        file.writeText(original, Charsets.UTF_8)
+        val store = FileConfiguredPolicyStore(temporaryFolder.root)
+        val before = store.snapshots.value
+
+        val result = store.updateRedirect(null) { it }
+
+        assertTrue(result.success)
+        assertFalse(result.changed)
+        assertEquals(before, store.snapshots.value)
+        assertEquals(original, file.readText(Charsets.UTF_8))
+    }
+
+    @Test
+    fun emptyRedirectReplacementRemovesThePackagePolicy() {
+        val envelope = StoragePolicyEnvelope(
+            redirectPolicies = listOf(
+                OrderedRedirectPolicy(
+                    scope = PackageStorageScope("pkg", StorageUserScope.AllUsers),
+                    rules = listOf(
+                        OrderedRedirectRule(
+                            ruleId = RuleId("rule"),
+                            type = RedirectRuleType.MAP,
+                            source = "/source",
+                            target = "/target",
+                            orderIndex = 0,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val updated = envelope.replaceRedirectRules(emptyList(), listOf("pkg"))
+
+        assertTrue(updated.redirectPolicies.isEmpty())
+    }
+
+    @Test
     fun redirectConversionPreservesOrderDuplicatesAndIdentityRules() {
         temporaryFolder.newFile("storage_redirect").writeText(
             "{\"com.example\":[[\"/a\",\"/b\"],[\"/a\",\"/b\"],[\"/same\",\"/same\"]]}",
@@ -160,6 +217,26 @@ class FileConfiguredPolicyStoreTest {
     }
 
     @Test
+    fun invalidEntriesKeepOtherRulesAndExposeIndexedDiagnostics() {
+        temporaryFolder.newFile("storage_redirect").writeText(
+            "{\"pkg\":[[\"/a\",\"/b\"],[\"relative\",\"/target\"],[\"/c\",\"/d\"]]}",
+            Charsets.UTF_8,
+        )
+        temporaryFolder.newFile("read_only").writeText(
+            "{\"pkg\":[\"/protected\",\"relative\",\"/other\"]}",
+            Charsets.UTF_8,
+        )
+        val store = FileConfiguredPolicyStore(temporaryFolder.root)
+
+        val redirect = store.readRedirect()
+        assertEquals(listOf("/a", "/c"), redirect.envelope.redirectPolicies.single().rules.map { it.source })
+        assertTrue(redirect.diagnostics.any { it.contains("redirect[pkg][1]") })
+        assertEquals(listOf("/protected", "/other"),
+            store.readReadOnly().envelope.readOnlyRules.map { it.visiblePath })
+        assertTrue(store.readReadOnly().diagnostics.any { it.contains("readOnly[pkg][1]") })
+    }
+
+    @Test
     fun corruptSourceBlocksUpdateAndKeepsOriginalBytes() {
         val file = temporaryFolder.newFile("storage_redirect")
         val original = "{not-json"
@@ -169,6 +246,8 @@ class FileConfiguredPolicyStoreTest {
         val result = store.updateRedirect(null) { current -> current }
 
         assertFalse(result.success)
+        assertEquals(PolicyStoreFailureKind.CORRUPT_SOURCE, result.failureKind)
+        assertEquals(ConfigSourceHealth.CORRUPT, store.snapshots.value.redirect.health)
         assertEquals(original, file.readText(Charsets.UTF_8))
         assertTrue(result.error.orEmpty().contains("损坏"))
     }
@@ -181,6 +260,7 @@ class FileConfiguredPolicyStoreTest {
         val before = store.readRedirect()
         val result = store.updateRedirect("stale") { current -> current }
         assertFalse(result.success)
+        assertEquals(PolicyStoreFailureKind.REVISION_CONFLICT, result.failureKind)
 
         file.writeText("{\"pkg\":[[\"/a\",\"/c\"]]}", Charsets.UTF_8)
         assertNotEquals(before.revision, store.readRedirect().revision)
@@ -239,6 +319,7 @@ class FileConfiguredPolicyStoreTest {
         }
         assertTrue(redirectResult.success)
         val afterRedirect = store.readSnapshot()
+        assertEquals(afterRedirect, store.snapshots.value)
         assertNotEquals(initial.redirect.revision, afterRedirect.redirect.revision)
         assertEquals(initial.readOnly.revision, afterRedirect.readOnly.revision)
 
@@ -255,6 +336,7 @@ class FileConfiguredPolicyStoreTest {
         }
         assertTrue(readOnlyResult.success)
         val afterReadOnly = store.readSnapshot()
+        assertEquals(afterReadOnly, store.snapshots.value)
         assertEquals(afterRedirect.redirect.revision, afterReadOnly.redirect.revision)
         assertNotEquals(afterRedirect.readOnly.revision, afterReadOnly.readOnly.revision)
     }
@@ -294,6 +376,7 @@ class FileConfiguredPolicyStoreTest {
         }
 
         assertFalse(result.success)
+        assertEquals(PolicyStoreFailureKind.INVALID_MUTATION, result.failureKind)
         assertEquals(before, file.readText(Charsets.UTF_8))
     }
 
@@ -302,9 +385,27 @@ class FileConfiguredPolicyStoreTest {
         val base = temporaryFolder.newFile("base-file")
         val store = FileConfiguredPolicyStore(base)
 
-        val result = store.updateRedirect(null) { current -> current }
+        val result = store.updateRedirect(null) {
+            StoragePolicyEnvelope(
+                redirectPolicies = listOf(
+                    OrderedRedirectPolicy(
+                        scope = PackageStorageScope("pkg", StorageUserScope.AllUsers),
+                        rules = listOf(
+                            OrderedRedirectRule(
+                                ruleId = RuleId("rule"),
+                                type = RedirectRuleType.MAP,
+                                source = "/source",
+                                target = "/target",
+                                orderIndex = 0,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
 
         assertFalse(result.success)
+        assertEquals(PolicyStoreFailureKind.IO_FAILURE, result.failureKind)
         assertTrue(result.error.orEmpty().isNotBlank())
         assertTrue(Files.exists(base.toPath()))
     }

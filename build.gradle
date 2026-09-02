@@ -1,6 +1,7 @@
 buildscript {
     ext {
         kotlinVersion = '1.9.21'
+        kotlinxCoroutinesVersion = '1.7.3'
         navigationVersion = '2.7.6'
 
         annotationVersion = '1.7.1'
