@@ -108,7 +108,10 @@ class WizardAnswers(
         if (this === other) return true
         if (other !is WizardAnswers) return false
         return q1 == other.q1 && q2 == other.q2 && q3 == other.q3 &&
-                q4 == other.q4 && q11 == other.q11 && q12 == other.q12
+                q4 == other.q4 && q11 == other.q11 && q12 == other.q12 &&
+                accessiblePlaces() == other.accessiblePlaces() &&
+                mountRules() == other.mountRules() &&
+                inaccessiblePlaces() == other.inaccessiblePlaces()
     }
 
     override fun hashCode(): Int {
@@ -118,6 +121,9 @@ class WizardAnswers(
         result = 31 * result + q4.hashCode()
         result = 31 * result + q11.hashCode()
         result = 31 * result + q12.hashCode()
+        result = 31 * result + accessiblePlaces().hashCode()
+        result = 31 * result + mountRules().hashCode()
+        result = 31 * result + inaccessiblePlaces().hashCode()
         return result
     }
 
@@ -125,6 +131,7 @@ class WizardAnswers(
         ParcelCompat.writeBoolean(parcel, q1)
         ParcelCompat.writeBoolean(parcel, q2)
         ParcelCompat.writeBoolean(parcel, q3)
+        ParcelCompat.writeBoolean(parcel, q4)
         ParcelCompat.writeBoolean(parcel, q11)
         ParcelCompat.writeBoolean(parcel, q12)
         parcel.writeStringList(accessiblePlacesLiveData.value)
@@ -137,8 +144,42 @@ class WizardAnswers(
     override fun describeContents(): Int = 0
 
     companion object CREATOR : Parcelable.Creator<WizardAnswers> {
-        override fun createFromParcel(parcel: Parcel): WizardAnswers = WizardAnswers(parcel)
+        override fun createFromParcel(parcel: Parcel): WizardAnswers {
+            val startPosition = parcel.dataPosition()
+            try {
+                return WizardAnswers(parcel)
+            } catch (e: Throwable) {
+                Log.w("MountWizard", "new-format WizardAnswers parse failed, try legacy 5-bool", e)
+                parcel.setDataPosition(startPosition)
+                return readLegacyFormat(parcel)
+            }
+        }
+
         override fun newArray(size: Int): Array<WizardAnswers?> = arrayOfNulls(size)
+
+        /**
+         * 兼容 Issue #4 之前漏写 q4 的旧 Base64：旧格式只有
+         * q1,q2,q3,q11,q12 共 5 个 boolean，后面 4 个 StringList 不变。
+         * 旧数据无 q4，一律按 false 恢复。
+         */
+        private fun readLegacyFormat(parcel: Parcel): WizardAnswers {
+            val q1 = ParcelCompat.readBoolean(parcel)
+            val q2 = ParcelCompat.readBoolean(parcel)
+            val q3 = ParcelCompat.readBoolean(parcel)
+            val q11 = ParcelCompat.readBoolean(parcel)
+            val q12 = ParcelCompat.readBoolean(parcel)
+            val accessible = MutableLiveData(DiffArrayList(parcel.createStringArrayList()!!))
+            val sources = parcel.createStringArrayList()!!
+            val targets = parcel.createStringArrayList()!!
+            val mountRules = MutableLiveData(DiffArrayList(sources.zip(targets)))
+            val inaccessible = MutableLiveData(DiffArrayList(parcel.createStringArrayList()!!))
+            return WizardAnswers(
+                q1 = q1, q2 = q2, q3 = q3, q4 = false, q11 = q11, q12 = q12,
+                accessiblePlacesLiveData = accessible,
+                mountRulesLiveData = mountRules,
+                inaccessiblePlacesLiveData = inaccessible,
+            )
+        }
     }
 }
 

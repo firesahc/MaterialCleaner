@@ -2,7 +2,7 @@ package me.gm.cleaner.dao
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.core.content.edit
+import android.util.Log
 import androidx.preference.PreferenceManager
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
 import me.gm.cleaner.util.toParcelable
@@ -43,15 +43,23 @@ object ServiceMoreOptionsPreferences {
         get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_RESPECT_KEY, true)
 
     val editMountRulesTemplate: WizardAnswers
-        get() = try {
-            preferences.getString(EDIT_MOUNT_RULES_TEMPLATE_KEY, null)
-                ?.toParcelable()
-                ?: WizardAnswers(true)
-        } catch (e: Throwable) {
-            preferences.edit {
-                remove(EDIT_MOUNT_RULES_TEMPLATE_KEY)
+        get() {
+            val raw = try {
+                preferences.getString(EDIT_MOUNT_RULES_TEMPLATE_KEY, null)
+            } catch (e: Throwable) {
+                Log.w("ServiceMoreOptions", "read mount template key failed", e)
+                return WizardAnswers(true)
             }
-            WizardAnswers(true)
+            if (raw == null) {
+                return WizardAnswers(true)
+            }
+            return try {
+                raw.toParcelable()
+            } catch (e: Throwable) {
+                // Issue #4：解析失败不再删除持久化，避免一次错位变成永久丢数据，留给 CREATOR 双读迁移。
+                Log.w("ServiceMoreOptions", "parse mount template failed, keep raw for migration", e)
+                WizardAnswers(true)
+            }
         }
 
     val editReadOnlyTemplate: Set<String>

@@ -10,6 +10,7 @@ import androidx.annotation.AttrRes
 import androidx.annotation.StyleRes
 import androidx.core.content.res.TypedArrayUtils
 import androidx.preference.DialogPreference
+import android.util.Log
 import me.gm.cleaner.R
 import me.gm.cleaner.client.ui.storageredirect.WizardAnswers
 import me.gm.cleaner.util.toBase64String
@@ -31,8 +32,9 @@ class EditMountRulesTemplatePreference @JvmOverloads constructor(
                 _value = value.toParcelable()
                 persistString(value)
             } catch (e: Throwable) {
+                // Issue #4：解析失败只重置内存，不再用默认值覆盖持久化，避免一次错位变成永久丢数据。
+                Log.w("EditMountTemplate", "parse mount template failed, keep persisted raw", e)
                 _value = WizardAnswers(true)
-                persistString(_value.toBase64String())
             }
             notifyChanged()
         }
@@ -43,7 +45,18 @@ class EditMountRulesTemplatePreference @JvmOverloads constructor(
     override fun onGetDefaultValue(a: TypedArray, index: Int): Any? = a.getString(index)
 
     override fun onSetInitialValue(defaultValue: Any?) {
-        value = getPersistedString(defaultValue as String?)
+        val persisted = getPersistedString(defaultValue as? String)
+        if (persisted == null) {
+            _value = try {
+                (defaultValue as? String)?.toParcelable() ?: WizardAnswers(true)
+            } catch (e: Throwable) {
+                Log.w("EditMountTemplate", "parse default mount template failed", e)
+                WizardAnswers(true)
+            }
+            notifyChanged()
+            return
+        }
+        value = persisted
     }
 
     override fun onSaveInstanceState(): Parcelable? {
