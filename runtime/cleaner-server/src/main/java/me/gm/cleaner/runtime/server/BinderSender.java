@@ -47,6 +47,17 @@ public class BinderSender {
                 onActive(uid, pid);
             }
         }
+
+        // Android 15/16 (API 36): system_server dispatches onProcessStarted for new processes.
+        // Registering here gives a native, logcat-free process-start signal (and avoids the
+        // AbstractMethodError crash that killed the server on every new app start on API 36).
+        @Override
+        public void onProcessStarted(final int pid, final int uid, final int processType,
+                                     final String hostingType, final String hostingName) {
+            if (PID_SET.add(pid)) {
+                onActive(uid, pid);
+            }
+        }
     }
 
     private static class UidObserver extends UidObserverAdapter {

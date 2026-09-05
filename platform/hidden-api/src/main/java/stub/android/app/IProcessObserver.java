@@ -15,6 +15,10 @@ public interface IProcessObserver {
     // from Q beta 3
     void onForegroundServicesChanged(int pid, int uid, int serviceTypes) throws RemoteException;
 
+    // added on Android 15/16 (API 35/36); required to dispatch process-start events.
+    // Missing override on the stub receiver causes AbstractMethodError on API 36.
+    void onProcessStarted(int pid, int uid, int processType, String hostingType, String hostingName) throws RemoteException;
+
     abstract class Stub extends Binder implements IProcessObserver {
 
     }
