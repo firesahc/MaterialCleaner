@@ -48,14 +48,13 @@ public class BinderSender {
             }
         }
 
-        // Android 15/16 (API 36): system_server dispatches onProcessStarted for new processes.
-        // Registering here gives a native, logcat-free process-start signal (and avoids the
-        // AbstractMethodError crash that killed the server on every new app start on API 36).
+        // API 35+新增，API 36起system_server实际下发：原生、无需logcat的进程启动信号。
+        // processUid即onActive所需的uid；packageUid/packageName/processName暂忽略（保留用于未来精确定位）。
         @Override
-        public void onProcessStarted(final int pid, final int uid, final int processType,
-                                     final String hostingType, final String hostingName) {
+        public void onProcessStarted(final int pid, final int processUid, final int packageUid,
+                                     final String packageName, final String processName) {
             if (PID_SET.add(pid)) {
-                onActive(uid, pid);
+                onActive(processUid, pid);
             }
         }
     }

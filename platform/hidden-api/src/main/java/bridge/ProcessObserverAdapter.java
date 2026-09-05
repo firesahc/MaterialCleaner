@@ -23,9 +23,9 @@ public class ProcessObserverAdapter extends IProcessObserver.Stub {
         // from Q beta 3
     }
 
-    // Android 15/16 (API 35/36): empty default keeps older stub receivers crash-free
-    // when system_server dispatches the new process-start callback.
+    // from Android 14 r50 (API 35), dispatched from API 36: empty default keeps stub
+    // receivers crash-free when system_server dispatches the new process-start callback.
     @Override
-    public void onProcessStarted(int pid, int uid, int processType, String hostingType, String hostingName) throws RemoteException {
+    public void onProcessStarted(int pid, int processUid, int packageUid, String packageName, String processName) throws RemoteException {
     }
 }
