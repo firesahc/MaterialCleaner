@@ -2,6 +2,8 @@
 
 > 一款 Android 存储重定向工具，通过 bind mount + Xposed Hook 实现文件系统级路径重定向。
 > 需要 Root（KernelSU / APatch / Magisk）和 LSPosed 框架。
+>
+> 详细中文文档见 [`MaterialCleaner.wiki/Home.md`](MaterialCleaner.wiki/Home.md)（GitHub Wiki 格式：架构、领域术语、DataBus、三层 Hook、构建部署、诊断排障）。
 
 ---
 
@@ -31,8 +33,8 @@
 └──────────┬───────────┘                                ▼
            │ DataBus                          ┌──────────────────────┐
            ▼                                  │  MediaProvider        │
-┌──────────────────────┐                      │  LSPosed Hook        │
-│  /dev tmpfs DataBus  │◄────────────────────►│  Query/Insert/FUSE   │
+┌────────────────────────────────┐                      │  LSPosed Hook        │
+│  /data/local/tmp/cleaner/bus   │◄────────────────────►│  Query/Insert/FUSE   │
 │  snapshots/events    │                      │  native status       │
 │  leases/status       │                      └──────────────────────┘
 └──────────────────────┘
@@ -64,10 +66,14 @@ MaterialCleaner/
 │   └── media-provider-hook/     # LSPosed MediaProvider Hook runtime
 ├── platform/
 │   └── hidden-api/              # Android hidden API 桥接与 SystemService 封装
-├── native-code/                 # native mount / inline hook 相关代码
+├── app/src/main/cpp/            # native：libcleaner（VFS/mount）、libinline（FUSE Hook + xhook）、starter
+├── app/src/main/assets/         # xposed_init + main.jar（buildXposedMainJar 生成）
 ├── shared/                      # 历史兼容公共库，迁移中逐步瘦身
 ├── aidl/                        # 历史 AIDL 目录，迁移源保留
-└── server/                      # 历史 server 目录，迁移源保留
+├── server/                      # 历史 server 目录，迁移源保留
+├── docs/adr/                    # 架构决策记录（10 篇）
+├── scripts/gates/               # 门禁检查脚本
+└── MaterialCleaner.wiki/        # GitHub Wiki（中文文档主页）
 ```
 
 ## 环境要求
@@ -75,7 +81,7 @@ MaterialCleaner/
 - **Android 8.0+**（API 26）
 - **Root 权限**：KernelSU / APatch / Magisk
 - **LSPosed 框架**（用于加载 Xposed 模块到 MediaProvider 进程）
-- **NDK**：CMake + Android NDK 用于编译 C++ 本地代码
+- **NDK**：CMake 3.22.1 + Android NDK 26.1.10909125（版本已 pin，见根 `build.gradle`，不可随意升级）
 
 ## 构建指南
 
@@ -114,7 +120,7 @@ adb install -r app/build/outputs/apk/debug/Cleaner_*-debug.apk
 
 # 强制重启服务器（安装后需要）
 adb shell am force-stop me.gm.cleaner
-adb shell am start -n me.gm.cleaner/.app.MainActivity
+adb shell am start -n me.gm.cleaner/.client.ui.ServiceSettingsActivity
 ```
 
 ### LSPosed 配置
