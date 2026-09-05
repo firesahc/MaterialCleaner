@@ -3,7 +3,7 @@
 > 一款 Android 存储重定向工具，通过 bind mount + Xposed Hook 实现文件系统级路径重定向。
 > 需要 Root（KernelSU / APatch / Magisk）和 LSPosed 框架。
 >
-> 详细中文文档见 [`MaterialCleaner.wiki/Home.md`](MaterialCleaner.wiki/Home.md)（GitHub Wiki 格式：架构、领域术语、DataBus、三层 Hook、构建部署、诊断排障）。
+> 详细中文文档见 [`MaterialCleaner.wiki`](https://github.com/firesahc/MaterialCleaner/wiki)（GitHub Wiki 格式：架构、领域术语、DataBus、三层 Hook、构建部署、诊断排障）。
 
 ---
 
@@ -69,8 +69,6 @@ MaterialCleaner/
 ├── app/src/main/cpp/            # native：libcleaner（VFS/mount）、libinline（FUSE Hook + xhook）、starter
 ├── app/src/main/assets/         # xposed_init + main.jar（buildXposedMainJar 生成）
 ├── shared/                      # 历史兼容公共库，迁移中逐步瘦身
-├── aidl/                        # 历史 AIDL 目录，迁移源保留
-├── server/                      # 历史 server 目录，迁移源保留
 ├── docs/adr/                    # 架构决策记录（10 篇）
 ├── scripts/gates/               # 门禁检查脚本
 └── MaterialCleaner.wiki/        # GitHub Wiki（中文文档主页）
