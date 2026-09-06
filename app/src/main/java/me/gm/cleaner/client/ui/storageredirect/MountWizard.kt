@@ -68,6 +68,7 @@ class WizardAnswers(
         MutableLiveData(DiffArrayList(listOf(null to null))),
     val inaccessiblePlacesLiveData: MutableLiveData<DiffArrayList<String?>> =
         MutableLiveData(DiffArrayList(listOf(null))),
+    var rootDirName: String = Q1_ROOT_DIR_FILES,
 ) : Parcelable {
     constructor(parcel: Parcel) : this(
         ParcelCompat.readBoolean(parcel),
@@ -80,7 +81,9 @@ class WizardAnswers(
         MutableLiveData(
             DiffArrayList(parcel.createStringArrayList()!!.zip(parcel.createStringArrayList()!!))
         ),
-        MutableLiveData(DiffArrayList(parcel.createStringArrayList()!!))
+        MutableLiveData(DiffArrayList(parcel.createStringArrayList()!!)),
+        // 旧格式末尾没有该字段时 readString 返回 null，兜底回 files，保持兼容。
+        runCatching { parcel.readString() ?: Q1_ROOT_DIR_FILES }.getOrDefault(Q1_ROOT_DIR_FILES),
     )
 
     fun accessiblePlaces(): List<String> =
@@ -109,6 +112,7 @@ class WizardAnswers(
         if (other !is WizardAnswers) return false
         return q1 == other.q1 && q2 == other.q2 && q3 == other.q3 &&
                 q4 == other.q4 && q11 == other.q11 && q12 == other.q12 &&
+                rootDirName == other.rootDirName &&
                 accessiblePlaces() == other.accessiblePlaces() &&
                 mountRules() == other.mountRules() &&
                 inaccessiblePlaces() == other.inaccessiblePlaces()
@@ -121,6 +125,7 @@ class WizardAnswers(
         result = 31 * result + q4.hashCode()
         result = 31 * result + q11.hashCode()
         result = 31 * result + q12.hashCode()
+        result = 31 * result + rootDirName.hashCode()
         result = 31 * result + accessiblePlaces().hashCode()
         result = 31 * result + mountRules().hashCode()
         result = 31 * result + inaccessiblePlaces().hashCode()
@@ -139,11 +144,15 @@ class WizardAnswers(
         parcel.writeStringList(mountRulesUnzipped.first)
         parcel.writeStringList(mountRulesUnzipped.second)
         parcel.writeStringList(inaccessiblePlacesLiveData.value)
+        parcel.writeString(rootDirName)
     }
 
     override fun describeContents(): Int = 0
 
     companion object CREATOR : Parcelable.Creator<WizardAnswers> {
+        const val Q1_ROOT_DIR_FILES: String = "files"
+        const val Q1_ROOT_DIR_SANDBOX: String = "sdcard"
+
         override fun createFromParcel(parcel: Parcel): WizardAnswers {
             val startPosition = parcel.dataPosition()
             try {
@@ -198,7 +207,8 @@ class MountWizard(private val packageInfo: PackageInfo) {
             q12 = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                     packageInfo.applicationInfo.category and ApplicationInfo.CATEGORY_GAME != 0 ||
                     packageInfo.applicationInfo.flags and ApplicationInfo.FLAG_IS_GAME != 0) ||
-                    CleanerClient.service?.createFileModel(obbDir)?.isDirectory ?: false
+                    CleanerClient.service?.createFileModel(obbDir)?.isDirectory ?: false,
+            rootDirName = ServiceMoreOptionsPreferences.wizardRootDirName
         )
 
     // BIND
@@ -397,6 +407,9 @@ class MountWizard(private val packageInfo: PackageInfo) {
     private val filesDir: String = File(dataDir, "files").path
     private val cacheDir: String = File(dataDir, "cache").path
 
+    // 承载 q1 根目录重定向的专用子目录：Android/data/<pkg>/sdcard
+    private val sandboxRootDir: String = File(dataDir, WizardAnswers.Q1_ROOT_DIR_SANDBOX).path
+
     fun createRules(): List<Pair<String, String>> = createRules(answers)
 
     private val mountRulesForMakingPathInaccessible: MountRules =
@@ -406,7 +419,12 @@ class MountWizard(private val packageInfo: PackageInfo) {
         val rules = mutableListOf<Pair<String, String>>()
         if (answers.q1) {
             rules += if (answers.q11) {
-                filesDir to sdDir
+                // q11 开启且选择专用承载目录时，把根挂到 Android/data/<pkg>/sdcard。
+                if (answers.rootDirName == WizardAnswers.Q1_ROOT_DIR_SANDBOX) {
+                    sandboxRootDir to sdDir
+                } else {
+                    filesDir to sdDir
+                }
             } else {
                 cacheDir to sdDir
             }
@@ -467,6 +485,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
             } else if (rulesNotBacktracked[0] == filesDir to sdDir) {
                 answers.q1 = true
                 answers.q11 = true
+            } else if (rulesNotBacktracked[0] == sandboxRootDir to sdDir) {
+                answers.q1 = true
+                answers.q11 = true
+                answers.rootDirName = WizardAnswers.Q1_ROOT_DIR_SANDBOX
             }
             if (answers.q1) {
                 q1Size += 2
