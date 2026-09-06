@@ -61,6 +61,8 @@
     <!-- 服务更多选项 -->
 
     <string name="open_wizard_by_default_title">默认打开向导</string>
+    <string name="wizard_root_dir_name_title">保存有用数据的目录</string>
+    <string name="wizard_root_dir_name_summary">向导中勾选「应用会在共享存储空间保存有用的数据」时，数据存放的位置：files 或 sdcard</string>
     <string name="share_title">导出</string>
     <string name="advanced_header">高级</string>
     <string name="import_title">导入</string>

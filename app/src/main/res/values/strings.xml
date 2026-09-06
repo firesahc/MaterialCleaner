@@ -77,6 +77,9 @@
 
     <string name="open_wizard_by_default_key" translatable="false">open_wizard_by_default</string>
     <string name="open_wizard_by_default_title">Open wizard by default</string>
+    <string name="wizard_root_dir_name_key" translatable="false">wizard_root_dir_name</string>
+    <string name="wizard_root_dir_name_title">Directory for saved useful data</string>
+    <string name="wizard_root_dir_name_summary">Where data goes when the wizard option \'The app saves valuable data in shared storage\' is checked: files or sdcard</string>
     <string name="share_key" translatable="false">share</string>
     <string name="share_title">Export</string>
     <string name="advanced_header">Advanced</string>

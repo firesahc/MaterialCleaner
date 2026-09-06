@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class WizardAnswersParcelTest {
 
     private fun answersWithContent(): WizardAnswers {
-        val answers = WizardAnswers(q1 = true, q2 = true, q3 = true, q4 = true)
+        val answers = WizardAnswers(q1 = true, q2 = true, q3 = true, q4 = true, rootDirName = "sdcard")
         answers.accessiblePlacesLiveData.value =
             DiffArrayList(listOf("/storage/emulated/0/Music", null))
         answers.mountRulesLiveData.value =
@@ -35,6 +35,7 @@ class WizardAnswersParcelTest {
         val restored: WizardAnswers = original.toBase64String().toParcelable()
         assertEquals(original, restored)
         assertEquals(original.hashCode(), restored.hashCode())
+        assertEquals("sdcard", restored.rootDirName)
         assertEquals(
             listOf("/storage/emulated/0/Music"),
             restored.accessiblePlaces(),
@@ -81,11 +82,38 @@ class WizardAnswersParcelTest {
             val raw = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
             val restored: WizardAnswers = raw.toParcelable()
             assertEquals(false, restored.q4)
+            assertEquals("files", restored.rootDirName)
             assertEquals(listOf("/storage/emulated/0/Music"), restored.accessiblePlaces())
             assertEquals(
                 listOf("/sdcard/Download/App" to "/storage/emulated/0/Download"),
                 restored.mountRules(),
             )
+        } finally {
+            parcel.recycle()
+        }
+    }
+
+    @Test
+    fun newFormatWithoutRootDirName_defaultsToFiles() {
+        // 旧新版格式：6 个 bool + 3 个 StringList，但没有末尾的 rootDirName。
+        // 升级后首次读取应兜底回 files，且不抛异常。
+        val parcel = Parcel.obtain()
+        try {
+            ParcelCompat.writeBoolean(parcel, true) // q1
+            ParcelCompat.writeBoolean(parcel, false) // q2
+            ParcelCompat.writeBoolean(parcel, false) // q3
+            ParcelCompat.writeBoolean(parcel, false) // q4
+            ParcelCompat.writeBoolean(parcel, true) // q11
+            ParcelCompat.writeBoolean(parcel, false) // q12
+            parcel.writeStringList(listOf(null))
+            parcel.writeStringList(listOf(null to null).unzip().first)
+            parcel.writeStringList(listOf(null to null).unzip().second)
+            parcel.writeStringList(listOf(null))
+            val bytes = parcel.marshall()
+            val raw = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+            val restored: WizardAnswers = raw.toParcelable()
+            assertEquals("files", restored.rootDirName)
+            assertEquals(true, restored.q1)
         } finally {
             parcel.recycle()
         }

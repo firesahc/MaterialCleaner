@@ -61,6 +61,8 @@
     <!-- 服務更多選項 -->
 
     <string name="open_wizard_by_default_title">默認打開嚮導</string>
+    <string name="wizard_root_dir_name_title">保存有用數據的目錄</string>
+    <string name="wizard_root_dir_name_summary">向導中勾選「應用會在共享儲存空間保存有用的數據」時，數據存放的位置：files 或 sdcard</string>
     <string name="share_title">導出</string>
     <string name="advanced_header">進階</string>
     <string name="import_title">導入</string>
