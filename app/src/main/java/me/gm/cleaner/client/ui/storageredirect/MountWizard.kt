@@ -83,7 +83,7 @@ class WizardAnswers(
         ),
         MutableLiveData(DiffArrayList(parcel.createStringArrayList()!!)),
         // 旧格式末尾没有该字段时 readString 返回 null，兜底回 files，保持兼容。
-        runCatching { parcel.readString() ?: Q1_ROOT_DIR_FILES }.getOrDefault(Q1_ROOT_DIR_FILES),
+        readRootDirName(parcel),
     )
 
     fun accessiblePlaces(): List<String> =
@@ -152,6 +152,13 @@ class WizardAnswers(
     companion object CREATOR : Parcelable.Creator<WizardAnswers> {
         const val Q1_ROOT_DIR_FILES: String = "files"
         const val Q1_ROOT_DIR_SANDBOX: String = "sdcard"
+
+        // 非内联：构造器委托阶段不可调用 inline 函数（Cannot access ... before the instance has been initialized）。
+        private fun readRootDirName(parcel: Parcel): String = try {
+            parcel.readString() ?: Q1_ROOT_DIR_FILES
+        } catch (e: Throwable) {
+            Q1_ROOT_DIR_FILES
+        }
 
         override fun createFromParcel(parcel: Parcel): WizardAnswers {
             val startPosition = parcel.dataPosition()
