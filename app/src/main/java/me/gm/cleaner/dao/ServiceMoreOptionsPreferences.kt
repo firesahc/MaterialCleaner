@@ -16,6 +16,7 @@ private const val AUTO_COMPLETE_BY_RECORD_RESPECT_KEY = "auto_complete_by_record
 private const val EDIT_MOUNT_RULES_TEMPLATE_KEY = "edit_mount_rules_template"
 private const val EDIT_READ_ONLY_TEMPLATE_KEY = "edit_read_only_template"
 private const val APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY = "apply_template_on_package_added"
+private const val WIZARD_ROOT_DIR_NAME_KEY = "wizard_root_dir_name"
 
 object ServiceMoreOptionsPreferences {
     private lateinit var preferences: SharedPreferences
@@ -35,6 +36,10 @@ object ServiceMoreOptionsPreferences {
 
     val isUsingDefaultRepo: Boolean
         get() = appCategoryRepo == APP_CATEGORY_DEFAULT
+
+    // Q1 根目录重定向的承载目录：files 或 sdcard（Android/data/<pkg>/sdcard）
+    val wizardRootDirName: String
+        get() = preferences.getString(WIZARD_ROOT_DIR_NAME_KEY, "files") ?: "files"
 
     val autoCompleteByRecordMerge: Boolean
         get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_MERGE_KEY, true)

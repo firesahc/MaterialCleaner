@@ -18,6 +18,15 @@
             android:title="@string/open_wizard_by_default_title"
             app:iconSpaceReserved="false" />
 
+        <ListPreference
+            android:defaultValue="files"
+            android:entries="@array/wizard_root_dir_entries"
+            android:entryValues="@array/wizard_root_dir_values"
+            android:key="@string/wizard_root_dir_name_key"
+            android:summary="@string/wizard_root_dir_name_summary"
+            android:title="@string/wizard_root_dir_name_title"
+            app:iconSpaceReserved="false" />
+
         <Preference
             android:key="@string/share_key"
             android:title="@string/share_title"
