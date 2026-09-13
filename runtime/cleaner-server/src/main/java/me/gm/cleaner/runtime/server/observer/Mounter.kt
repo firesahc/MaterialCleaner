@@ -106,7 +106,27 @@ class Mounter {
         )
         Log.i("MC_REDIRECT", "[Mounter] bindMount result=${result.success} pkg=$packageName " +
                 "pid=$pid sources=${rules.sources} targets=${rules.targets} detail=${result.reason}")
-        return handleBindMountResultLocked(packageName, pid, uid, result)
+        // Issue #3：fuse_bypass 只是 FUSE 私有目录拦截优化，失败时降级为无 bypass
+        // 再试一次，不记失败、不调度 pid 重试。回滚已保证 namespace 干净，
+        // 且 fuseBypass=false 时 native 直接跳过 bypass 块，不会二次触发。
+        val effective = if (MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                result.stage, result.namespaceDirty,
+                result.targetTerminated, isFuseBpfEnabled)) {
+            Log.w("MC_REDIRECT", "[Mounter] fuse bypass failed (${result.reason}), " +
+                    "degraded retry without bypass pkg=$packageName pid=$pid")
+            recordBypassSkippedLocked(packageName, pid, uid, result)
+            val fallback = RuntimeFileUtils.bind_mount_result(
+                pid, uid,
+                !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
+                rules.sources.toTypedArray(), rules.targets.toTypedArray()
+            )
+            Log.i("MC_REDIRECT", "[Mounter] degraded retry result=${fallback.success} " +
+                    "pkg=$packageName pid=$pid detail=${fallback.reason}")
+            fallback
+        } else {
+            result
+        }
+        return handleBindMountResultLocked(packageName, pid, uid, effective)
     }
 
     private fun handleBindMountResultLocked(
@@ -222,6 +242,33 @@ class Mounter {
         )
         if (errorLogThrottle.tryAcquire(event.code, event.atElapsed)) {
             Log.w("MC_REDIRECT", "[Mounter] mount failed pkg=$packageName ${event.toCompactString()}")
+        }
+        ServerErrorJournal.record(event)
+    }
+
+    /**
+     * 记录 bypass 降级事件（Issue #3）：仅可观测，不计入 failureCount、
+     * mountRetryCount 与 lastMountFailure，降级不是失败。
+     */
+    private fun recordBypassSkippedLocked(
+        packageName: String,
+        pid: Int,
+        uid: Int,
+        result: RuntimeFileUtils.BindMountResult,
+    ) {
+        val event = ErrorEvent(
+            code = ErrorCodes.MOUNT_BYPASS_SKIPPED,
+            errno = result.errno,
+            subject = "$packageName/pid:$pid",
+            atElapsed = SystemClock.elapsedRealtime(),
+            detail = buildString {
+                append("stage=").append(result.stage)
+                if (result.phase >= 0) append(" phase=").append(result.phaseName)
+                if (result.error.isNotBlank()) append(" os=").append(result.error)
+            },
+        )
+        if (errorLogThrottle.tryAcquire(event.code, event.atElapsed)) {
+            Log.w("MC_REDIRECT", "[Mounter] bypass skipped pkg=$packageName ${event.toCompactString()}")
         }
         ServerErrorJournal.record(event)
     }

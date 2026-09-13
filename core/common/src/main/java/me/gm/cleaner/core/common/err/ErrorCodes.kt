@@ -35,6 +35,9 @@ object ErrorCodes {
     /** 规则挂载失败（errno 记录于 [ErrorEvent.errno]，规则记录于 subject/detail）。 */
     const val MOUNT_RULE_FAILED = "MOUNT.RULE.FAILED"
 
+    /** FUSE bypass 失败已降级为无 bypass 重试，用户规则仍按正常路径应用（Issue #3）。 */
+    const val MOUNT_BYPASS_SKIPPED = "MOUNT.BYPASS.SKIPPED"
+
     /** 批量规则部分成功部分失败（failed_indices 记录于 detail）。 */
     const val MOUNT_RULE_PARTIAL = "MOUNT.RULE.PARTIAL"
 

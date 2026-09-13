@@ -72,6 +72,59 @@ class MountFailureRetryPolicyTest {
     }
 
     @Test
+    fun `bypass优化项失败走降级而非失败重试`() {
+        // Issue #3：fuse_bypass_data_source ENOTCONN(107) 干净失败时，
+        // 调用方应以 fuseBypass=false 再试一次，而不是记失败调度 pid 重试。
+        assertTrue(
+            MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                stage = "fuse_bypass_data_source",
+                namespaceDirty = false,
+                targetTerminated = false,
+                fuseBypassAttempted = true,
+            ),
+        )
+        assertTrue(
+            MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                stage = "fuse_bypass_obb_target",
+                namespaceDirty = false,
+                targetTerminated = false,
+                fuseBypassAttempted = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `bypass降级仅在干净且确实尝试过bypass时触发`() {
+        // 脏 namespace 照旧走污染处置，不降级。
+        assertFalse(
+            MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                stage = "fuse_bypass_data_source",
+                namespaceDirty = true,
+                targetTerminated = false,
+                fuseBypassAttempted = true,
+            ),
+        )
+        // 未尝试 bypass（如 sdcardfs 设备或空规则路径）不触发。
+        assertFalse(
+            MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                stage = "fuse_bypass_data_source",
+                namespaceDirty = false,
+                targetTerminated = false,
+                fuseBypassAttempted = false,
+            ),
+        )
+        // 用户规则失败仍走原重试路径，不降级。
+        assertFalse(
+            MountFailureRetryPolicy.shouldFallbackWithoutBypass(
+                stage = "mount_rule",
+                namespaceDirty = false,
+                targetTerminated = false,
+                fuseBypassAttempted = true,
+            ),
+        )
+    }
+
+    @Test
     fun `重试目标必须同时匹配pid uid和包名`() {
         assertTrue(
             MountRetryTargetPolicy.matches(

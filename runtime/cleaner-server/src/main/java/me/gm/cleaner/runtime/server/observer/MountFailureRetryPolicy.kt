@@ -53,7 +53,31 @@ internal object MountFailureRetryPolicy {
             forceStopTargetPackage = false,
         )
     }
+
+    /**
+     * FUSE bypass 优化项失败时的降级路由（Issue #3）。
+     *
+     * bypass 只是 FUSE 下私有目录拦截优化，用户规则可在干净 baseline 上独立成立；
+     * 因此 bypass 失败不应记失败或调度 pid 重试，而应由调用方以 fuseBypass=false
+     * 再试一次。任何 errno 下均可降级，唯独 namespace 污染/目标已终止时除外。
+     */
+    fun shouldFallbackWithoutBypass(
+        stage: String,
+        namespaceDirty: Boolean,
+        targetTerminated: Boolean,
+        fuseBypassAttempted: Boolean,
+    ): Boolean = fuseBypassAttempted &&
+        stage in BYPASS_DEGRADABLE_STAGES &&
+        !namespaceDirty && !targetTerminated
 }
+
+/** FUSE bypass 四阶段集合：优化项失败可降级，不应 gate 用户规则。 */
+private val BYPASS_DEGRADABLE_STAGES = setOf(
+    "fuse_bypass_data_source",
+    "fuse_bypass_obb_source",
+    "fuse_bypass_data_target",
+    "fuse_bypass_obb_target",
+)
 
 /** 重试前校验目标进程仍是事务登记时的那个：PID 复用后不得对旧 PID 重试。 */
 internal object MountRetryTargetPolicy {
