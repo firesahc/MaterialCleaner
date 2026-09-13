@@ -114,10 +114,9 @@ object PlatformCapabilitiesDetector {
         if (isEnabled != null) return isEnabled
 
         return try {
-            val filename = "/sys/fs/fuse/features/fuse_bpf"
-            java.nio.file.Path.of(filename).toFile().takeIf { it.exists() }
-                ?.readText() == "supported\n"
-        } catch (e: Exception) {
+            File("/sys/fs/fuse/features/fuse_bpf").takeIf { it.exists() }
+                ?.readText()?.trim() == "supported"
+        } catch (_: Throwable) {
             false
         }
     }
