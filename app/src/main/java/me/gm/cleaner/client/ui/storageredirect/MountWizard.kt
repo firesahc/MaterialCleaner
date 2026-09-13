@@ -12,7 +12,10 @@ import android.util.Log
 import android.util.SparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
+import android.view.View
 import android.view.ViewGroup
+import android.widget.Checkable
+import android.widget.TextView
 import androidx.core.os.ParcelCompat
 import androidx.core.view.forEach
 import androidx.core.view.isVisible
@@ -333,9 +336,11 @@ class MountWizard(private val packageInfo: PackageInfo) {
 
             binding.q1.setOnClickListener {
                 answers.q1 = binding.q1.isChecked
+                bindRootDirToggle(binding, answers)
             }
             binding.q11.setOnClickListener {
                 answers.q11 = binding.q11.isChecked
+                bindRootDirToggle(binding, answers)
             }
             binding.q12.setOnClickListener {
                 answers.q12 = binding.q12.isChecked
@@ -402,6 +407,38 @@ class MountWizard(private val packageInfo: PackageInfo) {
             binding.q4.setCheckedNoAnim(answers.q4)
             binding.q11.isChecked = answers.q11
             binding.q12.isChecked = answers.q12
+            bindRootDirToggle(binding, answers)
+        }
+
+        /**
+         * 逐应用根目录 toggle（q1 && q11 才可见）。
+         * 切换仅写 answers.rootDirName，提交时 createRules 自然分叉，
+         * 迁移提示走现有 getRecommendDirOps，不另起迁移逻辑。
+         */
+        private fun bindRootDirToggle(
+            binding: StorageRedirectCategoryMountWizardQuestionsBinding, answers: WizardAnswers
+        ) {
+            val root = binding.root
+            val row = root.findViewById<View>(R.id.q_1_1_root_dir) ?: return
+            row.isVisible = answers.q1 && answers.q11
+            if (!row.isVisible) {
+                return
+            }
+            val isSandbox = answers.rootDirName == WizardAnswers.Q1_ROOT_DIR_SANDBOX
+            val filesOption = root.findViewById<View>(R.id.root_dir_files)
+            val sdcardOption = root.findViewById<View>(R.id.root_dir_sdcard)
+            (filesOption as? Checkable)?.isChecked = !isSandbox
+            (sdcardOption as? Checkable)?.isChecked = isSandbox
+            val hint = root.findViewById<TextView>(R.id.root_dir_hint)
+            hint?.isVisible = isSandbox
+            filesOption?.setOnClickListener {
+                answers.rootDirName = WizardAnswers.Q1_ROOT_DIR_FILES
+                bindRootDirToggle(binding, answers)
+            }
+            sdcardOption?.setOnClickListener {
+                answers.rootDirName = WizardAnswers.Q1_ROOT_DIR_SANDBOX
+                bindRootDirToggle(binding, answers)
+            }
         }
     }
 
@@ -489,9 +526,11 @@ class MountWizard(private val packageInfo: PackageInfo) {
         if (rulesNotBacktracked.size >= 2 && rulesNotBacktracked[1] == dataDir to dataDir) {
             if (rulesNotBacktracked[0] == cacheDir to sdDir) {
                 answers.q1 = true
+                answers.rootDirName = WizardAnswers.Q1_ROOT_DIR_FILES
             } else if (rulesNotBacktracked[0] == filesDir to sdDir) {
                 answers.q1 = true
                 answers.q11 = true
+                answers.rootDirName = WizardAnswers.Q1_ROOT_DIR_FILES
             } else if (rulesNotBacktracked[0] == sandboxRootDir to sdDir) {
                 answers.q1 = true
                 answers.q11 = true

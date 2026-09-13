@@ -79,7 +79,8 @@
     <string name="open_wizard_by_default_title">Open wizard by default</string>
     <string name="wizard_root_dir_name_key" translatable="false">wizard_root_dir_name</string>
     <string name="wizard_root_dir_name_title">Directory for saved useful data</string>
-    <string name="wizard_root_dir_name_summary">Where data goes when the wizard option \'The app saves valuable data in shared storage\' is checked: /storage/emulated/0/Android/data/com.example/files or sdcard</string>
+    <string name="wizard_root_dir_name_summary">Where data goes when the wizard option \'The app saves valuable data in shared storage\' is checked: /storage/emulated/0/Android/data/&lt;package&gt;/files or /storage/emulated/0/Android/data/&lt;package&gt;/sdcard. The sdcard dir is removed on uninstall.</string>
+    <string name="wizard_root_dir_hint">Removed on uninstall when sdcard is selected.</string>
     <string name="share_key" translatable="false">share</string>
     <string name="share_title">Export</string>
     <string name="advanced_header">Advanced</string>

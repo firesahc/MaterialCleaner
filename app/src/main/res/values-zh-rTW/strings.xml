@@ -62,7 +62,8 @@
 
     <string name="open_wizard_by_default_title">默認打開嚮導</string>
     <string name="wizard_root_dir_name_title">保存有用數據的目錄</string>
-    <string name="wizard_root_dir_name_summary">向導中勾選「應用會在共享儲存空間保存有用的數據」時，數據存放的位置：/storage/emulated/0/Android/data/com.example/files 或 sdcard</string>
+    <string name="wizard_root_dir_name_summary">向導中勾選「應用會在共享儲存空間保存有用的數據」時，數據存放的位置：/storage/emulated/0/Android/data/&lt;package&gt;/files 或 /storage/emulated/0/Android/data/&lt;package&gt;/sdcard。sdcard 隨應用解除安裝刪除。</string>
+    <string name="wizard_root_dir_hint">選擇 sdcard 時隨應用解除安裝刪除。</string>
     <string name="share_title">導出</string>
     <string name="advanced_header">進階</string>
     <string name="import_title">導入</string>
