@@ -35,13 +35,13 @@ object HookDataBusBridge {
         val remote = callback
         if (remote != null) {
             try {
-                return remote.readDataBusSnapshot(name)?.takeIf { it.isNotEmpty() }
+                val value = remote.readDataBusSnapshot(name)
+                if (!value.isNullOrEmpty()) return value
             } catch (e: RemoteException) {
                 Log.w(TAG, "readSnapshot via server failed: $name", e)
             } catch (e: RuntimeException) {
                 Log.w(TAG, "readSnapshot via server failed: $name", e)
             }
-            return null
         }
         return DataBus.readSnapshot(name)
     }
@@ -56,7 +56,6 @@ object HookDataBusBridge {
             } catch (e: RuntimeException) {
                 Log.w(TAG, "getSignalTimestamp via server failed: $name", e)
             }
-            return 0L
         }
         return DataBus.getSignalTimestamp(name)
     }
