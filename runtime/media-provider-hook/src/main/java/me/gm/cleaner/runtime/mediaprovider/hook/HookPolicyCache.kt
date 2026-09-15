@@ -35,89 +35,103 @@ object HookPolicyCache {
 
     private const val EMULATED_PREFIX = "/storage/emulated/"
 
-    // ── ReadOnly 缓存 ──
+    // ── 按域分组的 copy-on-write holder：每个域独立演进 generation/epoch ──
+    private data class ReadOnlyHolder(
+        val data: Map<String, Set<String>> = emptyMap(),
+        val generation: Long = 0L,
+        val publisherEpoch: String = "",
+        val revision: String = "",
+    )
+
+    private data class RuleHolder(
+        val data: Map<String, Map<Int, MountRules>> = emptyMap(),
+        val denylist: Set<String> = emptySet(),
+        val generation: Long = 0L,
+        val publisherEpoch: String = "",
+        val revision: String = "",
+    )
+
+    private data class MountPointsHolder(
+        val generation: Long = 0L,
+        val publisherEpoch: String = "",
+        val revision: String = "",
+    )
+
+    private data class CapabilitiesHolder(
+        val sdkVersionInt: Int = 0,
+        val isFuseBpfEnabled: Boolean = false,
+        val fuseAvailable: Boolean = false,
+        val fuseJniLoadMode: String = "UNKNOWN",
+        val supportedNativeHookMode: String = "NONE",
+        val generation: Long = 0L,
+        val publisherEpoch: String = "",
+    )
+
+    private data class PreferencesHolder(
+        val recordExternalAppSpecificStorage: Boolean = false,
+        val aggressivelyPromptForReadingMediaFiles: Boolean = false,
+        val generation: Long = 0L,
+        val publisherEpoch: String = "",
+    )
+
+    // ── ReadOnly 域 ──
     @Volatile
-    private var readOnlyCache: Map<String, Set<String>> = emptyMap()
-    @Volatile
-    private var readOnlyGeneration: Long = 0L
-    @Volatile
-    private var readOnlyPublisherEpoch: String = ""
-    @Volatile
-    private var readOnlyRevision: String = ""
+    private var readOnly: ReadOnlyHolder = ReadOnlyHolder()
     @Volatile
     private var lastReadOnlySignalTimestamp: Long = 0L
 
-    // ── Rule 缓存 ──
+    // ── Rule 域（含 denylist） ──
     @Volatile
-    private var ruleCache: Map<String, Map<Int, MountRules>> = emptyMap()
-    @Volatile
-    private var policyGeneration: Long = 0L
-    @Volatile
-    private var policyPublisherEpoch: String = ""
-    @Volatile
-    private var redirectRevision: String = ""
+    private var rule: RuleHolder = RuleHolder()
     @Volatile
     private var lastPolicySignalTimestamp: Long = 0L
 
-    // ── Configured Mount Points（推送到 native） ──
+    // ── Configured Mount Points 域（数据体在 native，本地只保留版本水位） ──
     @Volatile
-    private var configuredMountPointsGeneration: Long = 0L
-    @Volatile
-    private var configuredMountPointsPublisherEpoch: String = ""
-    @Volatile
-    private var configuredMountPointsRevision: String = ""
+    private var mountPoints: MountPointsHolder = MountPointsHolder()
     @Volatile
     private var lastMountSignalTimestamp: Long = 0L
 
     /** 已推送到 native 的 configured_mount_points generation（用于诊断） */
-    val nativeMountPointsGeneration: Long get() = configuredMountPointsGeneration
+    val nativeMountPointsGeneration: Long get() = mountPoints.generation
 
-    val redirectPolicyGeneration: Long get() = policyGeneration
+    val redirectPolicyGeneration: Long get() = rule.generation
 
     fun getNativeHookStatusJson(): String =
         NativeHookStatus.toJson()
 
-    // ── Denylist ──
+    // ── PlatformCapabilities 域 ──
     @Volatile
-    private var denylist: Set<String> = emptySet()
-
-    // ── PlatformCapabilities 缓存 ──
-    @Volatile
-    private var capabilitiesGeneration: Long = 0L
-    @Volatile
-    private var capabilitiesPublisherEpoch: String = ""
+    private var capabilities: CapabilitiesHolder = CapabilitiesHolder()
     @Volatile
     private var lastCapabilitiesSignalTimestamp: Long = 0L
-    @Volatile
-    private var cachedSdkVersionInt: Int = 0
-    @Volatile
-    private var cachedIsFuseBpfEnabled: Boolean = false
-    @Volatile
-    private var cachedFuseAvailable: Boolean = false
-    @Volatile
-    private var cachedFuseJniLoadMode: String = "UNKNOWN"
-    @Volatile
-    private var cachedSupportedNativeHookMode: String = "NONE"
 
     /** 缓存的 FUSE BPF 状态，供 MediaProvider Hook 使用 */
-    val isFuseBpfEnabledFromCache: Boolean get() = cachedIsFuseBpfEnabled
+    val isFuseBpfEnabledFromCache: Boolean get() = capabilities.isFuseBpfEnabled
     /** 缓存的 FUSE 可用性，供 MediaProvider Hook 使用 */
-    val fuseAvailableFromCache: Boolean get() = cachedFuseAvailable
+    val fuseAvailableFromCache: Boolean get() = capabilities.fuseAvailable
     /** 是否已经成功加载 platform_capabilities 快照 */
-    val platformCapabilitiesLoaded: Boolean get() = capabilitiesGeneration > 0
+    val platformCapabilitiesLoaded: Boolean get() = capabilities.generation > 0
     /** 缓存的 SDK 版本，仅用于诊断日志 */
-    val sdkVersionIntFromCache: Int get() = cachedSdkVersionInt
-    val fuseJniLoadModeFromCache: String get() = cachedFuseJniLoadMode
-    val supportedNativeHookModeFromCache: String get() = cachedSupportedNativeHookMode
+    val sdkVersionIntFromCache: Int get() = capabilities.sdkVersionInt
+    val fuseJniLoadModeFromCache: String get() = capabilities.fuseJniLoadMode
+    val supportedNativeHookModeFromCache: String get() = capabilities.supportedNativeHookMode
 
-    // ── 偏好标记 ──
+    // ── 偏好标记域（随 redirect_policy 快照演进，独立 holder 发布） ──
     @Volatile
-    var recordExternalAppSpecificStorage: Boolean = false
-        private set
+    private var preferences: PreferencesHolder = PreferencesHolder()
 
-    @Volatile
-    var aggressivelyPromptForReadingMediaFiles: Boolean = false
-        private set
+    var recordExternalAppSpecificStorage: Boolean
+        get() = preferences.recordExternalAppSpecificStorage
+        private set(value) {
+            preferences = preferences.copy(recordExternalAppSpecificStorage = value)
+        }
+
+    var aggressivelyPromptForReadingMediaFiles: Boolean
+        get() = preferences.aggressivelyPromptForReadingMediaFiles
+        private set(value) {
+            preferences = preferences.copy(aggressivelyPromptForReadingMediaFiles = value)
+        }
 
     /**
      * 从 DataBus 加载最后一次快照初始化缓存。
@@ -148,9 +162,9 @@ object HookPolicyCache {
                 } else {
                     try {
                         parseRedirectPolicy(policyJson)
-                        NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
-                        Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=$policyGeneration, " +
-                                "packages=${ruleCache.size}, users=${ruleCache.values.sumOf { it.size }}")
+                        NativeHookStatus.markPolicyCacheHealthy(rule.generation)
+                        Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=${rule.generation}, " +
+                                "packages=${rule.data.size}, users=${rule.data.values.sumOf { it.size }}")
                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                     } catch (e: Exception) {
                         Log.e(TAG, "initFromDataBus: failed to parse redirect_policy", e)
@@ -159,7 +173,7 @@ object HookPolicyCache {
                             describeThrowable(e),
                         )
                         NativeHookStatus.markPolicyCacheFailed(
-                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), rule.generation
                         )
                         SnapshotConsumeOutcome(succeeded = false)
                     }
@@ -189,9 +203,9 @@ object HookPolicyCache {
                 } else {
                     try {
                         parseReadOnly(roJson)
-                        NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
-                        Log.i(TAG, "initFromDataBus: loaded read_only, generation=$readOnlyGeneration, " +
-                                "packages=${readOnlyCache.size}")
+                        NativeHookStatus.markPolicyCacheHealthy(readOnly.generation)
+                        Log.i(TAG, "initFromDataBus: loaded read_only, generation=${readOnly.generation}, " +
+                                "packages=${readOnly.data.size}")
                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                     } catch (e: Exception) {
                         Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
@@ -200,7 +214,7 @@ object HookPolicyCache {
                             describeThrowable(e),
                         )
                         NativeHookStatus.markPolicyCacheFailed(
-                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnly.generation
                         )
                         SnapshotConsumeOutcome(succeeded = false)
                     }
@@ -269,32 +283,36 @@ object HookPolicyCache {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
             val publisherEpoch = root.optString("publisherEpoch", "")
+            val current = capabilities
             if (!shouldAcceptSnapshot(
                     publisherEpoch,
                     generation,
-                    capabilitiesPublisherEpoch,
-                    capabilitiesGeneration
+                    current.publisherEpoch,
+                    current.generation
                 )) {
                 return  // 未更新
             }
-            cachedSdkVersionInt = root.optInt("sdkVersionInt", 0)
-            cachedIsFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false)
-            cachedFuseAvailable = root.optBoolean("fuseAvailable", false)
-            cachedFuseJniLoadMode = root.optString("fuseJniLoadMode", "UNKNOWN")
-            cachedSupportedNativeHookMode = root.optString("supportedNativeHookMode", "NONE")
-            capabilitiesGeneration = generation
-            capabilitiesPublisherEpoch = publisherEpoch
-            NativeHookStatus.markPolicyCacheHealthy(capabilitiesGeneration)
-            Log.i(TAG, "loadPlatformCapabilities: sdk=$cachedSdkVersionInt, " +
-                    "fuseBpf=$cachedIsFuseBpfEnabled, fuse=$cachedFuseAvailable, " +
-                    "fuseJniLoadMode=$cachedFuseJniLoadMode, " +
-                    "nativeHookMode=$cachedSupportedNativeHookMode, " +
-                    "epoch=$capabilitiesPublisherEpoch, generation=$capabilitiesGeneration")
+            val next = CapabilitiesHolder(
+                sdkVersionInt = root.optInt("sdkVersionInt", 0),
+                isFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false),
+                fuseAvailable = root.optBoolean("fuseAvailable", false),
+                fuseJniLoadMode = root.optString("fuseJniLoadMode", "UNKNOWN"),
+                supportedNativeHookMode = root.optString("supportedNativeHookMode", "NONE"),
+                generation = generation,
+                publisherEpoch = publisherEpoch,
+            )
+            capabilities = next
+            NativeHookStatus.markPolicyCacheHealthy(next.generation)
+            Log.i(TAG, "loadPlatformCapabilities: sdk=${next.sdkVersionInt}, " +
+                    "fuseBpf=${next.isFuseBpfEnabled}, fuse=${next.fuseAvailable}, " +
+                    "fuseJniLoadMode=${next.fuseJniLoadMode}, " +
+                    "nativeHookMode=${next.supportedNativeHookMode}, " +
+                    "epoch=${next.publisherEpoch}, generation=${next.generation}")
         } catch (e: Exception) {
             Log.e(TAG, "loadPlatformCapabilities: failed", e)
             NativeHookStatus.markPolicyCacheFailed(
                 ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
-                describeThrowable(e), capabilitiesGeneration
+                describeThrowable(e), capabilities.generation
             )
         }
     }
@@ -331,9 +349,9 @@ object HookPolicyCache {
                         )
                         SnapshotConsumeOutcome(succeeded = true, changed = false)
                     } else {
-                        try {
+                    try {
                             parseRedirectPolicy(policyJson)
-                            NativeHookStatus.markPolicyCacheHealthy(policyGeneration)
+                            NativeHookStatus.markPolicyCacheHealthy(rule.generation)
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
                         } catch (e: Exception) {
                             Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
@@ -342,7 +360,7 @@ object HookPolicyCache {
                                 describeThrowable(e),
                             )
                             NativeHookStatus.markPolicyCacheFailed(
-                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), policyGeneration
+                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), rule.generation
                             )
                             SnapshotConsumeOutcome(succeeded = false)
                         }
@@ -369,7 +387,7 @@ object HookPolicyCache {
                     } else {
                         try {
                             parseReadOnly(roJson)
-                            NativeHookStatus.markPolicyCacheHealthy(readOnlyGeneration)
+                            NativeHookStatus.markPolicyCacheHealthy(readOnly.generation)
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
                         } catch (e: Exception) {
                             Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
@@ -378,7 +396,7 @@ object HookPolicyCache {
                                 describeThrowable(e),
                             )
                             NativeHookStatus.markPolicyCacheFailed(
-                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnlyGeneration
+                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED, describeThrowable(e), readOnly.generation
                             )
                             SnapshotConsumeOutcome(succeeded = false)
                         }
@@ -452,16 +470,17 @@ object HookPolicyCache {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
             val publisherEpoch = root.optString("publisherEpoch", "")
+            val current = mountPoints
             if (!force && !shouldAcceptSnapshot(
                     publisherEpoch,
                     generation,
-                    configuredMountPointsPublisherEpoch,
-                    configuredMountPointsGeneration
+                    current.publisherEpoch,
+                    current.generation
                 )) {
                 Log.d(TAG, "loadConfiguredMountPoints: snapshot not newer " +
                         "(epoch=$publisherEpoch generation=$generation, " +
-                        "currentEpoch=$configuredMountPointsPublisherEpoch " +
-                        "currentGeneration=$configuredMountPointsGeneration)")
+                        "currentEpoch=${current.publisherEpoch} " +
+                        "currentGeneration=${current.generation})")
                 return true
             }
 
@@ -471,23 +490,27 @@ object HookPolicyCache {
                 // 空数组必须显式推送到 native，用于清除残留 mountPoint。
                 val revision = root.optString("redirectRevision", "")
                 FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation, revision)
-                configuredMountPointsGeneration = generation
-                configuredMountPointsPublisherEpoch = publisherEpoch
-                configuredMountPointsRevision = revision
-                NativeHookStatus.markPolicyCacheHealthy(configuredMountPointsGeneration)
+                mountPoints = MountPointsHolder(
+                    generation = generation,
+                    publisherEpoch = publisherEpoch,
+                    revision = revision,
+                )
+                NativeHookStatus.markPolicyCacheHealthy(mountPoints.generation)
                 return true
             }
 
             val points = Array(pointsArr.length()) { pointsArr.getString(it) }
             val revision = root.optString("redirectRevision", "")
             FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation, revision)
-            configuredMountPointsGeneration = generation
-            configuredMountPointsPublisherEpoch = publisherEpoch
-            configuredMountPointsRevision = revision
+            mountPoints = MountPointsHolder(
+                generation = generation,
+                publisherEpoch = publisherEpoch,
+                revision = revision,
+            )
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, " +
                     "epoch=$publisherEpoch, generation=$generation")
-            NativeHookStatus.markPolicyCacheHealthy(configuredMountPointsGeneration)
+            NativeHookStatus.markPolicyCacheHealthy(mountPoints.generation)
             return true
         } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
@@ -499,7 +522,7 @@ object HookPolicyCache {
             )
             NativeHookStatus.markPolicyCacheFailed(
                 ErrorCodes.HOOK_JAVA_CACHE_COMMIT_NATIVE_FAILED,
-                describeThrowable(e), configuredMountPointsGeneration
+                describeThrowable(e), mountPoints.generation
             )
             return false
         }
@@ -518,7 +541,7 @@ object HookPolicyCache {
      * @return true 如果路径命中只读规则
      */
     fun isReadOnly(packageName: String, pathAsUser: String): Boolean {
-        val readOnlyPaths = readOnlyCache[packageName] ?: return false
+        val readOnlyPaths = readOnly.data[packageName] ?: return false
         val parent = File(pathAsUser).parent ?: return false
         return readOnlyPaths.any { roPath ->
             roPath.equals(pathAsUser, ignoreCase = true) ||
@@ -530,7 +553,7 @@ object HookPolicyCache {
      * 获取只读规则的 generation，用于判断缓存是否存在。
      * 返回 0 表示未加载任何快照。
      */
-    fun getReadOnlyGeneration(): Long = readOnlyGeneration
+    fun getReadOnlyGeneration(): Long = readOnly.generation
 
     // ═══════════════════════════════════════════════════════════
     // Rule 查询（路径重定向）
@@ -551,7 +574,8 @@ object HookPolicyCache {
      * 从本地缓存按用户计算挂载后路径。
      */
     fun getMountedPath(packageName: String, userId: Int, path: String): String? {
-        val userRules = ruleCache[packageName] ?: return null
+        val snapshot = rule
+        val userRules = snapshot.data[packageName] ?: return null
         val rules = userRules[userId] ?: userRules[0] ?: return null
         return rules.getMountedPath(path)
     }
@@ -560,14 +584,14 @@ object HookPolicyCache {
      * 检查指定包是否在 denylist 中。
      */
     fun isDenied(packageName: String): Boolean =
-        denylist.contains(packageName)
+        rule.denylist.contains(packageName)
 
     /**
      * 调用方无 uid 时的策略存在性快判，供 Query 等热路径在重型分析前旁路。
      * 只查本地不可变缓存，不做 IO/Binder/JSON。
      */
     fun hasRedirectRules(packageName: String): Boolean =
-        ruleCache.containsKey(packageName)
+        rule.data.containsKey(packageName)
 
     // ═══════════════════════════════════════════════════════════
     // JSON 解析
@@ -578,10 +602,11 @@ object HookPolicyCache {
         val generation = root.optLong("generation", 0L)
         val publisherEpoch = root.optString("publisherEpoch", "")
         val revision = root.optString("redirectRevision", "")
-        if (!shouldAcceptSnapshot(publisherEpoch, generation, policyPublisherEpoch, policyGeneration)) {
+        val current = rule
+        if (!shouldAcceptSnapshot(publisherEpoch, generation, current.publisherEpoch, current.generation)) {
             Log.d(TAG, "parseRedirectPolicy: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
-                    "currentEpoch=$policyPublisherEpoch currentGeneration=$policyGeneration)")
+                    "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
             return
         }
 
@@ -617,26 +642,36 @@ object HookPolicyCache {
             }
         }
 
-        ruleCache = newCache
-        policyGeneration = generation
-        policyPublisherEpoch = publisherEpoch
-        redirectRevision = revision
-        NativeHookStatus.markRedirectPolicyApplied(revision, generation, newCache.isNotEmpty())
-
-        // 解析 denylist
+        // 解析 denylist：缺席则沿用当前域快照，保持 copy-on-write 原子发布。
         val denyArr = root.optJSONArray("denylist")
-        if (denyArr != null) {
+        val newDenylist = if (denyArr != null) {
             val denySet = mutableSetOf<String>()
             for (i in 0 until denyArr.length()) {
                 denySet.add(denyArr.getString(i))
             }
-            denylist = denySet
+            denySet.toSet()
+        } else {
+            current.denylist
         }
 
+        rule = RuleHolder(
+            data = newCache.toMap(),
+            denylist = newDenylist,
+            generation = generation,
+            publisherEpoch = publisherEpoch,
+            revision = revision,
+        )
+        NativeHookStatus.markRedirectPolicyApplied(revision, generation, newCache.isNotEmpty())
+
         // 解析偏好标记；native 侧应用由挂载点全量刷新（commitPolicy）统一原子完成。
-        recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false)
-        aggressivelyPromptForReadingMediaFiles =
-            root.optBoolean("aggressivelyPromptForReadingMediaFiles", false)
+        // 偏好独立 holder 发布，与 rule 域同代演进。
+        preferences = PreferencesHolder(
+            recordExternalAppSpecificStorage = root.optBoolean("recordExternalAppSpecificStorage", false),
+            aggressivelyPromptForReadingMediaFiles =
+                root.optBoolean("aggressivelyPromptForReadingMediaFiles", false),
+            generation = generation,
+            publisherEpoch = publisherEpoch,
+        )
     }
 
     private fun extractUserIdFromPath(path: String): Int {
@@ -687,10 +722,11 @@ object HookPolicyCache {
         val generation = root.optLong("generation", 0L)
         val publisherEpoch = root.optString("publisherEpoch", "")
         val revision = root.optString("readOnlyRevision", "")
-        if (!shouldAcceptSnapshot(publisherEpoch, generation, readOnlyPublisherEpoch, readOnlyGeneration)) {
+        val current = readOnly
+        if (!shouldAcceptSnapshot(publisherEpoch, generation, current.publisherEpoch, current.generation)) {
             Log.d(TAG, "parseReadOnly: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
-                    "currentEpoch=$readOnlyPublisherEpoch currentGeneration=$readOnlyGeneration)")
+                    "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
             return
         }
 
@@ -704,15 +740,17 @@ object HookPolicyCache {
                     paths.add(arr.getString(i))
                 }
                 if (paths.isNotEmpty()) {
-                    newCache[pkg] = paths
+                    newCache[pkg] = paths.toSet()
                 }
             }
         }
 
-        readOnlyCache = newCache
-        readOnlyGeneration = generation
-        readOnlyPublisherEpoch = publisherEpoch
-        readOnlyRevision = revision
+        readOnly = ReadOnlyHolder(
+            data = newCache.toMap(),
+            generation = generation,
+            publisherEpoch = publisherEpoch,
+            revision = revision,
+        )
         NativeHookStatus.markReadOnlyPolicyApplied(revision, generation, newCache.isNotEmpty())
     }
 
