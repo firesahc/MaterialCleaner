@@ -29,7 +29,9 @@ function Add-Finding([string]$Gate, [string]$Status, [string]$Detail) {
 
 function Get-SourceFiles {
     param([string[]]$Extensions)
-    $exclude = @('\.git\', '\build\', '\external\', '\include\android-base\', 'fuse_lowlevel.h')
+    # 工具缓存目录永不属于源码：.gradle 系 Gradle 变换产物（如 cxx prefab 头文件），
+    # 曾污染基线（如 math.h 1578 行），必须排除在枚举之外。
+    $exclude = @('\.git\', '\.gradle\', '\build\', '\external\', '\include\android-base\', 'fuse_lowlevel.h')
     Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Include $extensions |
         Where-Object {
             $p = $_.FullName
