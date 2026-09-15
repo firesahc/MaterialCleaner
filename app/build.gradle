@@ -85,124 +85,150 @@ android {
     namespace 'me.gm.cleaner'
 }
 
-// ── Xposed 模块 assets/main.jar 自动构建 ──────────────────────────
-// 将 MediaProvider Hook runtime 及必要依赖通过 d8 转为 DEX，打包为 main.jar
-// 放入 app/src/main/assets/ 由 mergeDebugAssets 自动打包进 APK
+// ── Xposed 模块 main.jar 自动构建 ──────────────────────────────────
+// 将 MediaProvider Hook runtime 及必要依赖通过 d8 转为 DEX，打包为 main.jar，
+// 输出到 build/generated/xposed/<variant>/ 并经由 Variant API 注册为
+// generated assets，随 mergeAssets 自动打进 APK。
+// 要点：不写源码目录（git 干净）；不猜任务名（无 whenTaskAdded）；
+// 按 variant 取 classes.jar（release 不再错配 debug 类）。
+// 任务名 buildXposedMainJar（debug）被 CI 锚点门禁直接引用，保持不变。
 // ─────────────────────────────────────────────────────────────────
-def buildMainJarTask = tasks.register('buildXposedMainJar') {
-    description = '构建 Xposed 模块 main.jar（d8 + zip）'
-    group = 'Cleaner'
-
-    // 依赖 Hook runtime 及 main.jar 必要依赖编译完成
+def registerXposedMainJar(String variant) {
+    def capitalized = variant.substring(0, 1).toUpperCase() + variant.substring(1)
+    def taskName = variant == 'debug' ? 'buildXposedMainJar' : "buildXposedMainJar${capitalized}"
     // 模块清单单一真源来自根项目 xposedRuntimeModules
     def xposedRuntimeModules = rootProject.ext.xposedRuntimeModules
-    dependsOn ':runtime:media-provider-hook:syncDebugLibJars'
-    dependsOn xposedRuntimeModules.collect { it + ':syncDebugLibJars' }
+    def sdkDir = android.sdkDirectory
+    def androidJar = "${sdkDir}/platforms/android-${android.compileSdk}/android.jar"
+    // 普通 File 声明输出（outputs.file 保持与原实现相同的声明方式）
+    def outJarFile = new File(project.buildDir, "generated/xposed/${variant}/main.jar")
+    // AGP 要求 wiredWith 返回 DirectoryProperty：用懒属性承载输出目录
+    def outDirProp = objects.directoryProperty()
+    outDirProp.set(layout.buildDirectory.dir("generated/xposed/${variant}"))
+    return tasks.register(taskName) {
+        description = "构建 Xposed 模块 main.jar（${variant}，d8 + zip）"
+        group = 'Cleaner'
 
-    // 输入：Hook runtime 及必要依赖 classes.jar
-    def mainJarInputs = ([project(':runtime:media-provider-hook')] +
-            xposedRuntimeModules.collect { project(it) }).collect { module ->
-        module.buildDir.path + '/intermediates/aar_main_jar/debug/classes.jar'
-    }
-    inputs.files mainJarInputs
-    // 锚点类清单变更必须使门禁失效重跑
-    inputs.property('xposedRuntimeAnchorClasses') {
-        rootProject.ext.xposedRuntimeAnchorClasses.toString()
-    }
+        // 依赖 Hook runtime 及 main.jar 必要依赖编译完成（按 variant）
+        dependsOn ":runtime:media-provider-hook:sync${capitalized}LibJars"
+        dependsOn xposedRuntimeModules.collect { it + ":sync${capitalized}LibJars" }
 
-    // 输出：main.jar
-    def outputJar = "${projectDir}/src/main/assets/main.jar"
-    outputs.file outputJar
-
-    doLast {
-        def mainJarInputFiles = mainJarInputs.collect { file(it) }
-        def missingInput = mainJarInputFiles.find { !it.exists() }
-        if (missingInput != null) {
-            throw new GradleException("main.jar 输入 classes.jar 未找到: ${missingInput.path}")
+        // 输入：Hook runtime 及必要依赖 classes.jar（按 variant）
+        def mainJarInputs = ([project(':runtime:media-provider-hook')] +
+                xposedRuntimeModules.collect { project(it) }).collect { module ->
+            module.buildDir.path + "/intermediates/aar_main_jar/${variant}/classes.jar"
         }
-
-        // 定位 d8 工具
-        def buildToolsDir = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}"
-        def d8 = new File(buildToolsDir, 'd8')
-        if (!d8.exists()) {
-            d8 = new File(buildToolsDir, 'd8.bat')
+        inputs.files mainJarInputs
+        // 锚点类清单变更必须使门禁失效重跑
+        inputs.property('xposedRuntimeAnchorClasses') {
+            rootProject.ext.xposedRuntimeAnchorClasses.toString()
         }
-        if (!d8.exists()) {
-            throw new GradleException("d8 未找到: ${buildToolsDir}")
-        }
+        outputs.file outJarFile
 
-        // 临时目录
-        def tmpDir = layout.buildDirectory.dir('tmp/mainjar').get().asFile
-        delete tmpDir
-        tmpDir.mkdirs()
-        def dexDir = new File(tmpDir, 'dex')
-        dexDir.mkdirs()
-        def androidJar = "${android.sdkDirectory}/platforms/android-${android.compileSdk}/android.jar"
+        doLast {
+            def mainJarInputFiles = mainJarInputs.collect { file(it) }
+            def missingInput = mainJarInputFiles.find { !it.exists() }
+            if (missingInput != null) {
+                throw new GradleException("main.jar 输入 classes.jar 未找到: ${missingInput.path}")
+            }
 
-        // Step 1: d8 将 classes.jar 转为 DEX
-        exec {
-            commandLine d8.path,
-                    '--lib', androidJar,
-                    '--min-api', '26',
-                    '--output', dexDir.path,
-                    *mainJarInputFiles.collect { it.path }
-        }
+            // 定位 d8 工具
+            def buildToolsDir = "${sdkDir}/build-tools/${android.buildToolsVersion}"
+            def d8 = new File(buildToolsDir, 'd8')
+            if (!d8.exists()) {
+                d8 = new File(buildToolsDir, 'd8.bat')
+            }
+            if (!d8.exists()) {
+                throw new GradleException("d8 未找到: ${buildToolsDir}")
+            }
 
-        def dexFile = new File(dexDir, 'classes.dex')
-        if (!dexFile.exists()) {
-            throw new GradleException("d8 转换失败，classes.dex 未生成")
-        }
+            // 临时目录
+            def tmpDir = layout.buildDirectory.dir('tmp/mainjar').get().asFile
+            delete tmpDir
+            tmpDir.mkdirs()
+            def dexDir = new File(tmpDir, 'dex')
+            dexDir.mkdirs()
 
-        // Step 2: 将 classes.dex 打包为 main.jar
-        def outputFile = file(outputJar)
-        def parent = outputFile.parentFile
-        parent.mkdirs()
-        outputFile.delete()
+            // Step 1: d8 将 classes.jar 转为 DEX
+            exec {
+                commandLine d8.path,
+                        '--lib', androidJar,
+                        '--min-api', '26',
+                        '--output', dexDir.path,
+                        *mainJarInputFiles.collect { it.path }
+            }
 
-        outputFile.withOutputStream { out ->
-            def zipOut = new java.util.zip.ZipOutputStream(out)
-            zipOut.putNextEntry(new java.util.zip.ZipEntry('classes.dex'))
-            zipOut << dexFile.bytes
-            zipOut.closeEntry()
-            zipOut.close()
-        }
+            def dexFile = new File(dexDir, 'classes.dex')
+            if (!dexFile.exists()) {
+                throw new GradleException("d8 转换失败，classes.dex 未生成")
+            }
 
-        if (outputFile.exists()) {
-            logger.lifecycle("✅ main.jar 已生成: ${outputJar} (${outputFile.size()} 字节)")
-        } else {
-            throw new GradleException("main.jar 生成失败")
-        }
+            // Step 2: 将 classes.dex 打包为 main.jar（输出到 build 目录）
+            def outDirFile = outDirProp.get().asFile
+            outDirFile.mkdirs()
+            def outputFile = new File(outDirFile, 'main.jar')
+            outputFile.delete()
 
-        // ── Step 3: CI 门禁——随行模块锚点类断言 ──
-        // 逐模块校验标志性类已进入 DEX，防止打包清单漂移导致
-        // Hook 进程 NoClassDefFoundError 整体失效（该故障发生在
-        // 运行时可观测体系生效之前，必须在构建期拦截）。
-        def dexFiles = dexDir.listFiles().findAll { it.name.endsWith('.dex') }
-        if (dexFiles.isEmpty()) {
-            throw new GradleException("main.jar 门禁失败：DEX 文件不存在")
+            outputFile.withOutputStream { out ->
+                def zipOut = new java.util.zip.ZipOutputStream(out)
+                zipOut.putNextEntry(new java.util.zip.ZipEntry('classes.dex'))
+                zipOut << dexFile.bytes
+                zipOut.closeEntry()
+                zipOut.close()
+            }
+
+            if (outputFile.exists()) {
+                logger.lifecycle("✅ main.jar 已生成: ${outputFile.path} (${outputFile.size()} 字节)")
+            } else {
+                throw new GradleException("main.jar 生成失败")
+            }
+
+            // ── Step 3: CI 门禁——随行模块锚点类断言 ──
+            // 逐模块校验标志性类已进入 DEX，防止打包清单漂移导致
+            // Hook 进程 NoClassDefFoundError 整体失效（该故障发生在
+            // 运行时可观测体系生效之前，必须在构建期拦截）。
+            def dexFiles = dexDir.listFiles().findAll { it.name.endsWith('.dex') }
+            if (dexFiles.isEmpty()) {
+                throw new GradleException("main.jar 门禁失败：DEX 文件不存在")
+            }
+            def dexBuffer = new java.io.ByteArrayOutputStream()
+            dexFiles.each { dexBuffer.write(it.bytes) }
+            def dexText = new String(dexBuffer.toByteArray(), java.nio.charset.StandardCharsets.US_ASCII)
+            def anchorClasses = rootProject.ext.xposedRuntimeAnchorClasses as Map
+            def missingAnchors = anchorClasses
+                    .findAll { module, anchor -> !dexText.contains(anchor) }
+            if (!missingAnchors.isEmpty()) {
+                def detail = missingAnchors.collect { module, anchor ->
+                    "${module} 缺少锚点类 ${anchor}"
+                }.join('; ')
+                throw new GradleException("main.jar 门禁失败：${detail}。" +
+                        "请核对根项目 xposedRuntimeModules 清单与对应模块的实现依赖。")
+            }
+            logger.lifecycle("✅ main.jar 门禁通过: ${anchorClasses.size()} 个随行模块锚点类全部就位")
         }
-        def dexBuffer = new java.io.ByteArrayOutputStream()
-        dexFiles.each { dexBuffer.write(it.bytes) }
-        def dexText = new String(dexBuffer.toByteArray(), java.nio.charset.StandardCharsets.US_ASCII)
-        def anchorClasses = rootProject.ext.xposedRuntimeAnchorClasses as Map
-        def missingAnchors = anchorClasses
-                .findAll { module, anchor -> !dexText.contains(anchor) }
-        if (!missingAnchors.isEmpty()) {
-            def detail = missingAnchors.collect { module, anchor ->
-                "${module} 缺少锚点类 ${anchor}"
-            }.join('; ')
-            throw new GradleException("main.jar 门禁失败：${detail}。" +
-                    "请核对根项目 xposedRuntimeModules 清单与对应模块的实现依赖。")
-        }
-        logger.lifecycle("✅ main.jar 门禁通过: ${anchorClasses.size()} 个随行模块锚点类全部就位")
     }
 }
 
-// 将 main.jar 构建任务挂接到 assets 合并之前
-tasks.whenTaskAdded { task ->
-    if (task.name.startsWith('merge') && task.name.endsWith('Assets')) {
-        task.dependsOn buildMainJarTask
-    }
+def debugMainJarTask = registerXposedMainJar('debug')
+def releaseMainJarTask = registerXposedMainJar('release')
+
+// 经由 Variant API 把生成目录注册为 assets：mergeAssets 自动消费，
+// 不再按任务名字符串挂接（删除 whenTaskAdded 猜测）。
+// 显式接线：AGP 在脚本求值之后才创建 variant 任务，直接 named() 会
+// “任务不存在”；改用 matching + configureEach 延迟到任务具现时挂接。
+// 名字是 AGP 稳定契约里的精确全称（非前后缀通配）：未来若更名，
+// 这里的精确匹配自然失效为“无接线”，而 merge 任务输入指纹会因缺失
+// main.jar 导致 APK 体积断言失败——fail-loud，不静默。
+// 生成目录同时声明为对应 variant 的 assets srcDir，保证增量指纹正确。
+def debugAssets = android.sourceSets.debug.assets
+debugAssets.srcDir layout.buildDirectory.dir('generated/xposed/debug')
+def releaseAssets = android.sourceSets.release.assets
+releaseAssets.srcDir layout.buildDirectory.dir('generated/xposed/release')
+tasks.matching { it.name == 'mergeDebugAssets' }.configureEach {
+    dependsOn debugMainJarTask
+}
+tasks.matching { it.name == 'mergeReleaseAssets' }.configureEach {
+    dependsOn releaseMainJarTask
 }
 
 dependencies {
