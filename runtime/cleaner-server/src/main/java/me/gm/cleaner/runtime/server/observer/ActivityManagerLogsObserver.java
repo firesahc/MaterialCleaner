@@ -239,12 +239,23 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                                     mHasAmStart = true;
                                 }
                                 final var start = StringUtils.substring(line, indexOfStartProc + 28, indexOfBrace);
-                                final var logFormatAppPrincipalName = StringUtils.substring(start, start.indexOf('/') + 1, start.indexOf(' '));
+                                // 异形行（如厂商定制 kill-reason 行）可能缺分隔符，先验下标再切分，
+                                // 否则 substring 抛异常，debug 包还会连带杀死观察线程。
+                                final var startSlash = start.indexOf('/');
+                                final var startSpace = start.indexOf(' ');
+                                if (startSlash == -1 || startSpace == -1 || startSpace <= startSlash) {
+                                    continue;
+                                }
+                                final var logFormatAppPrincipalName = StringUtils.substring(start, startSlash + 1, startSpace);
                                 final var uid = PackageInfoMapper.getUid(logFormatAppPrincipalName);
                                 if (!isMounterActiveForUid(uid)) {
                                     continue;
                                 }
-                                final var processName = StringUtils.substring(start, start.indexOf(':') + 1, start.indexOf('/'));
+                                final var startColon = start.indexOf(':');
+                                if (startColon == -1 || startColon > startSlash) {
+                                    continue;
+                                }
+                                final var processName = StringUtils.substring(start, startColon + 1, startSlash);
 
                                 final String packageName;
                                 if (getMounter().mountForAllPackages()) {
@@ -253,7 +264,11 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                                     packageName = PackageInfoMapper.getSrPackageName(uid, processName);
                                 }
                                 if (!TextUtils.isEmpty(packageName)) {
-                                    final var pid = Integer.parseInt(StringUtils.substring(start, 0, start.indexOf(':')));
+                                    final var pidStr = StringUtils.substring(start, 0, startColon);
+                                    if (!TextUtils.isDigitsOnly(pidStr)) {
+                                        continue;
+                                    }
+                                    final var pid = Integer.parseInt(pidStr);
                                     Log.i("MC_REDIRECT", "[AMLogsObserver] Process start detected: pkg=" + packageName + " pid=" + pid + " uid=" + uid);
                                     Log.i("MC_REDIRECT", "[AMLogsObserver] Triggering bindMount for " + packageName);
                                     getMounter().bindMountAsync(packageName, pid, uid);
@@ -261,23 +276,37 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                             } else {
                                 // $pid:$processName/$logFormatAppPrincipalName (adj 0): stop $packageName due to from pid $pid
                                 final var indexOfKilling = line.indexOf(new String(amKilling));
-                                if (indexOfKilling != INDEX_OF_TAG) {
+                                if (indexOfKilling != INDEX_OF_TAG || line.length() < indexOfKilling + 25) {
                                     continue;
                                 }
                                 final var killing = StringUtils.substring(line, indexOfKilling + 25);
                                 if (killing.startsWith(new String(phantomProcessRecord))) {
                                     continue;
                                 }
-                                final var logFormatAppPrincipalName = StringUtils.substring(killing, killing.indexOf('/') + 1, killing.indexOf(' '));
+                                // 同 start 分支：异形行缺分隔符时跳过，避免 substring 抛异常。
+                                final var killingSlash = killing.indexOf('/');
+                                final var killingSpace = killing.indexOf(' ');
+                                if (killingSlash == -1 || killingSpace == -1 || killingSpace <= killingSlash) {
+                                    continue;
+                                }
+                                final var logFormatAppPrincipalName = StringUtils.substring(killing, killingSlash + 1, killingSpace);
                                 final var uid = PackageInfoMapper.getUid(logFormatAppPrincipalName);
                                 if (!isMounterActiveForUid(uid)) {
                                     continue;
                                 }
-                                final var processName = StringUtils.substring(killing, killing.indexOf(':') + 1, killing.indexOf('/'));
+                                final var killingColon = killing.indexOf(':');
+                                if (killingColon == -1 || killingColon > killingSlash) {
+                                    continue;
+                                }
+                                final var processName = StringUtils.substring(killing, killingColon + 1, killingSlash);
 
                                 final var packageName = PackageInfoMapper.getPackageName(uid, processName);
                                 if (!TextUtils.isEmpty(packageName)) {
-                                    final var pid = Integer.parseInt(StringUtils.substring(killing, 0, killing.indexOf(':')));
+                                    final var pidStr = StringUtils.substring(killing, 0, killingColon);
+                                    if (!TextUtils.isDigitsOnly(pidStr)) {
+                                        continue;
+                                    }
+                                    final var pid = Integer.parseInt(pidStr);
                                     getMounter().notifyProcessKilled(packageName, pid);
                                 }
                             }
