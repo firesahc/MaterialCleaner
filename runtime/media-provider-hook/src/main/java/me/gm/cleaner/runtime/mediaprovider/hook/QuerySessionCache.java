@@ -74,6 +74,26 @@ final class QuerySessionCache {
         }
     }
 
+    static boolean hasActiveSession(String packageName, int uid) {
+        if (packageName == null || packageName.isEmpty()) {
+            return false;
+        }
+        final var now = System.currentTimeMillis();
+        synchronized (LOCK) {
+            gcLocked(now);
+            final var entries = SESSIONS_BY_UID.get(uid);
+            if (entries == null || entries.isEmpty()) {
+                return false;
+            }
+            for (final var entry : entries) {
+                if (packageName.equals(entry.packageName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     static boolean maybeAccessQueriedPath(String packageName, int uid, String mountedPath) {
         if (mountedPath == null || mountedPath.isEmpty()) {
             return false;

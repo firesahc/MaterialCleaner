@@ -33,6 +33,8 @@ object HookPolicyCache {
     private val PATHS_HAVE_USER_ID: Pattern =
         Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
 
+    private const val EMULATED_PREFIX = "/storage/emulated/"
+
     // ── ReadOnly 缓存 ──
     @Volatile
     private var readOnlyCache: Map<String, Set<String>> = emptyMap()
@@ -560,6 +562,13 @@ object HookPolicyCache {
     fun isDenied(packageName: String): Boolean =
         denylist.contains(packageName)
 
+    /**
+     * 调用方无 uid 时的策略存在性快判，供 Query 等热路径在重型分析前旁路。
+     * 只查本地不可变缓存，不做 IO/Binder/JSON。
+     */
+    fun hasRedirectRules(packageName: String): Boolean =
+        ruleCache.containsKey(packageName)
+
     // ═══════════════════════════════════════════════════════════
     // JSON 解析
     // ═══════════════════════════════════════════════════════════
@@ -631,11 +640,46 @@ object HookPolicyCache {
     }
 
     private fun extractUserIdFromPath(path: String): Int {
+        // 热路径快检：/storage/emulated/<userId>(/...)，避免 regex 回溯开销。
+        val fast = extractEmulatedUserIdFast(path)
+        if (fast != null) {
+            return fast
+        }
+        // 回退：通用 /<a>/<b>/<userId>(/...)，覆盖 /mnt/user/... 等其他卷。
         val matcher = PATHS_HAVE_USER_ID.matcher(path)
         if (!matcher.matches()) {
             return 0
         }
         return matcher.group(2)?.toIntOrNull() ?: 0
+    }
+
+    /**
+     * 快检 /storage/emulated/ 前缀的用户 ID。
+     *
+     * @return 非 null 表示前缀命中（解析失败时返回 0，与 regex 未命中语义一致）；
+     * null 表示非该前缀，调用方回退到 [PATHS_HAVE_USER_ID]。
+     */
+    private fun extractEmulatedUserIdFast(path: String): Int? {
+        if (path.length < EMULATED_PREFIX.length) {
+            return null
+        }
+        if (!path.startsWith(EMULATED_PREFIX, ignoreCase = true)) {
+            return null
+        }
+        if (path.length == EMULATED_PREFIX.length) {
+            return 0
+        }
+        var end = EMULATED_PREFIX.length
+        while (end < path.length && path[end].isDigit()) {
+            end++
+        }
+        if (end == EMULATED_PREFIX.length) {
+            return 0
+        }
+        if (end < path.length && path[end] != '/') {
+            return 0
+        }
+        return path.substring(EMULATED_PREFIX.length, end).toIntOrNull() ?: 0
     }
 
     private fun parseReadOnly(json: String) {
