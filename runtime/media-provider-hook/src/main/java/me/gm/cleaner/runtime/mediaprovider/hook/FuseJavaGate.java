@@ -70,6 +70,8 @@ public class FuseJavaGate {
      * 1. {@link #scanFuseMethods()} — 反射扫描 MediaProvider 中所有含 "Fuse" 的方法
      * 2. {@link BehaviorRegistry#lookup(String)} — 按方法名查找行为模板（精确匹配 → 启发式回退）
      * 3. {@link ParameterAnalyzer#analyze(Method)} — 推断 pathIndex / uidIndex 等参数角色
+     * 3.5 {@link #sanitizeRoles(Method, ParamRoles)} — 签名清洗：path 非法才拒绝，
+     *     path2/uid 噪声钳制为 -1 走运行时回退
      * 4. {@link #installHook(Method, BehaviorHandler, ParamRoles)} — 统一异常安全包装后安装
      * <p>
      * 未知方法仅记录日志，不会导致崩溃。
@@ -89,10 +91,19 @@ public class FuseJavaGate {
                 unknownMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes()));
                 continue;
             }
-            final ParamRoles roles = ParameterAnalyzer.analyze(dm.method);
-            if (roles == null || roles.pathIndex < 0) {
+            final ParamRoles rawRoles = ParameterAnalyzer.analyze(dm.method);
+            if (rawRoles == null || rawRoles.pathIndex < 0) {
                 unknownMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes())
                         + " (unanalyzable params)");
+                continue;
+            }
+            // 签名清洗：仅 path 自身非法时拒绝安装；path2/uid 推断噪声钳制为 -1
+            // 走运行时回退（resolveUid/各 handler 已有 guarded 保护），恢复基线覆盖率。
+            // 静态方法允许安装——handler 异常由 GuardedHook 隔离，基线已证明安全。
+            final ParamRoles roles = sanitizeRoles(dm.method, rawRoles);
+            if (roles == null) {
+                unknownMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes())
+                        + " (bad path " + rawRoles + ")");
                 continue;
             }
             final String signature = dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes());
@@ -631,6 +642,51 @@ public class FuseJavaGate {
 
             return new ParamRoles(pathIndex, path2Index, uidIndex, extra);
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    //  签名可信度校验（启发式匹配收紧约束）
+    // ════════════════════════════════════════════════════════════════
+
+    /**
+     * 签名清洗 —— 仅做通用型结构钳制，不按行为模板区分需求：
+     * <ul>
+     *   <li>path 下标：越界 / 非 String 即返回 null（调用方记 UNKNOWN 且永不安装，
+     *   此类 hook 在运行时必定 ClassCast，安装毫无意义）</li>
+     *   <li>path2 下标：越界 / 非 String / 与 path 重合即钳制为 -1，
+     *   由各 handler 的运行时逻辑与 GuardedHook 兜底（基线行为）</li>
+     *   <li>uid 下标：-1 表示运行时推断，直接保留；越界 / 非 int-Integer /
+     *   与 path/path2 重合即钳制为 -1，由 {@link #resolveUid} 值推断回退</li>
+     *   <li>静态方法：允许通过。handler 异常由 GuardedHook 隔离不污染宿主，
+     *   基线已 hook 此类 synthetic lambda 且运行正常，拒绝反而造成覆盖回归</li>
+     * </ul>
+     */
+    private static ParamRoles sanitizeRoles(final Method method, final ParamRoles roles) {
+        final Class<?>[] types = method.getParameterTypes();
+        if (roles == null || roles.pathIndex < 0 || roles.pathIndex >= types.length) {
+            return null;
+        }
+        if (types[roles.pathIndex] != String.class) {
+            return null;
+        }
+        int path2 = roles.path2Index;
+        if (path2 >= 0 && (path2 >= types.length || path2 == roles.pathIndex
+                || types[path2] != String.class)) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping path2Index " + path2 + " to -1 for "
+                    + method.getName() + " " + Arrays.toString(types));
+            path2 = -1;
+        }
+        int uid = roles.uidIndex;
+        if (uid >= 0 && (uid >= types.length || uid == roles.pathIndex || uid == path2
+                || (types[uid] != int.class && types[uid] != Integer.class))) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping uidIndex " + uid + " to -1 for "
+                    + method.getName() + " " + Arrays.toString(types));
+            uid = -1;
+        }
+        if (path2 == roles.path2Index && uid == roles.uidIndex) {
+            return roles;
+        }
+        return new ParamRoles(roles.pathIndex, path2, uid, roles.extraRole);
     }
 
     // ════════════════════════════════════════════════════════════════
