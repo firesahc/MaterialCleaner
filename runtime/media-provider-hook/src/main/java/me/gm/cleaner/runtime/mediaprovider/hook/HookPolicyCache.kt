@@ -30,11 +30,6 @@ import java.util.regex.Pattern
 object HookPolicyCache {
     private const val TAG = "HookPolicyCache"
 
-    private val PATHS_HAVE_USER_ID: Pattern =
-        Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
-
-    private const val EMULATED_PREFIX = "/storage/emulated/"
-
     // ── 按域分组的 copy-on-write holder：每个域独立演进 generation/epoch ──
     private data class ReadOnlyHolder(
         val data: Map<String, Set<String>> = emptyMap(),
@@ -674,49 +669,6 @@ object HookPolicyCache {
         )
     }
 
-    private fun extractUserIdFromPath(path: String): Int {
-        // 热路径快检：/storage/emulated/<userId>(/...)，避免 regex 回溯开销。
-        val fast = extractEmulatedUserIdFast(path)
-        if (fast != null) {
-            return fast
-        }
-        // 回退：通用 /<a>/<b>/<userId>(/...)，覆盖 /mnt/user/... 等其他卷。
-        val matcher = PATHS_HAVE_USER_ID.matcher(path)
-        if (!matcher.matches()) {
-            return 0
-        }
-        return matcher.group(2)?.toIntOrNull() ?: 0
-    }
-
-    /**
-     * 快检 /storage/emulated/ 前缀的用户 ID。
-     *
-     * @return 非 null 表示前缀命中（解析失败时返回 0，与 regex 未命中语义一致）；
-     * null 表示非该前缀，调用方回退到 [PATHS_HAVE_USER_ID]。
-     */
-    private fun extractEmulatedUserIdFast(path: String): Int? {
-        if (path.length < EMULATED_PREFIX.length) {
-            return null
-        }
-        if (!path.startsWith(EMULATED_PREFIX, ignoreCase = true)) {
-            return null
-        }
-        if (path.length == EMULATED_PREFIX.length) {
-            return 0
-        }
-        var end = EMULATED_PREFIX.length
-        while (end < path.length && path[end].isDigit()) {
-            end++
-        }
-        if (end == EMULATED_PREFIX.length) {
-            return 0
-        }
-        if (end < path.length && path[end] != '/') {
-            return 0
-        }
-        return path.substring(EMULATED_PREFIX.length, end).toIntOrNull() ?: 0
-    }
-
     private fun parseReadOnly(json: String) {
         val root = JSONObject(json)
         val generation = root.optLong("generation", 0L)
@@ -754,22 +706,6 @@ object HookPolicyCache {
         NativeHookStatus.markReadOnlyPolicyApplied(revision, generation, newCache.isNotEmpty())
     }
 
-    private fun shouldAcceptSnapshot(
-        newEpoch: String,
-        newGeneration: Long,
-        currentEpoch: String,
-        currentGeneration: Long,
-    ): Boolean {
-        if (currentGeneration <= 0) return true
-        if (newEpoch.isNotBlank() && currentEpoch.isNotBlank() && newEpoch != currentEpoch) {
-            return true
-        }
-        if (newEpoch.isNotBlank() && currentEpoch.isBlank()) {
-            return true
-        }
-        return newGeneration > currentGeneration
-    }
-
     /** 供 markPolicyCacheFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */
     private fun describeThrowable(e: Throwable): String {
         val message = e.message?.takeIf { it.isNotBlank() }
@@ -784,4 +720,79 @@ object HookPolicyCache {
         JSONObject(json).optLong("generation", 0L)
     }.getOrDefault(0L)
 
+}
+
+private val PATHS_HAVE_USER_ID: Pattern =
+    Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
+
+private const val EMULATED_PREFIX = "/storage/emulated/"
+
+/**
+ * 从路径推断所属 userId（纯函数，可 JVM 单测）。
+ *
+ * 优先快检 /storage/emulated/ 前缀，命中失败回退通用正则。
+ * 现由 [HookPolicyCache.getMountedPath] 热路径调用。
+ */
+internal fun extractUserIdFromPath(path: String): Int {
+    // 热路径快检：/storage/emulated/<userId>(/...)，避免 regex 回溯开销。
+    val fast = extractEmulatedUserIdFast(path)
+    if (fast != null) {
+        return fast
+    }
+    // 回退：通用 /<a>/<b>/<userId>(/...)，覆盖 /mnt/user/... 等其他卷。
+    val matcher = PATHS_HAVE_USER_ID.matcher(path)
+    if (!matcher.matches()) {
+        return 0
+    }
+    return matcher.group(2)?.toIntOrNull() ?: 0
+}
+
+/**
+ * 快检 /storage/emulated/ 前缀的用户 ID（纯函数，可 JVM 单测）。
+ *
+ * @return 非 null 表示前缀命中（解析失败时返回 0，与 regex 未命中语义一致）；
+ * null 表示非该前缀，调用方回退到通用正则。
+ */
+internal fun extractEmulatedUserIdFast(path: String): Int? {
+    if (path.length < EMULATED_PREFIX.length) {
+        return null
+    }
+    if (!path.startsWith(EMULATED_PREFIX, ignoreCase = true)) {
+        return null
+    }
+    if (path.length == EMULATED_PREFIX.length) {
+        return 0
+    }
+    var end = EMULATED_PREFIX.length
+    while (end < path.length && path[end].isDigit()) {
+        end++
+    }
+    if (end == EMULATED_PREFIX.length) {
+        return 0
+    }
+    if (end < path.length && path[end] != '/') {
+        return 0
+    }
+    return path.substring(EMULATED_PREFIX.length, end).toIntOrNull() ?: 0
+}
+
+/**
+ * 快照验收规则（纯函数，可 JVM 单测）。
+ *
+ * 首载（currentGeneration<=0）接受；epoch 变化接受；同 epoch 要求 generation 严格递增。
+ */
+internal fun shouldAcceptSnapshot(
+    newEpoch: String,
+    newGeneration: Long,
+    currentEpoch: String,
+    currentGeneration: Long,
+): Boolean {
+    if (currentGeneration <= 0) return true
+    if (newEpoch.isNotBlank() && currentEpoch.isNotBlank() && newEpoch != currentEpoch) {
+        return true
+    }
+    if (newEpoch.isNotBlank() && currentEpoch.isBlank()) {
+        return true
+    }
+    return newGeneration > currentGeneration
 }

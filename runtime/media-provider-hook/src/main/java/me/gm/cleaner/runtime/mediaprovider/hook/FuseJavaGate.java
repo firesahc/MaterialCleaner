@@ -662,31 +662,27 @@ public class FuseJavaGate {
      * </ul>
      */
     private static ParamRoles sanitizeRoles(final Method method, final ParamRoles roles) {
-        final Class<?>[] types = method.getParameterTypes();
-        if (roles == null || roles.pathIndex < 0 || roles.pathIndex >= types.length) {
+        if (roles == null) {
             return null;
         }
-        if (types[roles.pathIndex] != String.class) {
+        // 纯决策下沉到 FuseRoleSanitizer（零 Android 依赖，可单测），此处只做日志与组装。
+        final int[] clean = FuseRoleSanitizerKt.sanitizeRoleIndices(
+                roles.pathIndex, roles.path2Index, roles.uidIndex, method.getParameterTypes());
+        if (clean == null) {
             return null;
         }
-        int path2 = roles.path2Index;
-        if (path2 >= 0 && (path2 >= types.length || path2 == roles.pathIndex
-                || types[path2] != String.class)) {
-            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping path2Index " + path2 + " to -1 for "
-                    + method.getName() + " " + Arrays.toString(types));
-            path2 = -1;
+        if (clean[1] != roles.path2Index) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping path2Index " + roles.path2Index + " to -1 for "
+                    + method.getName() + " " + Arrays.toString(method.getParameterTypes()));
         }
-        int uid = roles.uidIndex;
-        if (uid >= 0 && (uid >= types.length || uid == roles.pathIndex || uid == path2
-                || (types[uid] != int.class && types[uid] != Integer.class))) {
-            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping uidIndex " + uid + " to -1 for "
-                    + method.getName() + " " + Arrays.toString(types));
-            uid = -1;
+        if (clean[2] != roles.uidIndex) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] clamping uidIndex " + roles.uidIndex + " to -1 for "
+                    + method.getName() + " " + Arrays.toString(method.getParameterTypes()));
         }
-        if (path2 == roles.path2Index && uid == roles.uidIndex) {
+        if (clean[1] == roles.path2Index && clean[2] == roles.uidIndex) {
             return roles;
         }
-        return new ParamRoles(roles.pathIndex, path2, uid, roles.extraRole);
+        return new ParamRoles(clean[0], clean[1], clean[2], roles.extraRole);
     }
 
     // ════════════════════════════════════════════════════════════════
