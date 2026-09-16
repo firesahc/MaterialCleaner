@@ -2,14 +2,31 @@ name: build-gate
 
 # 构建期门禁：main.jar 锚点类断言随 buildXposedMainJar 强制执行，
 # 任何打包清单漂移都会在此失败（对应故障：Hook 进程 NoClassDefFoundError 整体失效）。
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, error-reporting]
   pull_request:
 
 jobs:
-  verify:
+  # 纯文本扫描，无需 JDK/Gradle；失败不阻塞 build 作业，
+  # 最终以各作业结论聚合为准（信息密度优先于快速短路）。
+  gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Structural gates (G1/G2/G4/G5)
+        shell: pwsh
+        run: ./scripts/gates/Run-Gates.ps1
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,10 +39,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-
-      - name: Structural gates (G1-G6)
-        shell: pwsh
-        run: ./scripts/gates/Run-Gates.ps1
 
       - name: main.jar anchor-class gate
         run: ./gradlew :app:buildXposedMainJar --no-daemon --console=plain
