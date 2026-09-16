@@ -19,7 +19,10 @@
     <methods>;
 }
 
-# Please add these rules to your existing keep rules in order to suppress warnings.
+# R8 层级实验：桩类导致 library 子类继承 program 父类是否可用 dontwarn 覆盖
+-dontwarn android.view.ContextThemeWrapper
+-dontwarn android.app.Service
+-dontwarn android.os.DeadObjectException
 # This is generated automatically by the Android Gradle plugin.
 -dontwarn android.app.ActivityManagerNative
 -dontwarn android.app.ActivityThread$ApplicationThread
