@@ -1,7 +1,9 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-  MaterialCleaner 存储重定向结构质量门禁（G1-G6）。
+  MaterialCleaner 存储重定向结构质量门禁（G1/G2/G4/G5）。
+  G3（微类密度）与 G6（死代码占位）已删除：前者只输出不可行动的 WARN，
+  且与职责拆分方向反向；后者只输出 SKIP，无检测能力。git 历史可找回。
 .DESCRIPTION
   用法:
     pwsh scripts/gates/Run-Gates.ps1                     # 跑全部门禁
@@ -11,7 +13,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('All', 'G1', 'G2', 'G3', 'G4', 'G5', 'G6')]
+    [ValidateSet('All', 'G1', 'G2', 'G4', 'G5')]
     [string]$Gate = 'All',
     [switch]$InitBaseline
 )
@@ -29,12 +31,14 @@ function Add-Finding([string]$Gate, [string]$Status, [string]$Detail) {
 
 function Get-SourceFiles {
     param([string[]]$Extensions)
-    # 工具缓存目录永不属于源码：.gradle 系 Gradle 变换产物（如 cxx prefab 头文件），
-    # 曾污染基线（如 math.h 1578 行），必须排除在枚举之外。
-    $exclude = @('\.git\', '\.gradle\', '\build\', '\external\', '\include\android-base\', 'fuse_lowlevel.h')
+    # 工具缓存与第三方目录永不属于源码：.gradle 系 Gradle 变换产物
+    # （如 cxx prefab 头文件），曾污染基线（如 math.h 1578 行），必须排除。
+    # 跨平台：先把路径分隔符统一为 / 再匹配——Windows 实测双向兼容，
+    # Linux 上原 '\external\' 写法永不命中，曾把 abseil 第三方头误判为新增超限。
+    $exclude = @('/.git/', '/.gradle/', '/build/', '/external/', '/include/android-base/', 'fuse_lowlevel.h')
     Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Include $extensions |
         Where-Object {
-            $p = $_.FullName
+            $p = $_.FullName -replace '\\', '/'
             -not ($exclude | Where-Object { $p -like "*$_*" }) -and
             $p -notmatch 'linux_syscall_support\.h$'
         }
@@ -122,20 +126,6 @@ function Invoke-G2 {
     foreach ($k in $stale) { Add-Finding 'G2' 'WARN' "豁免条目指向已删除文件: $k（建议清理清单）" }
 }
 
-# ---------- G3 微类密度 ----------
-function Invoke-G3 {
-    $groups = Get-SourceFiles @('*.kt') | Group-Object { $_.DirectoryName }
-    foreach ($g in $groups) {
-        if ($g.Count -lt 5) { continue }
-        $small = $g.Group | Where-Object { (Get-Content -LiteralPath $_.FullName | Measure-Object).Count -lt 100 }
-        $ratio = [math]::Round($small.Count / $g.Count, 2)
-        if ($ratio -ge 0.5) {
-            $rel = [System.IO.Path]::GetRelativePath($repoRoot, $g.Name)
-            Add-Finding 'G3' 'WARN' "$rel 微类占比 $ratio（$($small.Count)/$($g.Count) <100 行）"
-        }
-    }
-}
-
 # ---------- G4 词汇检查 ----------
 function Invoke-G4 {
     $banned = @(
@@ -194,13 +184,8 @@ function Invoke-G5 {
     }
 }
 
-# ---------- G6 死代码扫描（季度报告制） ----------
-function Invoke-G6 {
-    Add-Finding 'G6' 'SKIP' '季度手工审查制占位——后续接入 detekt UnusedPrivateMember 与全局引用扫描'
-}
-
 # ---------- 主流程 ----------
-$selected = if ($Gate -eq 'All') { @('G1', 'G2', 'G3', 'G4', 'G5', 'G6') } else { @($Gate) }
+$selected = if ($Gate -eq 'All') { @('G1', 'G2', 'G4', 'G5') } else { @($Gate) }
 foreach ($g in $selected) {
     try { & ("Invoke-$g") }
     catch { Add-Finding $g 'FAIL' "门禁异常: $($_.Exception.Message)" }

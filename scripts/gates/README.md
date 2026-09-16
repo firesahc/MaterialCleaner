@@ -1,4 +1,4 @@
-# 结构质量门禁（G1-G6）
+# 结构质量门禁（G1/G2/G4/G5）
 
 存储重定向链路的结构性质量门禁：模块依赖、文件粒度、词汇规范、契约一致性的机器化约束。
 
@@ -23,10 +23,8 @@ pwsh scripts/gates/Run-Gates.ps1 -InitBaseline
 |---|---|---|---|
 | G1 | 模块依赖红线 | domain 出度=0；databus 仅可依赖 domain；hook 与 server 禁止互相依赖 | 违规 FAIL |
 | G2 | 文件粒度 | src/main 内 kt/java ≤800 行、cpp/h ≤1200 行；第三方目录（external/、android-base/ 等）排除 | 新增超限或豁免文件增长 → FAIL |
-| G3 | 微类密度 | 同目录 ≥5 个 kt 且 <100 行占比 >50% | WARN（不阻断） |
 | G4 | 词汇检查 | CONTEXT.md「避免使用」禁词：denylist / ConfiguredMountPoint / configured_mount_points / 全局重定向快照 | 新增命中或计数增长 → FAIL |
 | G5 | 契约一致性 | IpcPackageRuntimeState 字符串常量集 == domain enum name 集（类未建立时 SKIP） | 不等 FAIL |
-| G6 | 死代码扫描 | 季度手工审查制占位 | SKIP |
 
 ## 存量豁免机制
 
