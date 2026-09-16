@@ -1,4 +1,4 @@
-app/src/main/java/me/gm/cleaner/client/ui/AppListFragment.kt	866
+app/src/main/java/me/gm/cleaner/client/ui/AppListFragment.kt	834
 app/src/main/java/me/gm/cleaner/client/ui/storageredirect/MountWizard.kt	1298
 core/storage-redirect-databus/src/main/java/me/gm/cleaner/core/storage/redirect/databus/DataBus.kt	836
 runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/NativeHookStatus.kt	822

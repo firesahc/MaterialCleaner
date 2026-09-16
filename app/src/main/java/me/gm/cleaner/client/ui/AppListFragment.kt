@@ -23,7 +23,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -795,37 +794,6 @@ class AppListFragment : BaseServiceSettingsFragment() {
                 if (BuildConfig.DEBUG) Log.e("CleanerTest", "stopServer: exception", e)
             }
         }
-    }
-
-    /**
-     * Execute [action] with retry on failure (max [maxRetries] attempts, 1s between).
-     * Each retry first verifies pingBinder() is still true.
-     */
-    private suspend fun reloadConfigWithRetry(
-        name: String,
-        maxRetries: Int = 3,
-        action: suspend () -> Unit
-    ) {
-        var attempt = 0
-        while (attempt < maxRetries) {
-            try {
-                if (!CleanerClient.pingBinder()) {
-                    if (BuildConfig.DEBUG) Log.w("CleanerTest", "reloadConfig: $name - Binder lost at attempt ${attempt + 1}")
-                    delay(500)  // 给 Binder 一点时间恢复
-                    attempt++
-                    continue
-                }
-                action()
-                return  // 成功
-            } catch (e: Exception) {
-                attempt++
-                if (BuildConfig.DEBUG) Log.e("CleanerTest", "reloadConfig: $name failed attempt $attempt/$maxRetries", e)
-                if (attempt < maxRetries) {
-                    delay(1000)
-                }
-            }
-        }
-        if (BuildConfig.DEBUG) Log.e("CleanerTest", "reloadConfig: $name FAILED after $maxRetries retries")
     }
 
     private fun loadMountedApps(adapter: AppListAdapter) {
