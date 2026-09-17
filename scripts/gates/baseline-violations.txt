@@ -3,10 +3,11 @@ core/storage-redirect-databus/src/main/java/me/gm/cleaner/core/storage/redirect/
 runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/NativeHookStatus.kt	822
 word:app/src/main/java/me/gm/cleaner/client/BasePromptActivity.kt|denylist	9
 word:app/src/main/java/me/gm/cleaner/client/NotificationService.kt|denylist	8
-word:app/src/main/java/me/gm/cleaner/client/ui/AppListFragment.kt|ConfiguredMountPoint	3
 word:app/src/main/java/me/gm/cleaner/client/ui/AppListViewModelBase.kt|denylist	1
 word:app/src/main/java/me/gm/cleaner/client/ui/FileSystemRecordViewModel.kt|denylist	2
 word:app/src/main/java/me/gm/cleaner/client/ui/MountAppPickerFragment.kt|denylist	4
+word:app/src/main/java/me/gm/cleaner/client/ui/ServiceStatusFormatter.kt|ConfiguredMountPoint	3
+word:app/src/test/java/me/gm/cleaner/client/ui/ServiceStatusFormatterTest.kt|ConfiguredMountPoint	2
 word:core/config-store/src/main/java/me/gm/cleaner/core/config/ServicePreferences.kt|denylist	13
 word:core/storage-redirect-databus/src/main/java/me/gm/cleaner/core/storage/redirect/databus/DataBus.kt|configured_mount_points	10
 word:core/storage-redirect-domain/src/main/java/me/gm/cleaner/core/storage/redirect/domain/ConfiguredMountPointsSnapshot.kt|ConfiguredMountPoint	1
