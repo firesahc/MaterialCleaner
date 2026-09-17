@@ -32,7 +32,7 @@ class FuseParameterAnalyzerTest {
             "renameForFuse",
             String::class.java, String::class.java, Int::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m, true)
+        val roles = ParameterAnalyzer.analyze(m, true)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(1, roles.path2Index)
@@ -45,7 +45,7 @@ class FuseParameterAnalyzerTest {
             "renameForFuse",
             String::class.java, String::class.java, Int::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(1, roles.path2Index)
@@ -58,7 +58,7 @@ class FuseParameterAnalyzerTest {
             "openWithFuse",
             String::class.java, String::class.java, Int::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m, false)
+        val roles = ParameterAnalyzer.analyze(m, false)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
@@ -71,7 +71,7 @@ class FuseParameterAnalyzerTest {
             "onFileLookupForFuse",
             String::class.java, String::class.java, Int::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
@@ -84,7 +84,7 @@ class FuseParameterAnalyzerTest {
             "isUidAllowedAccessToDataOrObbPathForFuse",
             Int::class.javaPrimitiveType, String::class.java,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(1, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
@@ -95,7 +95,7 @@ class FuseParameterAnalyzerTest {
     fun `回归isDir固定uid`() {
         val intType = Int::class.javaPrimitiveType
         val m = method("isDirAccessAllowedForFuse", String::class.java, intType, intType)
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
@@ -108,7 +108,7 @@ class FuseParameterAnalyzerTest {
             "isDirectoryCreationOrDeletionAllowedForFuse",
             String::class.java, Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
@@ -121,7 +121,7 @@ class FuseParameterAnalyzerTest {
             "insertFileIfNecessaryForFuse",
             String::class.java, Int::class.javaPrimitiveType,
         )
-        val roles = FuseJavaGate.ParameterAnalyzer.analyze(m)
+        val roles = ParameterAnalyzer.analyze(m)
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
