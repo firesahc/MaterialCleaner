@@ -75,7 +75,7 @@ public class QueryHooker extends AbstractGuardedHook {
         }
 
         // 策略门旁路：无重定向规则/被拒/记录开关全关时直接返回，避免 Bundle 拷贝、
-        // DatabaseUtils 反射与后续 DB 查询。注意不能用 hasActiveSession 做门：
+        // DatabaseUtils 反射与后续 DB 查询。会话门已废弃见 ADR-0011，勿复活：
         // session 本身由本次 RECORD 创建，用它做门会导致首个 session 永不创建（冷启动死锁）。
         // Query 保持 record-only 语义。
         if (HookPolicyCache.INSTANCE.isDenied(callingPackage)
