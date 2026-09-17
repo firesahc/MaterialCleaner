@@ -160,6 +160,20 @@ object CleanerClient {
             emptyList()
         }
 
+    /**
+     * 状态面轮询 serverException（AIDL getServerException 已存在，无需新增接口）。
+     *
+     * 语义（见 CleanerService.getServerException）：
+     * - 0=正常，2=logcat 观察器真死（不可逆 shutdown），3=尚未观测到 AmStart（启动期）。
+     * - Binder 异常/连接缺失返回 null（未知），调用方不得将其计为异常。
+     */
+    fun getServerException(): Int? = try {
+        service?.serverException
+    } catch (e: Exception) {
+        Log.w("MC/Test", "getServerException: failed", e)
+        null
+    }
+
     fun getOrchestratedStatus(): OrchestratedRuntimeStatus? {
         val status = try {
             service?.orchestratedStatus

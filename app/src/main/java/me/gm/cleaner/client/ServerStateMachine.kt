@@ -59,6 +59,10 @@ object ServerStateMachine {
     @Volatile
     private var unresponsiveCount = 0
 
+    /** logcat 真死（serverException=2）的连续命中计数；非 2 即清零。 */
+    @Volatile
+    private var logcatDeadCount = 0
+
     @Volatile
     private var watchdogStarted = false
 
@@ -92,28 +96,57 @@ object ServerStateMachine {
         if (!ServiceBootStateStore.shouldRun()) return
         if (_state.value != ServerState.RUNNING) return
 
+        // 既有 Binder ping 逻辑不动：进程假死（Binder 无响应）走原闭环。
         if (CleanerClient.pingBinderWithTimeout()) {
             unresponsiveCount = 0
+        } else {
+            unresponsiveCount++
+            Log.w(
+                TAG,
+                "watchdog: server unresponsive ($unresponsiveCount/$WATCHDOG_FAILURE_THRESHOLD)"
+            )
+            if (unresponsiveCount < WATCHDOG_FAILURE_THRESHOLD) return
+
+            // 连续超时判定假死：强停并走既有恢复流程重新拉起。
+            unresponsiveCount = 0
+            val ctx = appContext ?: return
+            Log.e(TAG, "watchdog: server presumed hung, force restarting")
+            ClientErrorJournal.record(
+                ErrorEvent(
+                    code = ErrorCodes.SUP_WATCHDOG_RESTART,
+                    subject = "watchdog",
+                    atElapsed = SystemClock.elapsedRealtime(),
+                    detail = "ping timeout x$WATCHDOG_FAILURE_THRESHOLD",
+                )
+            )
+            scope.launch {
+                CleanerClient.killServerProcess()
+                delay(backoffMillis(1))
+                recoverIfTargetRunning(ctx, LaunchReason.RECOVERY)
+            }
             return
         }
 
-        unresponsiveCount++
-        Log.w(
-            TAG,
-            "watchdog: server unresponsive ($unresponsiveCount/$WATCHDOG_FAILURE_THRESHOLD)"
-        )
-        if (unresponsiveCount < WATCHDOG_FAILURE_THRESHOLD) return
+        // 新增：进程活、功能死（logcat 观察器真死）监督。
+        // Binder ping 成功不代表观察器存活，必须轮询 serverException；
+        // 命中 2 复用同一 kill+recover 闭环，不另起恢复路径。
+        pollLogcatShutdown()
+    }
 
-        // 连续超时判定假死：强停并走既有恢复流程重新拉起。
-        unresponsiveCount = 0
+    private fun pollLogcatShutdown() {
+        val exception = runCatching { CleanerClient.getServerException() }.getOrNull()
+        logcatDeadCount = LogcatDeathPolicy.nextDeadCount(logcatDeadCount, exception)
+        if (!LogcatDeathPolicy.shouldRestart(logcatDeadCount, WATCHDOG_FAILURE_THRESHOLD)) return
+
+        logcatDeadCount = 0
         val ctx = appContext ?: return
-        Log.e(TAG, "watchdog: server presumed hung, force restarting")
+        Log.e(TAG, "watchdog: logcat observer dead (serverException=2), force restarting")
         ClientErrorJournal.record(
             ErrorEvent(
                 code = ErrorCodes.SUP_WATCHDOG_RESTART,
-                subject = "watchdog",
+                subject = "watchdog-logcat",
                 atElapsed = SystemClock.elapsedRealtime(),
-                detail = "ping timeout x$WATCHDOG_FAILURE_THRESHOLD",
+                detail = "logcat shutdown x$WATCHDOG_FAILURE_THRESHOLD",
             )
         )
         scope.launch {
@@ -140,6 +173,7 @@ object ServerStateMachine {
         ServiceBootStateStore.ensureInitialized(context)
         ServiceBootStateStore.setTarget(BootTargetState.RUNNING, source.toBootTargetSource())
         crashCount = 0
+        logcatDeadCount = 0
 
         val token = launchGeneration.incrementAndGet()
         _state.value = ServerState.STARTING
@@ -234,6 +268,8 @@ object ServerStateMachine {
         if (BuildConfig.DEBUG) Log.i(TAG, "onBinderReceived: state=${_state.value} -> RUNNING")
         _state.value = ServerState.RUNNING
         crashCount = 0
+        // 新进程的观察器从尚未 AmStart 起步（serverException=3 豁免），旧计数失效。
+        logcatDeadCount = 0
     }
 
     fun onBinderDied() {
@@ -275,6 +311,7 @@ object ServerStateMachine {
     fun reset() {
         if (BuildConfig.DEBUG) Log.i(TAG, "reset")
         crashCount = 0
+        logcatDeadCount = 0
         _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
     }
 

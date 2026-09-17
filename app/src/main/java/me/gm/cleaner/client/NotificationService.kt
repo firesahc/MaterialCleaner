@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.os.IBinder
 import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -108,7 +109,33 @@ class NotificationService : Service() {
                 buildPromptNotification(context, prompt, packageInfo)
             }
 
-            ACTION_LOGCAT_SHUTDOWN -> buildLogcatShutdownNotification(context)
+            ACTION_LOGCAT_SHUTDOWN -> {
+                // 同步 Binder 查询可能阻塞主线程，先做无开销的快路径去重，
+                // 再到 IO 线程核对 serverException（启动期豁免 + 恢复后抑制）。
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastLogcatShutdownNotifyElapsed < LogcatDeathPolicy.NOTIFY_DEDUP_MS) {
+                    Log.d("NotificationService", "logcat shutdown notification deduped")
+                    return
+                }
+                MainScope().launch(Dispatchers.IO) {
+                    val exception = CleanerClient.getServerException()
+                    val at = SystemClock.elapsedRealtime()
+                    if (!LogcatDeathPolicy.shouldNotify(
+                            exception,
+                            lastLogcatShutdownNotifyElapsed,
+                            at
+                        )
+                    ) {
+                        Log.d(
+                            "NotificationService",
+                            "logcat shutdown notification suppressed: serverException=$exception"
+                        )
+                        return@launch
+                    }
+                    lastLogcatShutdownNotifyElapsed = at
+                    buildLogcatShutdownNotification(context)
+                }
+            }
             ACTION_MY_PACKAGE_REPLACED -> {
                 buildSelfUpdatedNotification(context)
                 if (RootPreferences.isStartOnBoot) {
@@ -315,5 +342,13 @@ class NotificationService : Service() {
         private const val NOTIFICATION_CHANNEL_ADDED_HIDE: String = "package_added_hide"
 
         private const val NAME: String = "action"
+
+        /**
+         * logcat 真死通知的上次弹出时刻（elapsedRealtime）。
+         * 看门狗自动重启后 server 会再次广播，去重窗口内不再重复打扰；
+         * 判定逻辑见 [LogcatDeathPolicy.shouldNotify]。
+         */
+        @Volatile
+        internal var lastLogcatShutdownNotifyElapsed: Long = 0L
     }
 }
