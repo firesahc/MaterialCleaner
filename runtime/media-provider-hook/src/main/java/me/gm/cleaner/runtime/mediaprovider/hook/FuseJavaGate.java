@@ -91,7 +91,10 @@ public class FuseJavaGate {
                 unknownMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes()));
                 continue;
             }
-            final ParamRoles rawRoles = ParameterAnalyzer.analyze(dm.method);
+            // 语义门：仅 rename 行为需要第二路径，其余行为即使有两个 String 也不标 path2。
+            // 与 BehaviorRegistry 的 "rename" 启发式保持一致（精确 renameForFuse 亦含该子串）。
+            final boolean needPath2 = dm.method.getName().toLowerCase(Locale.ROOT).contains("rename");
+            final ParamRoles rawRoles = ParameterAnalyzer.analyze(dm.method, needPath2);
             if (rawRoles == null || rawRoles.pathIndex < 0) {
                 unknownMethods.add(dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes())
                         + " (unanalyzable params)");
@@ -402,7 +405,7 @@ public class FuseJavaGate {
      * 分离"参数在哪"（roles）和"用它做什么"（BehaviorHandler），
      * 使得同一个行为模板可以处理不同参数布局的方法签名。
      */
-    private static class ParamRoles {
+    static class ParamRoles {
         /** 主要路径参数索引（通常是第一个 String） */
         final int pathIndex;
         /** 第二个路径参数索引（rename 场景），-1 表示不存在 */
@@ -552,21 +555,35 @@ public class FuseJavaGate {
      * <p>
      * Level 2 — 参数类型序列分析：
      * - (String, int) → path@0, uid@1
-     * - (String, String, int) → path@0, path2@1, uid@2
+     * - (String, String, int) → rename 时 path@0, path2@1, uid@2；非 rename 时 path2 强制 -1
      * - (String, int, int) → path@0, uid@1, extra=ACCESS_TYPE_INT
      * - (String, int, boolean) → path@0, uid@1, extra=ACCESS_TYPE_BOOL
      * <p>
      * Level 3 — uidIndex = -1（运行时由 {@link #resolveUid} 值推断）
      */
-    private static class ParameterAnalyzer {
+    static class ParameterAnalyzer {
 
         /**
-         * 分析方法的参数角色。
+         * 分析方法的参数角色（便捷重载：按方法名自动推导是否需要第二路径）。
          *
          * @param method 反射方法对象
          * @return ParamRoles，或 null 如果无法分析（无 String 参数等）
          */
         static ParamRoles analyze(final Method method) {
+            final boolean needPath2 =
+                    method.getName().toLowerCase(Locale.ROOT).contains("rename");
+            return analyze(method, needPath2);
+        }
+
+        /**
+         * 分析方法的参数角色。
+         *
+         * @param method    反射方法对象
+         * @param needPath2 仅 rename 行为传 true；其余行为即使有两个 String 也不标 path2，
+         *                  从源头杜绝语义误标（sanitize 仅做类型级兜底，挡不住语义误标）
+         * @return ParamRoles，或 null 如果无法分析（无 String 参数等）
+         */
+        static ParamRoles analyze(final Method method, final boolean needPath2) {
             final String name = method.getName().toLowerCase(Locale.ROOT);
             final Class<?>[] types = method.getParameterTypes();
 
@@ -579,13 +596,16 @@ public class FuseJavaGate {
             }
 
             // ── 路径参数发现 ──
+            // 语义约束：仅 rename 需要 path2；非 rename 强制保持 -1，避免把第二个
+            // String（如 displayName、volumeName）误标为第二路径。仅 rename 模板
+            // 消费 path2，其余 handler 只用 pathIndex，误标虽危害有限但必须求准。
             int pathIndex = -1;
             int path2Index = -1;
             for (int i = 0; i < types.length; i++) {
                 if (types[i] == String.class) {
                     if (pathIndex < 0) {
                         pathIndex = i;
-                    } else if (path2Index < 0) {
+                    } else if (needPath2 && path2Index < 0) {
                         path2Index = i;
                     }
                 }
