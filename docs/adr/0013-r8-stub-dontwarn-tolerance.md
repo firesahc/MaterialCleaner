@@ -1,6 +1,6 @@
 # ADR 0013：R8 桩层级误报三条 dontwarn 容忍决策
 
-- 状态：已接受
+- 状态：已被 ADR 0014 取代（2026-09-21，根因为依赖配置错误而非桩链固有，已根治）
 - 日期：2026-09-17
 - 范围：release 混淆链路，`app/proguard-rules.pro` 手工三条 `dontwarn`，`platform/hidden-api` 桩供给
 
