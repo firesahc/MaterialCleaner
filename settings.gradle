@@ -13,6 +13,8 @@ include ':core:common'
 include ':core:storage-redirect-domain'
 include ':core:storage-redirect-databus'
 include ':core:config-store'
+// Android 隐藏 API 编译桩：仅供 compileOnly，不进运行时与 R8 图
+include ':hidden-api-stub'
 include ':platform:hidden-api'
 include ':runtime:cleaner-server'
 include ':runtime:media-provider-hook'

@@ -18,13 +18,28 @@ android {
     sourceSets {
         main {
             java {
-                srcDirs = ['src/main/java/stub', 'src/main/java/bridge', 'src/main/java/api']
+                srcDirs = ['src/main/java/bridge', 'src/main/java/api']
             }
         }
     }
 }
 
 dependencies {
+    compileOnly project(':hidden-api-stub')
     compileOnly project(':core:ipc-contract')
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
+}
+
+// 编译期桩优先：AGP 把 android.jar 硬编码在 javac -classpath 首位，
+// jar 形态的桩会被 android.jar 阉割版遮蔽（公开桩类的隐藏成员解析失败）。
+// 仅重排本模块 JavaCompile 的编译期顺序，不改变任何依赖的
+// implementation/compileOnly 归属，桩仍不进 runtimeClasspath 与 R8 图。
+// 详见 ADR-0014。
+afterEvaluate {
+    tasks.withType(JavaCompile).configureEach { t ->
+        // 用 filter 组合（不物化文件列表），保留原 classpath 的任务依赖追踪。
+        def stub = t.classpath.filter { File f -> f.name == 'hidden-api-stub.jar' }
+        def rest = t.classpath.filter { File f -> f.name != 'hidden-api-stub.jar' }
+        t.classpath = files(stub) + rest
+    }
 }

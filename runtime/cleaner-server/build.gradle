@@ -21,6 +21,7 @@ android {
 }
 
 dependencies {
+    compileOnly project(':hidden-api-stub')
     implementation project(':core:ipc-contract')
     implementation project(':core:common')
     implementation project(':core:config-store')
