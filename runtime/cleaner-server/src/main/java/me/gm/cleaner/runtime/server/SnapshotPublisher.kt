@@ -154,7 +154,7 @@ object SnapshotPublisher {
         val json = serializeReadOnly(snapshot)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_READ_ONLY, json)
         val signaled = written && DataBus.signal(DataBus.SIGNAL_READ_ONLY_CHANGED)
-        Log.d(TAG, "publishReadOnly: packages=${snapshot.readOnlyRules.size}")
+        Log.d(TAG, "publishReadOnly: packages=${snapshot.storage.readOnlyRules.size}")
         return written && signaled
     }
 
@@ -247,7 +247,7 @@ object SnapshotPublisher {
 
         // storageRedirectRules: { pkg: { userId: [{source, target}] } }
         val rulesObj = JSONObject()
-        for ((pkg, userRules) in snapshot.storageRedirectRules) {
+        for ((pkg, userRules) in snapshot.storage.redirectRules) {
             val userObj = JSONObject()
             for ((userId, rules) in userRules) {
                 val rulesArr = JSONArray()
@@ -265,19 +265,19 @@ object SnapshotPublisher {
 
         // readOnlyRules: { pkg: [paths] }
         val roObj = JSONObject()
-        for ((pkg, paths) in snapshot.readOnlyRules) {
+        for ((pkg, paths) in snapshot.storage.readOnlyRules) {
             roObj.put(pkg, JSONArray(paths as Collection<*>))
         }
         root.put("readOnlyRules", roObj)
 
         // denylist
-        root.put("denylist", JSONArray(snapshot.denylist.toList() as Collection<*>))
+        root.put("denylist", JSONArray(snapshot.behavior.deniedPackages.toList() as Collection<*>))
 
         // booleans
-        root.put("recordSharedStorage", snapshot.recordSharedStorage)
-        root.put("recordExternalAppSpecificStorage", snapshot.recordExternalAppSpecificStorage)
-        root.put("aggressivelyPromptForReadingMediaFiles", snapshot.aggressivelyPromptForReadingMediaFiles)
-        root.put("upsertRecords", snapshot.upsertRecords)
+        root.put("recordSharedStorage", snapshot.behavior.recordSharedStorage)
+        root.put("recordExternalAppSpecificStorage", snapshot.behavior.recordExternalAppSpecificStorage)
+        root.put("aggressivelyPromptForReadingMediaFiles", snapshot.behavior.aggressivelyPromptForReadingMediaFiles)
+        root.put("upsertRecords", snapshot.behavior.upsertRecords)
 
         return root.toString(2)
     }
@@ -292,7 +292,7 @@ object SnapshotPublisher {
         root.put("readOnlyRevision", snapshot.readOnlyRevision)
 
         val roObj = JSONObject()
-        for ((pkg, paths) in snapshot.readOnlyRules) {
+        for ((pkg, paths) in snapshot.storage.readOnlyRules) {
             roObj.put(pkg, JSONArray(paths as Collection<*>))
         }
         root.put("readOnlyRules", roObj)

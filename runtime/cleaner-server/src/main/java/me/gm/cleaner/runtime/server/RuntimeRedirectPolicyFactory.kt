@@ -8,6 +8,8 @@ import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
 import me.gm.cleaner.core.storage.redirect.domain.RedirectRule
+import me.gm.cleaner.core.storage.redirect.domain.RuntimeBehaviorPolicy
+import me.gm.cleaner.core.storage.redirect.domain.RuntimeStoragePolicy
 import me.gm.cleaner.core.storage.redirect.domain.StoragePolicyEnvelope
 import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
@@ -86,21 +88,25 @@ object RuntimeRedirectPolicyFactory {
             publisher = PUBLISHER_IDENTITY,
             redirectRevision = configuredRedirect.revision,
             readOnlyRevision = configuredReadOnly.revision,
-            storageRedirectRules = rules,
-            readOnlyRules = readOnlyRules,
-            denylist = if (preferencesReady) ServicePreferences.denylist.toSet() else emptySet(),
-            recordSharedStorage = if (preferencesReady) ServicePreferences.recordSharedStorage else false,
-            recordExternalAppSpecificStorage = if (preferencesReady) {
-                ServicePreferences.recordExternalAppSpecificStorage
-            } else {
-                false
-            },
-            aggressivelyPromptForReadingMediaFiles = if (preferencesReady) {
-                ServicePreferences.aggressivelyPromptForReadingMediaFiles
-            } else {
-                false
-            },
-            upsertRecords = if (preferencesReady) ServicePreferences.upsert else true,
+            storage = RuntimeStoragePolicy(
+                redirectRules = rules,
+                readOnlyRules = readOnlyRules,
+            ),
+            behavior = RuntimeBehaviorPolicy(
+                deniedPackages = if (preferencesReady) ServicePreferences.denylist.toSet() else emptySet(),
+                recordSharedStorage = if (preferencesReady) ServicePreferences.recordSharedStorage else false,
+                recordExternalAppSpecificStorage = if (preferencesReady) {
+                    ServicePreferences.recordExternalAppSpecificStorage
+                } else {
+                    false
+                },
+                aggressivelyPromptForReadingMediaFiles = if (preferencesReady) {
+                    ServicePreferences.aggressivelyPromptForReadingMediaFiles
+                } else {
+                    false
+                },
+                upsertRecords = if (preferencesReady) ServicePreferences.upsert else true,
+            ),
         )
     }
 
@@ -118,13 +124,7 @@ object RuntimeRedirectPolicyFactory {
             publisherEpoch = publisherEpoch,
             createdAt = now,
             publisher = PUBLISHER_IDENTITY,
-            storageRedirectRules = emptyMap(),
-            readOnlyRules = emptyMap(),
-            denylist = emptySet(),
-            recordSharedStorage = false,
-            recordExternalAppSpecificStorage = false,
-            aggressivelyPromptForReadingMediaFiles = false,
-            upsertRecords = false,
+            behavior = RuntimeBehaviorPolicy(upsertRecords = false),
         )
     }
 

@@ -4,7 +4,6 @@ import api.SystemService
 import me.gm.cleaner.core.storage.redirect.domain.MountPlanDeriver
 import me.gm.cleaner.core.storage.redirect.domain.PlatformCapabilities
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
-import me.gm.cleaner.core.storage.redirect.domain.RuntimeBehaviorPolicy
 import me.gm.cleaner.core.storage.redirect.domain.RuntimeMountPlan
 
 /**
@@ -49,17 +48,17 @@ object VfsRuntimeConfigStore {
         platformCapabilities ?: refreshCapabilities()
 
     fun getStorageRedirectPackages(): Set<String> =
-        currentPolicy().storageRedirectRules.keys
+        currentPolicy().storage.redirectRules.keys
 
     fun getPackageRuleCount(packageName: String): Int =
-        currentPolicy().storageRedirectRules[packageName]
+        currentPolicy().storage.redirectRules[packageName]
             ?.values
             ?.sumOf { it.size }
             ?: 0
 
     fun getMountPlan(packageName: String, userId: Int): RuntimeMountPlan? {
         val rules = currentPolicy()
-            .storageRedirectRules[packageName]
+            .storage.redirectRules[packageName]
             ?.let { userRules -> userRules[userId] }
             ?: return null
         return MountPlanDeriver.derive(packageName, userId, rules)
@@ -69,12 +68,11 @@ object VfsRuntimeConfigStore {
         getMountPlan(packageName, userId)?.targets ?: emptyList()
 
     fun shouldRecordExternalAppSpecificStorage(packageName: String): Boolean =
-        RuntimeBehaviorPolicy.project(currentPolicy()).shouldRecordExternal(packageName)
+        currentPolicy().behavior.shouldRecordExternal(packageName)
 
     fun isFuseBpfEnabled(): Boolean =
         currentCapabilities().isFuseBpfEnabled
 
     fun shouldMountForAllPackages(): Boolean =
-        !isFuseBpfEnabled() &&
-            RuntimeBehaviorPolicy.project(currentPolicy()).recordExternalAppSpecificStorage
+        !isFuseBpfEnabled() && currentPolicy().behavior.recordExternalAppSpecificStorage
 }

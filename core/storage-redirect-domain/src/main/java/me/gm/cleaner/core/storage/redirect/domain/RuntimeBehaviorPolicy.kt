@@ -17,15 +17,4 @@ data class RuntimeBehaviorPolicy(
     /** 外部应用专属存储是否纳入记录：总开关开且包不在名单内。 */
     fun shouldRecordExternal(packageName: String): Boolean =
         recordExternalAppSpecificStorage && packageName !in deniedPackages
-
-    companion object {
-        fun project(snapshot: RedirectPolicySnapshot): RuntimeBehaviorPolicy =
-            RuntimeBehaviorPolicy(
-                deniedPackages = snapshot.denylist,
-                recordSharedStorage = snapshot.recordSharedStorage,
-                recordExternalAppSpecificStorage = snapshot.recordExternalAppSpecificStorage,
-                aggressivelyPromptForReadingMediaFiles = snapshot.aggressivelyPromptForReadingMediaFiles,
-                upsertRecords = snapshot.upsertRecords,
-            )
-    }
 }

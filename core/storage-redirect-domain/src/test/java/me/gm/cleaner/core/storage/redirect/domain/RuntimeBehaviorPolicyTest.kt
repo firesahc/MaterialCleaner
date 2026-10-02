@@ -27,21 +27,22 @@ class RuntimeBehaviorPolicyTest {
     }
 
     @Test
-    fun `快照投影保留行为字段`() {
+    fun `快照行为字段直达无需投影桥`() {
         val snapshot = RedirectPolicySnapshot(
-            denylist = setOf("blocked"),
-            recordSharedStorage = true,
-            recordExternalAppSpecificStorage = true,
-            aggressivelyPromptForReadingMediaFiles = true,
-            upsertRecords = false,
+            behavior = RuntimeBehaviorPolicy(
+                deniedPackages = setOf("blocked"),
+                recordSharedStorage = true,
+                recordExternalAppSpecificStorage = true,
+                aggressivelyPromptForReadingMediaFiles = true,
+                upsertRecords = false,
+            ),
         )
-        val policy = RuntimeBehaviorPolicy.project(snapshot)
-        assertEquals(setOf("blocked"), policy.deniedPackages)
-        assertTrue(policy.recordSharedStorage)
-        assertTrue(policy.recordExternalAppSpecificStorage)
-        assertTrue(policy.aggressivelyPromptForReadingMediaFiles)
-        assertFalse(policy.upsertRecords)
-        assertTrue(policy.shouldRecordExternal("allowed"))
-        assertFalse(policy.shouldRecordExternal("blocked"))
+        assertEquals(setOf("blocked"), snapshot.behavior.deniedPackages)
+        assertTrue(snapshot.behavior.recordSharedStorage)
+        assertTrue(snapshot.behavior.recordExternalAppSpecificStorage)
+        assertTrue(snapshot.behavior.aggressivelyPromptForReadingMediaFiles)
+        assertFalse(snapshot.behavior.upsertRecords)
+        assertTrue(snapshot.behavior.shouldRecordExternal("allowed"))
+        assertFalse(snapshot.behavior.shouldRecordExternal("blocked"))
     }
 }

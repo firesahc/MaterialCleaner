@@ -225,12 +225,15 @@ class RedirectDifferentialTest {
         )
     }
 
-    private fun snapshotOf(rules: List<Pair<String, String>>): RedirectPolicySnapshot {        val redirect = rules.map { (source, target) ->
+    private fun snapshotOf(rules: List<Pair<String, String>>): RedirectPolicySnapshot {
+        val redirect = rules.map { (source, target) ->
             RedirectRule(source = source, target = target)
         }
         return RedirectPolicySnapshot(
             generation = 1L,
-            storageRedirectRules = mapOf("pkg" to mapOf(0 to redirect)),
+            storage = RuntimeStoragePolicy(
+                redirectRules = mapOf("pkg" to mapOf(0 to redirect)),
+            ),
         )
     }
 

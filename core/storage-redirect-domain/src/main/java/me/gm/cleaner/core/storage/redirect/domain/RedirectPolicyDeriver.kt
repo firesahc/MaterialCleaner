@@ -16,7 +16,7 @@ object RedirectPolicyDeriver {
     fun buildConfiguredMountPoints(policy: RedirectPolicySnapshot): ConfiguredMountPointsSnapshot {
         val points = mutableListOf<String>()
 
-        for ((packageName, userRules) in policy.storageRedirectRules) {
+        for ((packageName, userRules) in policy.storage.redirectRules) {
             for ((userId, rules) in userRules) {
                 val plan = MountPlanDeriver.derive(packageName, userId, rules) ?: continue
                 points.addAll(plan.mountPoints)
@@ -40,7 +40,7 @@ object RedirectPolicyDeriver {
         userId: Int,
         path: String,
     ): String {
-        val rules = policy.storageRedirectRules[packageName]?.get(userId) ?: return path
+        val rules = policy.storage.redirectRules[packageName]?.get(userId) ?: return path
         return MountPlanDeriver.resolveMountedPath(rules, path)
     }
 }
