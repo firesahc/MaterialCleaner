@@ -21,7 +21,7 @@ pwsh scripts/gates/Run-Gates.ps1 -InitBaseline
 
 | # | 名称 | 规则 | 动作 |
 |---|---|---|---|
-| G1 | 模块依赖红线 | domain 出度=0；databus 仅可依赖 domain；hook 与 server 禁止互相依赖 | 违规 FAIL |
+| G1 | 模块依赖红线 | domain 出度=0；databus 仅可依赖 domain；hook 与 server 禁止互相依赖；另对 domain/databus 做文件级 import 扫描（禁 android/业务跨层引用） | 违规 FAIL |
 | G2 | 文件粒度 | src/main 内 kt/java ≤800 行、cpp/h ≤1200 行；第三方目录（external/、android-base/ 等）排除 | 新增超限或豁免文件增长 → FAIL |
 | G4 | 词汇检查 | CONTEXT.md「避免使用」禁词：denylist / ConfiguredMountPoint / configured_mount_points / 全局重定向快照 | 新增命中或计数增长 → FAIL |
 | G5 | 契约一致性 | IpcPackageRuntimeState 字符串常量集 == domain enum name 集（类未建立时 SKIP） | 不等 FAIL |

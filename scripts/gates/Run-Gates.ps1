@@ -89,6 +89,32 @@ function Invoke-G1 {
             }
         }
     }
+    Invoke-G1FileImports
+}
+
+# ---------- G1 文件级 import 红线（与 current.md 禁止箭头同源） ----------
+function Invoke-G1FileImports {
+    $fileRules = @(
+        @{ Dir = 'core/storage-redirect-domain/src/main'; Banned = @('^import android\.', 'databus', 'core\.config', '\.runtime\.', 'client\.', 'platform\.', '^import api\.') },
+        @{ Dir = 'core/storage-redirect-databus/src/main'; Banned = @('redirect\.domain', 'core\.config', 'core\.common', '\.runtime\.', 'client\.', '^import api\.') }
+    )
+    foreach ($rule in $fileRules) {
+        $base = Join-Path $repoRoot $rule.Dir
+        if (-not (Test-Path $base)) { continue }
+        $files = Get-ChildItem -LiteralPath $base -Recurse -File -Include '*.kt', '*.java'
+        foreach ($f in $files) {
+            $rel = [System.IO.Path]::GetRelativePath($repoRoot, $f.FullName) -replace '\\', '/'
+            $hits = Select-String -LiteralPath $f.FullName -Pattern '^import ' -ErrorAction SilentlyContinue
+            foreach ($hit in $hits) {
+                foreach ($pat in $rule.Banned) {
+                    if ($hit.Line -match $pat) {
+                        Add-Finding 'G1' 'FAIL' "非法 import $rel`:$($hit.LineNumber): $($hit.Line.Trim())"
+                        break
+                    }
+                }
+            }
+        }
+    }
 }
 
 # ---------- G2 文件粒度 ----------

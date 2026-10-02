@@ -69,7 +69,7 @@ MaterialCleaner/
 ├── app/src/main/cpp/            # native：libcleaner（VFS/mount）、libinline（FUSE Hook + xhook）、starter
 ├── app/src/main/assets/         # xposed_init + main.jar（buildXposedMainJar 生成）
 ├── shared/                      # 历史兼容公共库，迁移中逐步瘦身
-├── docs/adr/                    # 架构决策记录（10 篇）
+├── docs/adr/                    # 架构决策记录（14 篇，状态见 docs/architecture/adr-status.md）
 ├── scripts/gates/               # 门禁检查脚本
 └── MaterialCleaner.wiki/        # GitHub Wiki（中文文档主页）
 ```
