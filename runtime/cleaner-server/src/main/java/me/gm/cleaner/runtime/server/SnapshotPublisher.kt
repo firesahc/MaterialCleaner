@@ -37,7 +37,7 @@ object SnapshotPublisher {
         }
 
         val userIds = SystemService.getUserIdsNoThrow()
-        val policy = RuntimeRedirectPolicyFactory.build(userIds)
+        val policy = RuntimePolicyProjector.project(userIds)
         VfsRuntimeConfigStore.updatePolicy(policy)
 
         // 关键三件套批量提交：全部写入成功后才统一发信号，
@@ -71,7 +71,7 @@ object SnapshotPublisher {
     fun publishRedirectPolicy(policy: RedirectPolicySnapshot? = null): Boolean {
         if (!DataBus.ensureInitialized()) return false
 
-        val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
 
         val json = serializeRedirectPolicy(snapshot)
@@ -100,7 +100,7 @@ object SnapshotPublisher {
     fun publishStorageRedirectPolicySet(policy: RedirectPolicySnapshot? = null): Boolean {
         if (!DataBus.ensureInitialized()) return false
 
-        val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
         val batchResult = SnapshotBatchCommitter.commit(
             publications = listOf(
@@ -124,7 +124,7 @@ object SnapshotPublisher {
             return false
         }
 
-        val snapshot = RuntimeRedirectPolicyFactory.buildStopped()
+        val snapshot = RuntimePolicyProjector.projectStopped()
         VfsRuntimeConfigStore.updatePolicy(snapshot)
 
         val batchResult = SnapshotBatchCommitter.commit(
@@ -148,7 +148,7 @@ object SnapshotPublisher {
     fun publishReadOnly(policy: RedirectPolicySnapshot? = null): Boolean {
         if (!DataBus.ensureInitialized()) return false
 
-        val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
 
         val json = serializeReadOnly(snapshot)
@@ -165,7 +165,7 @@ object SnapshotPublisher {
     fun publishConfiguredMountPoints(policy: RedirectPolicySnapshot? = null): Boolean {
         if (!DataBus.ensureInitialized()) return false
 
-        val snapshot = policy ?: RuntimeRedirectPolicyFactory.build(SystemService.getUserIdsNoThrow())
+        val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
         VfsRuntimeConfigStore.updatePolicy(snapshot)
         val mountPoints = RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot)
 

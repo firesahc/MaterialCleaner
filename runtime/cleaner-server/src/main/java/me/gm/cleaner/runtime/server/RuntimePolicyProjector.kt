@@ -15,32 +15,33 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.UUID
 
 /**
- * 运行时重定向策略工厂。
+ * 运行时策略投影器：配置到运行时的唯一转换口。
  *
  * 从 [ConfiguredPolicySnapshot]（配置门面的一次性读取结果）生成
  * [RedirectPolicySnapshot]。
  * 使用单调递增的 [generationCounter] 确保代数独立性——不依赖系统时钟。
+ * 只负责投影，不负责持久化、运行与发布。
  */
-object RuntimeRedirectPolicyFactory {
-    private const val PUBLISHER_IDENTITY = "RuntimeRedirectPolicyFactory"
+object RuntimePolicyProjector {
+    private const val PUBLISHER_IDENTITY = "RuntimePolicyProjector"
     val publisherEpoch: String = UUID.randomUUID().toString()
 
     /** 单调递增的策略代数计数器 */
     private val generationCounter = AtomicLong(0)
 
     /**
-     * 构建当前策略快照。
+     * 投影当前策略快照。
      * 每次调用生成一个新的 generation。
      */
-    fun build(userIds: List<Int>): RedirectPolicySnapshot {
+    fun project(userIds: List<Int>): RedirectPolicySnapshot {
         check(ConfiguredPolicyStoreProvider.isInitialized()) {
             "ConfiguredPolicyStore 尚未初始化"
         }
-        return build(ConfiguredPolicyStoreProvider.instance.readSnapshot(), userIds)
+        return project(ConfiguredPolicyStoreProvider.instance.readSnapshot(), userIds)
     }
 
-    /** 使用一次读取的配置组合构建运行时快照，避免同一发布批次重复读取旧文件。 */
-    fun build(
+    /** 使用一次读取的配置组合投影运行时快照，避免同一发布批次重复读取旧文件。 */
+    fun project(
         configured: ConfiguredPolicySnapshot,
         userIds: List<Int>,
     ): RedirectPolicySnapshot {
@@ -115,7 +116,7 @@ object RuntimeRedirectPolicyFactory {
      *
      * 停止服务是用户主动暂停所有运行能力，不应继续向 Hook/VFS 暴露旧规则。
      */
-    fun buildStopped(): RedirectPolicySnapshot {
+    fun projectStopped(): RedirectPolicySnapshot {
         val now = System.currentTimeMillis()
         val gen = generationCounter.incrementAndGet()
         return RedirectPolicySnapshot(
@@ -142,7 +143,7 @@ object RuntimeRedirectPolicyFactory {
                 if (normalized == null) {
                     Log.w(
                         "MC_REDIRECT",
-                        "[RuntimeRedirectPolicyFactory] drop invalid read-only rule " +
+                        "[RuntimePolicyProjector] drop invalid read-only rule " +
                                 "pkg=$packageName path=$path"
                     )
                 }
@@ -166,7 +167,7 @@ object RuntimeRedirectPolicyFactory {
         if (normalizedSource == null || normalizedTarget == null) {
             Log.w(
                 "MC_REDIRECT",
-                "[RuntimeRedirectPolicyFactory] drop invalid rule pkg=$packageName " +
+                "[RuntimePolicyProjector] drop invalid rule pkg=$packageName " +
                         "user=$userId source=$source target=$target"
             )
             return null

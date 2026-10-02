@@ -81,7 +81,7 @@ object PlatformCapabilitiesDetector {
         return PlatformCapabilities(
             schemaVersion = 1,
             generation = gen,
-            publisherEpoch = RuntimeRedirectPolicyFactory.publisherEpoch,
+            publisherEpoch = RuntimePolicyProjector.publisherEpoch,
             createdAt = now,
             publisher = "PlatformCapabilitiesDetector",
             sdkVersionInt = sdkInt,

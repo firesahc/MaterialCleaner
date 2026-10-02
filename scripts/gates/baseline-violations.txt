@@ -25,7 +25,7 @@ word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestra
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestrator/LayerState.kt|configured_mount_points	1
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestrator/NativeHookLayerReporter.kt|ConfiguredMountPoint	3
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/record/FileSystemRecord.kt|denylist	4
-word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/RuntimeRedirectPolicyFactory.kt|denylist	3
+word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/RuntimePolicyProjector.kt|denylist	3
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|configured_mount_points	6
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|ConfiguredMountPoint	10
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|denylist	3

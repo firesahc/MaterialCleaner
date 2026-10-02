@@ -8,11 +8,11 @@ import me.gm.cleaner.core.storage.redirect.domain.StoragePolicyEnvelope
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class RuntimeRedirectPolicyFactoryTest {
+class RuntimePolicyProjectorTest {
 
     @Test
     fun `投影携带两个独立配置 revision`() {
-        val snapshot = RuntimeRedirectPolicyFactory.build(
+        val snapshot = RuntimePolicyProjector.project(
             ConfiguredPolicySnapshot(
                 redirect = VersionedRedirectPolicy(
                     revision = "redirect-revision",
@@ -34,7 +34,7 @@ class RuntimeRedirectPolicyFactoryTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun `损坏配置不能生成运行时投影`() {
-        RuntimeRedirectPolicyFactory.build(
+        RuntimePolicyProjector.project(
             ConfiguredPolicySnapshot(
                 redirect = VersionedRedirectPolicy(
                     revision = "redirect-revision",

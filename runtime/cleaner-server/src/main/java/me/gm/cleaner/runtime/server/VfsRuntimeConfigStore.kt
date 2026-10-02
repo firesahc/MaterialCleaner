@@ -30,7 +30,7 @@ object VfsRuntimeConfigStore {
 
     @JvmOverloads
     fun refreshPolicy(userIds: List<Int> = SystemService.getUserIdsNoThrow()): RedirectPolicySnapshot {
-        val snapshot = RuntimeRedirectPolicyFactory.build(userIds)
+        val snapshot = RuntimePolicyProjector.project(userIds)
         updatePolicy(snapshot)
         return snapshot
     }
