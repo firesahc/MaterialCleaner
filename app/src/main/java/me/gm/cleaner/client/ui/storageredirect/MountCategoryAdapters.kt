@@ -63,7 +63,7 @@ class MountRulesAdapter(
         previousList: List<Pair<String?, String?>>, currentList: List<Pair<String?, String?>>
     ) {
         val previous = meaninglessRulesIndices
-        val current = viewModel.rules.meaninglessRulesIndices.toSet()
+        val current = RedirectReachabilityAnalyzer.redundantIndices(viewModel.mountRules).toSet()
         val meaninglessRuleInCurrentList = current.asSequence().map { currentList[it] }.toSet()
         previousList.forEachIndexed { position, rule ->
             if (previous.contains(position) || meaninglessRuleInCurrentList.contains(rule)) {

@@ -49,8 +49,8 @@ class TestCategoryAdapter(
             textView.isVisible = testPath.isNotEmpty()
         }
         if (testPath.isNotEmpty()) {
-            val rules = viewModel.rules
-            val mountedPath = rules.getMountedPath(testPath)
+            val rules = viewModel.mountRules
+            val mountedPath = RedirectReachabilityAnalyzer.mountedPath(rules, testPath)
             binding.resultMountedPath.text = fragment.getString(
                 R.string.storage_redirect_test_result_mounted_path, mountedPath
             )
@@ -64,7 +64,7 @@ class TestCategoryAdapter(
                 }
             }
 
-            val accessiblePlaces = rules.getAccessiblePlaces(testPath)
+            val accessiblePlaces = RedirectReachabilityAnalyzer.accessiblePlaces(rules, testPath)
             binding.resultAccessiblePlaces.text = if (accessiblePlaces.isEmpty()) {
                 fragment.getString(R.string.storage_redirect_test_result_inaccessible)
             } else {

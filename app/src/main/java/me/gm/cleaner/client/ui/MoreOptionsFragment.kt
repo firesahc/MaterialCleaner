@@ -31,10 +31,10 @@ import me.gm.cleaner.R
 import me.gm.cleaner.app.ConfirmationDialog
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
+import me.gm.cleaner.client.ui.storageredirect.RedirectReachabilityAnalyzer
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.core.config.ServicePreferences
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.net.NOTIFICATION_CHANNEL
 import me.gm.cleaner.settings.BaseSettingsFragment
 import me.gm.cleaner.settings.theme.ThemeUtil
@@ -231,12 +231,11 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                                 installedNonsystemApps.firstOrNull { it.packageName == packageInfo.packageName }
                             }
                             for (pi in selectedApps) {
-                                val rules = MountRules(
+                                val rules =
                                     ServicePreferences.getPackageSrZipped(pi.packageName)
-                                )
                                 val mountedReadOnlyPaths = readOnlyPaths.asSequence()
                                     .map { path ->
-                                        rules.getMountedPath(path)
+                                        RedirectReachabilityAnalyzer.mountedPath(rules, path)
                                     }
                                     .filterNot { path ->
                                         FileUtils.isKnownAppDirPaths(path, pi.packageName)

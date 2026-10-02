@@ -21,7 +21,7 @@ import me.gm.cleaner.R
 import me.gm.cleaner.browser.filepicker.FilePickerDialog
 import me.gm.cleaner.client.ui.storageredirect.MimeUtils
 import me.gm.cleaner.client.ui.storageredirect.MountWizard
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
+import me.gm.cleaner.client.ui.storageredirect.RedirectReachabilityAnalyzer
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.core.config.ServicePreferences
@@ -154,7 +154,7 @@ abstract class BasePromptActivity : AppCompatActivity() {
                             binding.migrate.isChecked
                         ) {
                             filesToMigrate.forEach { (path, mountedPath) ->
-                                val newPath = MountRules(rules).getMountedPath(path)
+                                val newPath = RedirectReachabilityAnalyzer.mountedPath(rules, path)
                                 CleanerClient.service?.move(mountedPath, newPath)
                                 // Also try move for origin path to support media store insert.
                                 CleanerClient.service?.move(path, newPath)

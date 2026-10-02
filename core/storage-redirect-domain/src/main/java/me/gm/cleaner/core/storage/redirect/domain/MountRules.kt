@@ -1,11 +1,13 @@
 package me.gm.cleaner.core.storage.redirect.domain
 
 /**
- * Storage redirect mount rule calculator.
+ * Storage redirect mount rule calculator (transitional legacy).
  *
  * This class is intentionally free of Android, Binder, DataBus and preference
- * dependencies. It contains only the path calculation that all redirect layers
- * must agree on.
+ * dependencies. Production VFS/Hook/deriver now resolve through
+ * [OrderedRedirectInterpreter] via [MountPlanDeriver]; this class remains only
+ * as the fallback for non-canonical legacy data and UI-independent tests.
+ * Reachability analysis moved to the app-side analyzer.
  */
 class MountRules {
     private lateinit var ruleZipped: List<Pair<String, String>>
@@ -54,22 +56,6 @@ class MountRules {
             return mkdirList
         }
 
-    val meaninglessRulesIndices: List<Int>
-        get() {
-            val ruleZipped = ensureRuleZipped()
-            val indices = mutableListOf<Int>()
-            for (i in targets.indices) {
-                val target = targets[i]
-                if (targets.subList(i + 1, targets.size).any { startsWithPath(it, target) } ||
-                    getMountedPath(ruleZipped.subList(0, i), target) ==
-                    getMountedPath(ruleZipped.subList(0, i + 1), target)
-                ) {
-                    indices += i
-                }
-            }
-            return indices
-        }
-
     private fun getMountedPath(ruleZipped: List<Pair<String, String>>, path: String): String {
         val fileSystemLastMatch = ruleZipped.indexOfLast { (_, target) ->
             startsWithPath(path, target)
@@ -88,32 +74,6 @@ class MountRules {
     }
 
     fun getMountedPath(path: String): String = getMountedPath(ensureRuleZipped(), path)
-
-    fun getAccessiblePlaces(path: String): List<String> {
-        val ruleZipped = ensureRuleZipped().toMutableList().apply {
-            meaninglessRulesIndices.asReversed().forEach { index ->
-                removeAt(index)
-            }
-        }
-        val paths = mutableListOf<String>()
-        if (ruleZipped.unzip().second.none { startsWithPath(it, path) }) {
-            paths += path
-        }
-        for (i in ruleZipped.indices) {
-            val (source, target) = ruleZipped[i]
-            if (startsWithPath(source, path)) {
-                val maybeAccessiblePath = target + path.substring(source.length)
-                if (maybeAccessiblePath ==
-                    getMountedPath(ruleZipped.subList(i + 1, ruleZipped.size), maybeAccessiblePath)
-                ) {
-                    if (maybeAccessiblePath !in paths) {
-                        paths += maybeAccessiblePath
-                    }
-                }
-            }
-        }
-        return paths
-    }
 
     companion object {
         fun startsWithPath(path: String, prefix: String): Boolean =

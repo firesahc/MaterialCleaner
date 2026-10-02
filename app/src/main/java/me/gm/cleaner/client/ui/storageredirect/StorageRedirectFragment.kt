@@ -314,9 +314,9 @@ class StorageRedirectFragment : BaseFragment() {
                 }
             }
             if (preferenceChanged) {
-                val rules = viewModel.rules
+                val rules = viewModel.mountRules
                 val inaccessibleReadOnlyPaths = viewModel.readOnlyPaths.filter { path ->
-                    rules.getAccessiblePlaces(path).isEmpty()
+                    RedirectReachabilityAnalyzer.accessiblePlaces(rules, path).isEmpty()
                 }
                 if (inaccessibleReadOnlyPaths.isNotEmpty()) {
                     ConfirmationDialog
@@ -426,11 +426,11 @@ class StorageRedirectFragment : BaseFragment() {
 
         R.id.menu_add_read_only_template -> {
             viewModel.updateReadOnlyPaths {
-                val rules = viewModel.rules
+                val rules = viewModel.mountRules
                 val mountedReadOnlyPaths =
                     ServiceMoreOptionsPreferences.editReadOnlyTemplate.asSequence()
                         .map { path ->
-                            rules.getMountedPath(path)
+                            RedirectReachabilityAnalyzer.mountedPath(rules, path)
                         }
                         .filterNot { path ->
                             FileUtils.isKnownAppDirPaths(path, args.pi.packageName)

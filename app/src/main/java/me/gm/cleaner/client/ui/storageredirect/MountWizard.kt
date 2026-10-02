@@ -38,7 +38,6 @@ import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType.Co
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.client.getPathWithEvent
 import me.gm.cleaner.client.getSharedUserIdPackages
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountButtonsWizardBinding
@@ -456,8 +455,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
 
     fun createRules(): List<Pair<String, String>> = createRules(answers)
 
-    private val mountRulesForMakingPathInaccessible: MountRules =
-        MountRules(mutableListOf(cacheDir to sdDir))
+    private val inaccessibleMarker: Pair<String, String> by lazy { cacheDir to sdDir }
 
     fun createRules(answers: WizardAnswers): List<Pair<String, String>> {
         val rules = mutableListOf<Pair<String, String>>()
@@ -488,11 +486,12 @@ class MountWizard(private val packageInfo: PackageInfo) {
             }
         }
         if (answers.q4) {
-            val previousMountRules = MountRules(rules)
+            val previousRules = rules.toList()
             answers.inaccessiblePlaces().forEach { dir ->
-                previousMountRules.getAccessiblePlaces(dir).forEach { accessiblePlace ->
-                    rules += mountRulesForMakingPathInaccessible
-                        .getMountedPath(accessiblePlace) to accessiblePlace
+                RedirectReachabilityAnalyzer.accessiblePlaces(previousRules, dir).forEach { accessiblePlace ->
+                    rules += RedirectReachabilityAnalyzer.mountedPath(
+                        listOf(inaccessibleMarker), accessiblePlace
+                    ) to accessiblePlace
                 }
             }
         }
@@ -591,7 +590,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
         val q4Backtracked = mutableListOf<String>()
         while (reversed.hasNext()) {
             val (source, target) = reversed.next()
-            if (source == mountRulesForMakingPathInaccessible.getMountedPath(target)) {
+            if (source == RedirectReachabilityAnalyzer.mountedPath(listOf(inaccessibleMarker), target)) {
                 q4Backtracked += target
                 reversed.remove()
             } else {
@@ -599,16 +598,14 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 break
             }
         }
-        val previousMountRules = MountRules(
-            mountRules.subList(0, mountRules.size - q4Backtracked.size)
-        )
+        val previousRules = mountRules.subList(0, mountRules.size - q4Backtracked.size)
         if (q4Backtracked.isNotEmpty()) {
             answers.q4 = true
             answers.updateInaccessiblePlaces {
                 addAll(
                     0,
                     q4Backtracked
-                        .map { path -> previousMountRules.getMountedPath(path) }
+                        .map { path -> RedirectReachabilityAnalyzer.mountedPath(previousRules, path) }
                         .distinct()
                         .asReversed()
                 )
@@ -999,12 +996,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 }
             }
         })
-        val oldMountRules = MountRules(oldList)
-        val newMountRules = MountRules(newList)
         return dirsNeedMigrate.asSequence()
             .map { dir ->
-                val oldMountedDir = oldMountRules.getMountedPath(dir)
-                val newMountedDir = newMountRules.getMountedPath(dir)
+                val oldMountedDir = RedirectReachabilityAnalyzer.mountedPath(oldList, dir)
+                val newMountedDir = RedirectReachabilityAnalyzer.mountedPath(newList, dir)
                 DirOp.create(oldMountedDir, newMountedDir, packageName)
             }
             .plus(dirOps)

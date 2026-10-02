@@ -137,15 +137,13 @@ class RedirectDifferentialTest {
     }
 
     @Test
-    fun `alias分歧样本_只冻结不强制全等`() {        val pairs = listOf("/real/A" to "/visible/A", "/real/B" to "/real/A/B")
+    fun `alias闭包行为冻结`() {
+        val pairs = listOf("/real/A" to "/visible/A", "/real/B" to "/real/A/B")
         val ordered = pairs.mapIndexed { index, (source, target) ->
             rule(index, source, target)
         }
-        val legacy = MountRules(pairs).getAccessiblePlaces("/real/A")
         val closure = OrderedRedirectInterpreter.deriveAliasClosure("/real/A", ordered)
-        // 两者算法不同，分歧预期内。此处只冻结“都完成不抛、都包含输入本身”，
-        // 全等切换决策留待 Phase 4 前另行收敛，不在此门禁中强制。
-        assertTrue(legacy.isNotEmpty())
+        // 旧可达分析已外迁界面（等价由界面测试锁定），此处只冻结新闭包完成性。
         assertTrue(closure.paths.isNotEmpty())
         assertTrue(closure.complete)
     }
