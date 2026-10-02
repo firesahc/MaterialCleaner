@@ -3,7 +3,8 @@ package me.gm.cleaner.runtime.mediaprovider.hook
 import android.util.Log
 import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
+import me.gm.cleaner.core.storage.redirect.domain.MountPlanDeriver
+import me.gm.cleaner.core.storage.redirect.domain.RedirectRule
 import org.json.JSONObject
 import java.io.File
 import java.util.regex.Pattern
@@ -15,7 +16,8 @@ import java.util.regex.Pattern
  *
  * ## 缓存内容
  * - **ReadOnlyCache**：packageName → Set<path>，来自 read_only.json 快照
- * - **RuleCache**：packageName → MountRules，来自 redirect_policy.json 快照
+ * - **RuleCache**：packageName → userId → 规则对，来自 redirect_policy.json 快照，
+ *   经 [MountPlanDeriver] 解释，不再持有旧 MountRules
  * - **ConfiguredMountPoints**：挂载点列表，来自 configured_mount_points.json 快照（推送到 native）
  *
  * ## 刷新策略
@@ -39,7 +41,7 @@ object HookPolicyCache {
     )
 
     private data class RuleHolder(
-        val data: Map<String, Map<Int, MountRules>> = emptyMap(),
+        val data: Map<String, Map<Int, List<RedirectRule>>> = emptyMap(),
         val denylist: Set<String> = emptySet(),
         val generation: Long = 0L,
         val publisherEpoch: String = "",
@@ -572,7 +574,7 @@ object HookPolicyCache {
         val snapshot = rule
         val userRules = snapshot.data[packageName] ?: return null
         val rules = userRules[userId] ?: return null
-        return rules.getMountedPath(path)
+        return MountPlanDeriver.resolveMountedPath(rules, path)
     }
 
     /**
@@ -605,30 +607,30 @@ object HookPolicyCache {
             return
         }
 
-        val newCache = mutableMapOf<String, Map<Int, MountRules>>()
+        val newCache = mutableMapOf<String, Map<Int, List<RedirectRule>>>()
         val rulesObj = root.optJSONObject("storageRedirectRules")
         if (rulesObj != null) {
             for (pkg in rulesObj.keys()) {
                 val userObj = rulesObj.optJSONObject(pkg)
                 if (userObj == null) continue
 
-                val userCache = mutableMapOf<Int, MountRules>()
+                val userCache = mutableMapOf<Int, List<RedirectRule>>()
                 for (userKey in userObj.keys()) {
                     val userId = userKey.toIntOrNull() ?: continue
                     val rulesArr = userObj.optJSONArray(userKey)
                     if (rulesArr == null || rulesArr.length() == 0) continue
 
-                    val zipped = mutableListOf<Pair<String, String>>()
+                    val zipped = mutableListOf<RedirectRule>()
                     for (i in 0 until rulesArr.length()) {
                         val ruleObj = rulesArr.getJSONObject(i)
                         val source = ruleObj.optString("source", "")
                         val target = ruleObj.optString("target", "")
                         if (source.isNotEmpty() && target.isNotEmpty()) {
-                            zipped.add(source to target)
+                            zipped.add(RedirectRule(source, target))
                         }
                     }
                     if (zipped.isNotEmpty()) {
-                        userCache[userId] = MountRules(zipped)
+                        userCache[userId] = zipped
                     }
                 }
                 if (userCache.isNotEmpty()) {
