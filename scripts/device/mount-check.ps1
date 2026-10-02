@@ -22,8 +22,12 @@ Write-Host "pkg=$TestPackage dryRun=$DryRun" -ForegroundColor Cyan
 
 $probe = '/sdcard/MCTest/probe.txt'
 if (-not $DryRun) {
-    Invoke-AdbShell -Serial $Serial -Command "mkdir -p /sdcard/MCTest && echo probe > $probe"
+    Invoke-AdbShell -Serial $Serial -Command 'mkdir -p /sdcard/MCTest && echo probe > /sdcard/MCTest/probe.txt'
 }
-$check = Invoke-AdbShell -Serial $Serial -Command "ls -l $probe 2>&1"
+try {
+    $check = Invoke-AdbShell -Serial $Serial -Command 'ls -l /sdcard/MCTest/probe.txt 2>&1'
+} catch {
+    $check = "STATUS=MISS $($_.Exception.Message)"
+}
 Write-ProbeLog -Dir $dir -Name 'mount-check.txt' -Content "pkg=$TestPackage`r`ndryRun=$DryRun`r`n$check" | Out-Null
 Write-Host '[PASS] mount-check 只读完成（未 remount 未强停）' -ForegroundColor Green

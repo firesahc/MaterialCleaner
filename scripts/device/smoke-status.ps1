@@ -17,7 +17,7 @@ foreach ($name in @('redirect_policy.json', 'read_only.json', 'configured_mount_
     if ($content -match '"generation"\s*:\s*([0-9]+)') { $gens[$name] = $Matches[1] }
     else { throw "快照缺 generation：$name" }
 }
-$uniq = ($gens.Values | Sort-Object -Unique)
+$uniq = @($gens.Values | Sort-Object -Unique)
 Write-Host ("generations: " + (($gens.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' '))
 if ($uniq.Count -ne 1) { throw "三快照不同代，存在混合状态：$($uniq -join ',')" }
 Write-ProbeLog -Dir $dir -Name 'RESULT.txt' -Content "PASS generation=$($uniq[0])" | Out-Null

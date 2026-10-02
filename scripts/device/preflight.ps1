@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $Serial = Get-DeviceSerial -Serial $Serial
 Write-Host "serial=$Serial" -ForegroundColor Cyan
 
-$state = Invoke-Adb -Serial $Serial -Args @('get-state')
+$state = Invoke-Adb -Serial $Serial -AdbArgs @('get-state')
 if ($state -ne 'device') { throw "设备状态异常：$state" }
 Write-Host '[PASS] adb device' -ForegroundColor Green
 

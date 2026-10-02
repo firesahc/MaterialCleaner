@@ -9,35 +9,36 @@
 $ErrorActionPreference = 'Stop'
 
 $script:DeviceLibRoot = Split-Path -Parent $PSScriptRoot
-$script:RepoRoot = Split-Path -Parent $script:DeviceLibRoot
+$script:RepoRoot = Split-Path -Parent (Split-Path -Parent $script:DeviceLibRoot)
 
 function Get-DeviceSerial {
     param([string]$Serial = '')
     if (-not [string]::IsNullOrWhiteSpace($Serial)) { return $Serial.Trim() }
     if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SERIAL)) { return $env:ANDROID_SERIAL.Trim() }
     $out = & adb devices -l 2>&1 | Out-String
-    $lines = $out -split "`r?`n" | Where-Object { $_ -match '\sdevice(\s|$)' -and $_ -notmatch 'List of devices' }
+    $lines = @($out -split "`r?`n" | Where-Object { $_ -match '\sdevice(\s|$)' -and $_ -notmatch 'List of devices' })
     if ($lines.Count -eq 0) { throw '未发现已连接设备，请先 adb connect 或检查 USB 调试' }
     if ($lines.Count -gt 1) { throw "发现多台设备，请用 -Serial 或 ANDROID_SERIAL 指定：$($lines -join '; ')" }
     return ($lines[0] -split '\s+')[0]
 }
 
 function Invoke-Adb {
+    [CmdletBinding()]
     param(
         [string]$Serial,
-        [string[]]$Args,
+        [string[]]$AdbArgs,
         [int]$TimeoutSec = 300
     )
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = 'adb'
-    $psi.Arguments = "-s $Serial " + ($Args -join ' ')
+    $psi.Arguments = "-s $Serial " + ($AdbArgs -join ' ')
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
     $p = [System.Diagnostics.Process]::Start($psi)
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
         try { $p.Kill() } catch { }
-        throw "adb 超时 ${TimeoutSec}s：adb -s $Serial $($Args -join ' ')"
+        throw "adb 超时 ${TimeoutSec}s：adb -s $Serial $($AdbArgs -join ' ')"
     }
     $stdout = $p.StandardOutput.ReadToEnd()
     $stderr = $p.StandardError.ReadToEnd()
@@ -46,8 +47,9 @@ function Invoke-Adb {
 }
 
 function Invoke-AdbShell {
+    [CmdletBinding()]
     param([string]$Serial, [string]$Command, [int]$TimeoutSec = 300)
-    return Invoke-Adb -Serial $Serial -Args @('shell', $Command) -TimeoutSec $TimeoutSec
+    return Invoke-Adb -Serial $Serial -AdbArgs @('shell', $Command) -TimeoutSec $TimeoutSec
 }
 
 function New-ArtifactDir {
