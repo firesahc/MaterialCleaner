@@ -36,4 +36,6 @@ word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovid
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|ConfiguredMountPoint	11
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|denylist	10
 word:core/storage-redirect-domain/src/test/java/me/gm/cleaner/core/storage/redirect/domain/RedirectDifferentialTest.kt|ConfiguredMountPoint	2
+word:core/storage-redirect-domain/src/main/java/me/gm/cleaner/core/storage/redirect/domain/RuntimeBehaviorPolicy.kt|denylist	1
+word:core/storage-redirect-domain/src/test/java/me/gm/cleaner/core/storage/redirect/domain/RuntimeBehaviorPolicyTest.kt|denylist	1
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyRefreshScheduler.kt|configured_mount_points	1

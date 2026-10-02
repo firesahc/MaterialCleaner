@@ -4,6 +4,7 @@ import api.SystemService
 import me.gm.cleaner.core.storage.redirect.domain.MountPlanDeriver
 import me.gm.cleaner.core.storage.redirect.domain.PlatformCapabilities
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
+import me.gm.cleaner.core.storage.redirect.domain.RuntimeBehaviorPolicy
 import me.gm.cleaner.core.storage.redirect.domain.RuntimeMountPlan
 
 /**
@@ -11,6 +12,7 @@ import me.gm.cleaner.core.storage.redirect.domain.RuntimeMountPlan
  *
  * VFS/Mounter 只通过这里消费策略快照和平台能力，避免继续把
  * ServicePreferences、系统属性探测散落到 mount 热路径中。
+ * 记录语义由 [RuntimeBehaviorPolicy] 决定，这里只做视图委托。
  */
 object VfsRuntimeConfigStore {
     @Volatile
@@ -66,14 +68,13 @@ object VfsRuntimeConfigStore {
     fun getMountTargets(packageName: String, userId: Int): List<String> =
         getMountPlan(packageName, userId)?.targets ?: emptyList()
 
-    fun shouldRecordExternalAppSpecificStorage(packageName: String): Boolean {
-        val policy = currentPolicy()
-        return policy.recordExternalAppSpecificStorage && packageName !in policy.denylist
-    }
+    fun shouldRecordExternalAppSpecificStorage(packageName: String): Boolean =
+        RuntimeBehaviorPolicy.project(currentPolicy()).shouldRecordExternal(packageName)
 
     fun isFuseBpfEnabled(): Boolean =
         currentCapabilities().isFuseBpfEnabled
 
     fun shouldMountForAllPackages(): Boolean =
-        !isFuseBpfEnabled() && currentPolicy().recordExternalAppSpecificStorage
+        !isFuseBpfEnabled() &&
+            RuntimeBehaviorPolicy.project(currentPolicy()).recordExternalAppSpecificStorage
 }
