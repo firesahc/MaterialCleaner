@@ -571,7 +571,7 @@ object HookPolicyCache {
     fun getMountedPath(packageName: String, userId: Int, path: String): String? {
         val snapshot = rule
         val userRules = snapshot.data[packageName] ?: return null
-        val rules = userRules[userId] ?: userRules[0] ?: return null
+        val rules = userRules[userId] ?: return null
         return rules.getMountedPath(path)
     }
 

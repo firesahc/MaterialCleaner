@@ -520,7 +520,29 @@ class MountWizard(private val packageInfo: PackageInfo) {
 
     fun retrodictAnswers(mountRules: List<Pair<String, String>>): WizardAnswers {
         val answers = WizardAnswers()
-        var rulesNotBacktracked = mountRules
+        // P0：createRules 在尾部追加 sharedUid 自对规则（otherDataDir/otherObbDir），
+        // 旧 retrodict 未剥离，尾部自对会被误判为 q3 自定义，导致 round-trip 腐败。
+        // 这里先剥离确定性 sharedUid 尾部，createRules 会按 q1/q12 重新生成。
+        val sharedUidPairs = try {
+            getSharedUserIdPackages(packageInfo)
+                .asSequence()
+                .filter { it.packageName != packageName }
+                .flatMap { otherPackageInfo ->
+                    sequenceOf(
+                        FileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path to
+                                FileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path,
+                        FileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path to
+                                FileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path,
+                    )
+                }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+        var rulesNotBacktracked = if (sharedUidPairs.isEmpty()) {
+            mountRules
+        } else {
+            mountRules.filterNot { it in sharedUidPairs }
+        }
         // backtrack q1
         var q1Size = 0
         if (rulesNotBacktracked.size >= 2 && rulesNotBacktracked[1] == dataDir to dataDir) {

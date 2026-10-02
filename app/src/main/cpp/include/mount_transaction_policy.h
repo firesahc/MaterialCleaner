@@ -15,7 +15,10 @@ constexpr int kSafePhaseTimeoutSeconds = 3;
 constexpr int kMutationPhaseTimeoutSeconds = 15;
 
 constexpr bool phase_may_have_dirty_namespace(Phase phase) {
+    // P0：BASELINE_READY 正处 MNT_DETACH 异步回收窗口（Mount.cpp 自注），
+    // 超时杀 child 后立即重试会叠加进中间态 namespace，保守判脏。
     return phase == Phase::MUTATING_BASELINE ||
+            phase == Phase::BASELINE_READY ||
             phase == Phase::APPLYING_RULES ||
             phase == Phase::ROLLING_BACK;
 }

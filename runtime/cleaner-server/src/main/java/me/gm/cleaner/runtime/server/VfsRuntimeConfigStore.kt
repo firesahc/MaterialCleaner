@@ -57,7 +57,7 @@ object VfsRuntimeConfigStore {
     fun getMountRules(packageName: String, userId: Int): MountRules? {
         val rules = currentPolicy()
             .storageRedirectRules[packageName]
-            ?.let { userRules -> userRules[userId] ?: userRules[0] }
+            ?.let { userRules -> userRules[userId] }
             ?: return null
         if (rules.isEmpty()) return null
         return MountRules(rules.map { it.source to it.target })

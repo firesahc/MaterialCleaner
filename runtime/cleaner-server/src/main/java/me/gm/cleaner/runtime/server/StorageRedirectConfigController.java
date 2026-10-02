@@ -33,7 +33,15 @@ public class StorageRedirectConfigController {
         reloadSharedPreferencesFromDisk();
         // 顺序治理：先构建并更新内存策略（Mounter 的数据源），
         // VFS remount 先切，发布快照与 Hook 刷新后置——上层切换不领先于底层挂载视图。
-        final var snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        // P0：CORRUPT 时 build 抛 IllegalArgumentException，旧内存快照与 DataBus 旧文件保持不变，
+        // 这里显式阻断 remount/publish，避免 Binder 异常穿透，保留 last-known-good。
+        final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
+        try {
+            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        } catch (final IllegalArgumentException e) {
+            Log.e(TAG, "onPreferencesChanged: configured policy CORRUPT, keep last-known-good", e);
+            return;
+        }
         remountAffectedStorageRedirectPackages(previousPackages);
         SnapshotPublisher.INSTANCE.publishRedirectPolicy(snapshot);
         MediaProviderHookGateway.refreshPolicyFromDataBus();
@@ -44,8 +52,13 @@ public class StorageRedirectConfigController {
         ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
         // 同 M1：refreshPolicy 前置 → VFS 先切 → 发布同一份策略快照 → Hook 异步跟进。
-        final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot =
-                VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
+        try {
+            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        } catch (final IllegalArgumentException e) {
+            Log.e(TAG, "onStorageRedirectChanged: configured policy CORRUPT, keep last-known-good", e);
+            return;
+        }
         remountAffectedStorageRedirectPackages(previousPackages);
         SnapshotPublisher.INSTANCE.publishStorageRedirectPolicySet(snapshot);
         MediaProviderHookGateway.refreshPolicyFromDataBus();
@@ -53,7 +66,13 @@ public class StorageRedirectConfigController {
 
     public void onReadOnlyChanged() {
         ServicePreferences.INSTANCE.invalidateReadOnlyCache();
-        final var snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
+        try {
+            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+        } catch (final IllegalArgumentException e) {
+            Log.e(TAG, "onReadOnlyChanged: configured policy CORRUPT, keep last-known-good", e);
+            return;
+        }
         SnapshotPublisher.INSTANCE.publishReadOnly(snapshot);
         MediaProviderHookGateway.refreshPolicyFromDataBus();
     }

@@ -43,9 +43,6 @@ object RuntimeRedirectPolicyFactory {
         userIds: List<Int>,
     ): RedirectPolicySnapshot {
         val now = System.currentTimeMillis()
-        val gen = generationCounter.incrementAndGet()
-        val rules = LinkedHashMap<String, Map<Int, List<RedirectRule>>>()
-        val preferencesReady = ServicePreferences.isInitialized()
         val configuredRedirect = configured.redirect
         val configuredReadOnly = configured.readOnly
         require(configuredRedirect.health != ConfigSourceHealth.CORRUPT) {
@@ -54,6 +51,9 @@ object RuntimeRedirectPolicyFactory {
         require(configuredReadOnly.health != ConfigSourceHealth.CORRUPT) {
             "只读配置损坏: ${configuredReadOnly.diagnostics.joinToString()}"
         }
+        val gen = generationCounter.incrementAndGet()
+        val rules = LinkedHashMap<String, Map<Int, List<RedirectRule>>>()
+        val preferencesReady = ServicePreferences.isInitialized()
         val readOnlyRules = buildReadOnlyRules(configuredReadOnly.envelope)
 
         for (policy in configuredRedirect.envelope.redirectPolicies) {

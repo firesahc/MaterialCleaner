@@ -314,23 +314,40 @@ class Mounter {
                 "pkg=$packageName in ${delay}ms")
         handler.postDelayed(delay) {
             synchronized(lock) {
-                if (shouldRunMountRetryLocked(packageName, pid)) {
+                if (shouldRunMountRetryLocked(packageName, pid, uid)) {
                     bindMountLocked(packageName, pid, uid)
                 }
             }
         }
     }
 
-    private fun shouldRunMountRetryLocked(packageName: String, pid: Int): Boolean {
+    private fun shouldRunMountRetryLocked(packageName: String, pid: Int, expectedUid: Int): Boolean {
         if (!mountRetryCount.containsKey(pid)) {
             return false
         }
-        if (File("/proc", pid.toString()).exists()) {
-            return true
+        if (!File("/proc", pid.toString()).exists()) {
+            Log.i("MC_REDIRECT", "[Mounter] skip mount retry for dead pid=$pid pkg=$packageName")
+            notifyProcessKilledLocked(packageName, pid)
+            return false
         }
-        Log.i("MC_REDIRECT", "[Mounter] skip mount retry for dead pid=$pid pkg=$packageName")
-        notifyProcessKilledLocked(packageName, pid)
-        return false
+        // P0：PID 复用防护。延迟 2-15s 窗口内 pid 可能被新进程复用，
+        // 仅查 /proc 存在会 setns 进错误进程。至少比对 uid，不一致则放弃重试。
+        val observedUid = try {
+            RuntimeFileUtils.read_uid(pid)
+        } catch (_: Exception) {
+            -1
+        }
+        if (observedUid != expectedUid) {
+            Log.w(
+                "MC_REDIRECT",
+                "[Mounter] skip mount retry pid reused pid=$pid pkg=$packageName " +
+                        "expectedUid=$expectedUid observedUid=$observedUid",
+            )
+            mountRetryCount.remove(pid)
+            notifyProcessKilledLocked(packageName, pid)
+            return false
+        }
+        return true
     }
 
     private fun record(mkdirRecord: MutableSet<String>, dir: String) {
@@ -479,6 +496,19 @@ class Mounter {
         failureCount.incrementAndGet()
         val packageSummary = conflictingPackages.sorted().joinToString(",")
         val resetSummary = if (reset.success) "baseline restored" else "reset=${reset.reason}"
+        // P0：空规则 reset 同样可能污染 namespace（reset.namespaceDirty）或失败，
+        // 不能只记事件就让进程继续跑在脏视图上。与 mount 失败同策略：脏且未终止则安全停止。
+        if (reset.namespaceDirty && !reset.targetTerminated) {
+            val userId = procInfo.uid.toUserId()
+            conflictingPackages.forEach { pkg ->
+                val stopped = SystemService.forceStopPackageNoThrow(pkg, userId)
+                if (stopped) {
+                    Log.w("MC_REDIRECT", "[Mounter] safety stop applied for conflict dirty pid=${procInfo.pid} pkg=$pkg")
+                } else {
+                    Log.e("MC_REDIRECT", "[Mounter] safety stop FAILED for conflict dirty pid=${procInfo.pid} pkg=$pkg")
+                }
+            }
+        }
         lastMountFailure = MountFailure(
             timeMillis = System.currentTimeMillis(),
             packageName = packageSummary,
