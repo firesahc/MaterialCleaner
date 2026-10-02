@@ -192,8 +192,40 @@ class RedirectDifferentialTest {
         )
     }
 
-    private fun snapshotOf(rules: List<Pair<String, String>>): RedirectPolicySnapshot {
-        val redirect = rules.map { (source, target) ->
+    @Test
+    fun `投影桥挂载计划与旧实现一致`() {
+        oracleCases().forEach { case ->
+            val rules = case.rules.map { (source, target) ->
+                RedirectRule(source = source, target = target)
+            }
+            val plan = MountPlanDeriver.derive("pkg", 0, rules)
+                ?: error("${case.name}: 空规则不应返回 null")
+            val legacy = MountRules(case.rules)
+            assertEquals("${case.name}: sources", legacy.sources, plan.sources)
+            assertEquals("${case.name}: targets", legacy.targets, plan.targets)
+            assertEquals("${case.name}: mountPoints", legacy.mountPoint, plan.mountPoints)
+            assertEquals("${case.name}: mkdirList", legacy.mountPoint + legacy.sources, plan.mkdirList)
+            assertEquals(
+                "${case.name}: resolve",
+                legacy.getMountedPath(case.path),
+                MountPlanDeriver.resolveMountedPath(rules, case.path),
+            )
+        }
+    }
+
+    @Test
+    fun `投影桥空规则返回null脏输入不抛`() {
+        assertEquals(null, MountPlanDeriver.derive("pkg", 0, emptyList()))
+        assertEquals("/a", MountPlanDeriver.resolveMountedPath(emptyList(), "/a"))
+        val dirty = listOf(RedirectRule(source = "/real/A/", target = "/visible/A"))
+        val plan = MountPlanDeriver.derive("pkg", 0, dirty)!!
+        assertEquals(
+            MountRules(listOf("/real/A/" to "/visible/A")).mountPoint,
+            plan.mountPoints,
+        )
+    }
+
+    private fun snapshotOf(rules: List<Pair<String, String>>): RedirectPolicySnapshot {        val redirect = rules.map { (source, target) ->
             RedirectRule(source = source, target = target)
         }
         return RedirectPolicySnapshot(

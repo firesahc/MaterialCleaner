@@ -1,9 +1,10 @@
 package me.gm.cleaner.runtime.server
 
 import api.SystemService
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
+import me.gm.cleaner.core.storage.redirect.domain.MountPlanDeriver
 import me.gm.cleaner.core.storage.redirect.domain.PlatformCapabilities
 import me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot
+import me.gm.cleaner.core.storage.redirect.domain.RuntimeMountPlan
 
 /**
  * VFS 层运行态策略视图。
@@ -54,17 +55,16 @@ object VfsRuntimeConfigStore {
             ?.sumOf { it.size }
             ?: 0
 
-    fun getMountRules(packageName: String, userId: Int): MountRules? {
+    fun getMountPlan(packageName: String, userId: Int): RuntimeMountPlan? {
         val rules = currentPolicy()
             .storageRedirectRules[packageName]
             ?.let { userRules -> userRules[userId] }
             ?: return null
-        if (rules.isEmpty()) return null
-        return MountRules(rules.map { it.source to it.target })
+        return MountPlanDeriver.derive(packageName, userId, rules)
     }
 
     fun getMountTargets(packageName: String, userId: Int): List<String> =
-        getMountRules(packageName, userId)?.targets ?: emptyList()
+        getMountPlan(packageName, userId)?.targets ?: emptyList()
 
     fun shouldRecordExternalAppSpecificStorage(packageName: String): Boolean {
         val policy = currentPolicy()

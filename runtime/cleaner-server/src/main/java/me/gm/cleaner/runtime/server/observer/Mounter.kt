@@ -15,7 +15,6 @@ import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.common.err.ErrorLogThrottle
-import me.gm.cleaner.core.storage.redirect.domain.MountRules
 import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
 import api.SystemService
 import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
@@ -67,8 +66,6 @@ class Mounter {
     internal val isFuseBpfEnabled: Boolean
         get() = VfsRuntimeConfigStore.isFuseBpfEnabled()
 
-    private fun getMkdirList(rules: MountRules): List<String> = rules.mountPoint + rules.sources
-
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
         totalAttempts.incrementAndGet()
         // 代际标注：使 mount 与 FUSE apply（同代际快照）可在日志中直接配对。
@@ -78,9 +75,9 @@ class Mounter {
         val userId = uid.toUserId()
         val recordExternalAppSpecificStorage =
             VfsRuntimeConfigStore.shouldRecordExternalAppSpecificStorage(packageName)
-        val rules = VfsRuntimeConfigStore.getMountRules(packageName, userId)
+        val plan = VfsRuntimeConfigStore.getMountPlan(packageName, userId)
 
-        if (rules == null || rules.isEmpty()) {
+        if (plan == null || plan.isEmpty()) {
             val result = RuntimeFileUtils.bind_mount_result(
                 pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
@@ -94,7 +91,7 @@ class Mounter {
         pidRecords.put(packageName, pid)
         if (!mkdirRecords.containsKey(packageName)) {
             val mkdirRecord = mutableSetOf<String>()
-            getMkdirList(rules).forEach { record(mkdirRecord, it) }
+            plan.mkdirList.forEach { record(mkdirRecord, it) }
             if (RuntimeFileUtils.auto_prepare_dirs(mkdirRecord.toTypedArray(), uid)) {
                 mkdirRecords.putAll(packageName, mkdirRecord)
             }
@@ -102,10 +99,10 @@ class Mounter {
         val result = RuntimeFileUtils.bind_mount_result(
             pid, uid,
             !isFuseBpfEnabled && recordExternalAppSpecificStorage, isFuseBpfEnabled,
-            rules.sources.toTypedArray(), rules.targets.toTypedArray()
+            plan.sources.toTypedArray(), plan.targets.toTypedArray()
         )
         Log.i("MC_REDIRECT", "[Mounter] bindMount result=${result.success} pkg=$packageName " +
-                "pid=$pid sources=${rules.sources} targets=${rules.targets} detail=${result.reason}")
+                "pid=$pid sources=${plan.sources} targets=${plan.targets} detail=${result.reason}")
         // Issue #3：fuse_bypass 只是 FUSE 私有目录拦截优化，失败时降级为无 bypass
         // 再试一次，不记失败、不调度 pid 重试。回滚已保证 namespace 干净，
         // 且 fuseBypass=false 时 native 直接跳过 bypass 块，不会二次触发。
@@ -118,7 +115,7 @@ class Mounter {
             val fallback = RuntimeFileUtils.bind_mount_result(
                 pid, uid,
                 !isFuseBpfEnabled && recordExternalAppSpecificStorage, false,
-                rules.sources.toTypedArray(), rules.targets.toTypedArray()
+                plan.sources.toTypedArray(), plan.targets.toTypedArray()
             )
             Log.i("MC_REDIRECT", "[Mounter] degraded retry result=${fallback.success} " +
                     "pkg=$packageName pid=$pid detail=${fallback.reason}")
@@ -390,11 +387,11 @@ class Mounter {
         val remountPackages = mutableSetOf<String>()
         for (procInfo in procList) {
             procInfo.pkgList.forEach { packageName ->
-                val rules = VfsRuntimeConfigStore.getMountRules(
+                val plan = VfsRuntimeConfigStore.getMountPlan(
                     packageName,
                     procInfo.uid.toUserId(),
                 ) ?: return@forEach
-                val targets = rules.targets
+                val targets = plan.targets
                 val mountedIndices =
                     RuntimeFileUtils.check_mounts(procInfo.pid, targets.toTypedArray())
                 if (mountedIndices == null) {
@@ -403,7 +400,7 @@ class Mounter {
                     // record pid
                     pidRecords.put(packageName, procInfo.pid)
                     if (!mkdirRecords.containsKey(packageName)) {
-                        mkdirRecords.putAll(packageName, getMkdirList(rules))
+                        mkdirRecords.putAll(packageName, plan.mkdirList)
                     }
                 } else {
                     remountPackages += packageName
@@ -429,8 +426,8 @@ class Mounter {
             val selection = ProcessMountSelectionPolicy.resolve(
                 packageNames = procInfo.pkgList,
                 redirectRuleSignature = { packageName ->
-                    VfsRuntimeConfigStore.getMountRules(packageName, userId)?.let { rules ->
-                        rules.sources.zip(rules.targets)
+                    VfsRuntimeConfigStore.getMountPlan(packageName, userId)?.let { plan ->
+                        plan.sources.zip(plan.targets)
                     }
                 },
                 shouldUnmountDataRestriction = { packageName ->
@@ -452,11 +449,11 @@ class Mounter {
                     if (bindMountLocked(selection.packageName, procInfo.pid, procInfo.uid)) {
                         // 等价包与代表包共享同一 namespace，登记相同的 pid 与目录。
                         equivalentPackages.forEach { packageName ->
-                            val rules = VfsRuntimeConfigStore.getMountRules(packageName, userId)
+                            val plan = VfsRuntimeConfigStore.getMountPlan(packageName, userId)
                                 ?: return@forEach
                             pidRecords.put(packageName, procInfo.pid)
                             if (!mkdirRecords.containsKey(packageName)) {
-                                mkdirRecords.putAll(packageName, getMkdirList(rules))
+                                mkdirRecords.putAll(packageName, plan.mkdirList)
                             }
                         }
                     }
