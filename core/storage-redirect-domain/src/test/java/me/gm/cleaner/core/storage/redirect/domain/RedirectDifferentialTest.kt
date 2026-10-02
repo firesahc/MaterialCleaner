@@ -137,8 +137,7 @@ class RedirectDifferentialTest {
     }
 
     @Test
-    fun `alias分歧样本_只冻结不强制全等`() {
-        val pairs = listOf("/real/A" to "/visible/A", "/real/B" to "/real/A/B")
+    fun `alias分歧样本_只冻结不强制全等`() {        val pairs = listOf("/real/A" to "/visible/A", "/real/B" to "/real/A/B")
         val ordered = pairs.mapIndexed { index, (source, target) ->
             rule(index, source, target)
         }
@@ -149,6 +148,58 @@ class RedirectDifferentialTest {
         assertTrue(legacy.isNotEmpty())
         assertTrue(closure.paths.isNotEmpty())
         assertTrue(closure.complete)
+    }
+
+    @Test
+    fun `推导器挂载点与旧实现一致`() {
+        oracleCases().forEach { case ->
+            val snapshot = snapshotOf(case.rules)
+            val expected = MountRules(case.rules).mountPoint
+            val actual = RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot).points
+            assertEquals("${case.name}: deriver mountPoints", expected, actual)
+        }
+    }
+
+    @Test
+    fun `推导器非规范输入回退旧实现不抛`() {
+        val dirty = listOf("/real/A/" to "/visible/A", "/visible/A" to "/visible/A")
+        val snapshot = snapshotOf(dirty)
+        val expected = MountRules(dirty).mountPoint
+        assertEquals(
+            expected,
+            RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot).points,
+        )
+        assertEquals(
+            MountRules(dirty).getMountedPath("/visible/A/file"),
+            RedirectPolicyDeriver.getMountedPath(snapshot, "pkg", 0, "/visible/A/file"),
+        )
+    }
+
+    @Test
+    fun `推导器缺包缺用户返回原路径`() {
+        val snapshot = snapshotOf(listOf("/real/A" to "/visible/A"))
+        assertEquals(
+            "/visible/A/file",
+            RedirectPolicyDeriver.getMountedPath(snapshot, "other", 0, "/visible/A/file"),
+        )
+        assertEquals(
+            "/visible/A/file",
+            RedirectPolicyDeriver.getMountedPath(snapshot, "pkg", 10, "/visible/A/file"),
+        )
+        assertEquals(
+            "/real/A/file",
+            RedirectPolicyDeriver.getMountedPath(snapshot, "pkg", 0, "/visible/A/file"),
+        )
+    }
+
+    private fun snapshotOf(rules: List<Pair<String, String>>): RedirectPolicySnapshot {
+        val redirect = rules.map { (source, target) ->
+            RedirectRule(source = source, target = target)
+        }
+        return RedirectPolicySnapshot(
+            generation = 1L,
+            storageRedirectRules = mapOf("pkg" to mapOf(0 to redirect)),
+        )
     }
 
     private fun assertDifferential(
