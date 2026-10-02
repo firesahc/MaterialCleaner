@@ -28,6 +28,9 @@ build_tmp_mainjar/
 # Backup directories from refactoring
 *.bak/
 
+# Device probe run outputs
+/artifacts/
+
 .classpath
 .project
 .settings/
