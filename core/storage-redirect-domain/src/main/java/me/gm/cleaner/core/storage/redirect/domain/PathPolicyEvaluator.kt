@@ -4,13 +4,12 @@ package me.gm.cleaner.core.storage.redirect.domain
 enum class PathPolicyDecision {
     ALLOW,
     READ_ONLY,
-    DENY,
 }
 
 /**
  * 策略求值所需的操作类别。
  *
- * 只读规则仅约束 [mutatesStorage] 操作。DENY_ALL 对读取和写入都生效。
+ * 只读规则仅约束 [mutatesStorage] 操作。
  */
 enum class PathOperation(
     val mutatesStorage: Boolean,
@@ -29,7 +28,7 @@ enum class PathOperation(
  * 一次操作涉及的一条路径。
  *
  * [mayAffectDescendants] 表示操作可能改变该路径下整棵子树。此时即使操作路径是保护根的
- * 祖先，也必须保守命中；普通 lookup/readdir 不设置它，从而保留 DENY 根的父目录名称可见性。
+ * 祖先，也必须保守命中。
  */
 data class OperationPath(
     val visiblePath: String,
@@ -110,7 +109,7 @@ data class PathPolicyEvaluation(
  *
  * 调用方必须先按包、userId/appId/shared UID 与卷筛选出同一 AccessSafetyDomain 的规则。
  * 本类对操作 footprint 的每一端分别建立 有序重定向轨迹，并在原始可见路径与轨迹中
- * 所有派生 alias 上求值。最终按 DENY > READ_ONLY > ALLOW 归约。
+ * 所有派生 alias 上求值。最终按 READ_ONLY > ALLOW 归约。
  */
 object PathPolicyEvaluator {
 
@@ -118,18 +117,11 @@ object PathPolicyEvaluator {
         footprint: OperationFootprint,
         redirectRules: List<OrderedRedirectRule>,
         readOnlyRules: List<ReadOnlyRule>,
-        denyAllRules: List<DenyAllRule>,
     ): PathPolicyEvaluation {
         readOnlyRules.forEach { rule ->
             OrderedRedirectInterpreter.requireCanonicalAbsolutePath(
                 rule.visiblePath,
                 "readOnlyRule[${rule.ruleId.value}]",
-            )
-        }
-        denyAllRules.forEach { rule ->
-            OrderedRedirectInterpreter.requireCanonicalAbsolutePath(
-                rule.visiblePath,
-                "denyAllRule[${rule.ruleId.value}]",
             )
         }
 
@@ -146,20 +138,6 @@ object PathPolicyEvaluator {
             )
             matchedRuleIds += redirect.matchedRuleIds
 
-            denyAllRules.forEach { rule ->
-                if (aliasClosure.paths.any { alias ->
-                        intersectsProtectedRoot(
-                            operationPath = alias,
-                            protectedRoot = rule.visiblePath,
-                            mayAffectDescendants = operationPath.mayAffectDescendants,
-                        )
-                    }
-                ) {
-                    matchedRuleIds += rule.ruleId
-                    decision = PathPolicyDecision.DENY
-                }
-            }
-
             if (footprint.operation.mutatesStorage) {
                 readOnlyRules.forEach { rule ->
                     if (aliasClosure.paths.any { alias ->
@@ -171,9 +149,7 @@ object PathPolicyEvaluator {
                         }
                     ) {
                         matchedRuleIds += rule.ruleId
-                        if (decision != PathPolicyDecision.DENY) {
-                            decision = PathPolicyDecision.READ_ONLY
-                        }
+                        decision = PathPolicyDecision.READ_ONLY
                     }
                 }
             }

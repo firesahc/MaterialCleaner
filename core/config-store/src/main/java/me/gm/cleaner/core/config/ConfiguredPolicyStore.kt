@@ -516,30 +516,10 @@ class FileConfiguredPolicyStore(
 
     private fun requireRedirectOnly(envelope: StoragePolicyEnvelope) {
         require(envelope.readOnlyRules.isEmpty()) { "redirect 更新不能包含 readOnlyRules" }
-        require(envelope.denyAllRules.isEmpty()) { "本阶段不支持写入 denyAllRules" }
-        require(envelope.promptSuppressions.isEmpty() && envelope.packageExclusions.isEmpty()) {
-            "本阶段不支持写入其他策略类型"
-        }
-        require(envelope.legacyWizardDrafts.isEmpty() && envelope.legacyWizardTemplate == null) {
-            "本阶段不支持写入 Wizard 数据"
-        }
-        require(envelope.legacyQuarantines.isEmpty() && envelope.migrationMetadata == null) {
-            "本阶段不支持写入迁移元数据"
-        }
     }
 
     private fun requireReadOnlyOnly(envelope: StoragePolicyEnvelope) {
         require(envelope.redirectPolicies.isEmpty()) { "read-only 更新不能包含 redirectPolicies" }
-        require(envelope.denyAllRules.isEmpty()) { "本阶段不支持写入 denyAllRules" }
-        require(envelope.promptSuppressions.isEmpty() && envelope.packageExclusions.isEmpty()) {
-            "本阶段不支持写入其他策略类型"
-        }
-        require(envelope.legacyWizardDrafts.isEmpty() && envelope.legacyWizardTemplate == null) {
-            "本阶段不支持写入 Wizard 数据"
-        }
-        require(envelope.legacyQuarantines.isEmpty() && envelope.migrationMetadata == null) {
-            "本阶段不支持写入迁移元数据"
-        }
     }
 
     private fun revisionOfRedirect(envelope: StoragePolicyEnvelope): String {
@@ -588,7 +568,6 @@ class FileConfiguredPolicyStore(
 
     private fun StorageUserScope.canonicalName(): String = when (this) {
         StorageUserScope.AllUsers -> "all"
-        is StorageUserScope.SpecificUser -> "user:$userId"
     }
 
     /** 在旧格式进入领域正文时做一次稳定的 POSIX 词法规范化。 */

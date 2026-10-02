@@ -1,7 +1,6 @@
 package me.gm.cleaner.core.storage.redirect.domain
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,7 +20,6 @@ class PathPolicyEvaluatorTest {
             ),
             redirectRules = redirect,
             readOnlyRules = listOf(readOnly("ro", "/backing/private")),
-            denyAllRules = emptyList(),
         )
 
         assertEquals(PathPolicyDecision.READ_ONLY, result.decision)
@@ -45,7 +43,6 @@ class PathPolicyEvaluatorTest {
             ),
             redirectRules = redirect,
             readOnlyRules = listOf(readOnly("ro", "/visible/public")),
-            denyAllRules = emptyList(),
         )
 
         assertEquals(PathPolicyDecision.READ_ONLY, result.decision)
@@ -57,48 +54,25 @@ class PathPolicyEvaluatorTest {
     }
 
     @Test
-    fun `读取不受只读限制但DENY优先于只读`() {
+    fun `读取不受只读限制但写入命中只读规则`() {
         val read = PathPolicyEvaluator.evaluate(
             footprint = OperationFootprint.single(PathOperation.READ_CONTENT, "/protected/file"),
             redirectRules = emptyList(),
             readOnlyRules = listOf(readOnly("ro", "/protected")),
-            denyAllRules = emptyList(),
         )
         val write = PathPolicyEvaluator.evaluate(
             footprint = OperationFootprint.single(PathOperation.WRITE_CONTENT, "/protected/file"),
             redirectRules = emptyList(),
             readOnlyRules = listOf(readOnly("ro", "/protected")),
-            denyAllRules = listOf(deny("deny", "/protected")),
         )
 
         assertEquals(PathPolicyDecision.ALLOW, read.decision)
-        assertEquals(PathPolicyDecision.DENY, write.decision)
+        assertEquals(PathPolicyDecision.READ_ONLY, write.decision)
         assertTrue(RuleId("ro") in write.matchedRuleIds)
-        assertTrue(RuleId("deny") in write.matchedRuleIds)
     }
 
     @Test
-    fun `父目录普通读取保留名称可见但影响后代的操作被拒绝`() {
-        val lookupParent = PathPolicyEvaluator.evaluate(
-            footprint = OperationFootprint.single(PathOperation.LOOKUP, "/visible"),
-            redirectRules = emptyList(),
-            readOnlyRules = emptyList(),
-            denyAllRules = listOf(deny("deny", "/visible/secret")),
-        )
-        val deleteParent = PathPolicyEvaluator.evaluate(
-            footprint = OperationFootprint.single(PathOperation.DELETE, "/visible"),
-            redirectRules = emptyList(),
-            readOnlyRules = emptyList(),
-            denyAllRules = listOf(deny("deny", "/visible/secret")),
-        )
-
-        assertEquals(PathPolicyDecision.ALLOW, lookupParent.decision)
-        assertFalse(RuleId("deny") in lookupParent.matchedRuleIds)
-        assertEquals(PathPolicyDecision.DENY, deleteParent.decision)
-    }
-
-    @Test
-    fun `rename双端任一端与保护根祖先相交都采用最严格结果`() {
+    fun `rename双端任一端命中只读采取严格结果`() {
         val result = PathPolicyEvaluator.evaluate(
             footprint = OperationFootprint.rename(
                 source = "/ordinary/source",
@@ -106,16 +80,14 @@ class PathPolicyEvaluatorTest {
             ),
             redirectRules = emptyList(),
             readOnlyRules = listOf(readOnly("ro", "/ordinary/source")),
-            denyAllRules = listOf(deny("deny", "/visible/secret")),
         )
 
-        assertEquals(PathPolicyDecision.DENY, result.decision)
+        assertEquals(PathPolicyDecision.READ_ONLY, result.decision)
         assertEquals(
             listOf("/ordinary/source", "/visible"),
             result.paths.map(EvaluatedOperationPath::derivedPath),
         )
         assertTrue(RuleId("ro") in result.matchedRuleIds)
-        assertTrue(RuleId("deny") in result.matchedRuleIds)
     }
 
     @Test
@@ -127,7 +99,6 @@ class PathPolicyEvaluatorTest {
             ),
             redirectRules = emptyList(),
             readOnlyRules = listOf(readOnly("ro", "/visible/private")),
-            denyAllRules = listOf(deny("deny", "/visible/private")),
         )
 
         assertEquals(PathPolicyDecision.ALLOW, result.decision)
@@ -148,7 +119,4 @@ class PathPolicyEvaluatorTest {
 
     private fun readOnly(id: String, path: String): ReadOnlyRule =
         ReadOnlyRule(RuleId(id), scope, path)
-
-    private fun deny(id: String, path: String): DenyAllRule =
-        DenyAllRule(RuleId(id), scope, path)
 }
