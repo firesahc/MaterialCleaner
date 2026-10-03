@@ -1,10 +1,12 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.process
 
 import android.app.ActivityManager
 import androidx.annotation.CallSuper
 import api.SystemService
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.runtime.server.VfsRuntimePolicy
+import me.gm.cleaner.runtime.server.lifecycle.BaseObserver
+import me.gm.cleaner.runtime.server.vfs.mount.Mounter
 import java.util.concurrent.CopyOnWriteArraySet
 
 abstract class BaseProcessObserver : BaseObserver() {

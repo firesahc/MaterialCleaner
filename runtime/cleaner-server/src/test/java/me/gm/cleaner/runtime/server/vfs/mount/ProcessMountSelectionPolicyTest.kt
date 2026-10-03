@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.vfs.mount
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame

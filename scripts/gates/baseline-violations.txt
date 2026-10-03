@@ -18,7 +18,7 @@ word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/consumer/
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/DiagnosticArchive.kt|configured_mount_points	2
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/hookbridge/MediaProviderHookGateway.kt|configured_mount_points	4
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/hookbridge/MediaProviderHookGateway.kt|ConfiguredMountPoint	1
-word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/observer/FileSystemObserver.kt|denylist	3
+word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/recording/FileSystemObserver.kt|denylist	3
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestrator/DataBusLayerReporter.kt|configured_mount_points	2
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestrator/DataBusLayerReporter.kt|ConfiguredMountPoint	1
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/orchestrator/HookRecoveryCoordinator.kt|ConfiguredMountPoint	1

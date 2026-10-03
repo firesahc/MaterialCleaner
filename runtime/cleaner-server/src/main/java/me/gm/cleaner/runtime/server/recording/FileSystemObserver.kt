@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.recording
 
 import android.annotation.SuppressLint
 import android.database.Cursor
@@ -12,6 +12,7 @@ import me.gm.cleaner.runtime.server.record.FileSystemRecordDao
 import me.gm.cleaner.runtime.server.record.FileSystemRecordDatabase
 import me.gm.cleaner.model.FileSystemRecordContract
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DELETE_ALL
+import me.gm.cleaner.runtime.server.lifecycle.BaseObserver
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DELETE_APP_SPECIFIC
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_DISTINCT
 import me.gm.cleaner.model.FileSystemRecordContract.PRUNE_QUERIED
@@ -49,7 +50,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
         at androidx.room.RoomDatabase.inTransaction(RoomDatabase.java:706)
         at androidx.room.RoomDatabase.assertNotSuspendingTransaction(RoomDatabase.java:483)
         at me.gm.cleaner.runtime.server.record.FileSystemRecordDao_Impl.insert(FileSystemRecordDao_Impl.java:66)
-        at me.gm.cleaner.server.observer.FileSystemObserver$1.onEvent(FileSystemObserver.java:32)
+        at me.gm.cleaner.runtime.server.recording.FileSystemObserver$1.onEvent(FileSystemObserver.java:32)
         at me.gm.cleaner.server.IFileSystemObserver$Stub.onTransact(IFileSystemObserver.java:67)
         at android.os.Binder.execTransactInternal(Binder.java:1187)
         at android.os.Binder.execTransact(Binder.java:1146)

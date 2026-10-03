@@ -2,8 +2,8 @@ package me.gm.cleaner.runtime.server.consumer
 
 import android.util.Log
 import me.gm.cleaner.core.storage.redirect.databus.DataBus
-import me.gm.cleaner.runtime.server.observer.FileSystemObserver
-import me.gm.cleaner.runtime.server.observer.ObserverManager
+import me.gm.cleaner.runtime.server.recording.FileSystemObserver
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream

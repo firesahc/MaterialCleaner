@@ -12,8 +12,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import api.SystemService;
-import me.gm.cleaner.runtime.server.observer.BaseIntentObserver;
-import me.gm.cleaner.runtime.server.observer.ObserverManager;
+import me.gm.cleaner.runtime.server.lifecycle.BaseIntentObserver;
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager;
 
 public class PackageReceiver {
     private static final String TAG = "PackageReceiver";

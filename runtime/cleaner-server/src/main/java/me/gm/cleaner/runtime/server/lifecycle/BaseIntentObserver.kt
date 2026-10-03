@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.lifecycle
 
 import android.content.IIntentReceiver
 import android.content.Intent

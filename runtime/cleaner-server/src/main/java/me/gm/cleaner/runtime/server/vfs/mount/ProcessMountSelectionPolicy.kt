@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.vfs.mount
 
 /**
  * 为一个 mount namespace 选择唯一的配置代表。

@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer;
+package me.gm.cleaner.runtime.server.process;
 
 import static me.gm.cleaner.core.common.AndroidFilesystemConfig.AID_APP_START;
 

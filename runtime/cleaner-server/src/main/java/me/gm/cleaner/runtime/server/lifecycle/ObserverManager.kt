@@ -1,8 +1,12 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.lifecycle
 
 import android.util.Log
 import me.gm.cleaner.runtime.server.BuildConfig
 import me.gm.cleaner.runtime.server.CleanerServer
+import me.gm.cleaner.runtime.server.process.ActivityManagerLogsObserver
+import me.gm.cleaner.runtime.server.recording.FileSystemObserver
+import me.gm.cleaner.runtime.server.storage.DataAppDirObserver
+import me.gm.cleaner.runtime.server.storage.StorageMountObserver
 import java.util.concurrent.ConcurrentHashMap
 
 object ObserverManager {

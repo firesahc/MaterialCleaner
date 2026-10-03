@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer;
+package me.gm.cleaner.runtime.server.process;
 
 import android.text.TextUtils;
 import android.util.Log;

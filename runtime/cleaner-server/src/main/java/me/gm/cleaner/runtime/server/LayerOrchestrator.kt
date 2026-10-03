@@ -3,8 +3,8 @@ package me.gm.cleaner.runtime.server
 import android.util.Log
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway
-import me.gm.cleaner.runtime.server.observer.ObserverManager
-import me.gm.cleaner.runtime.server.observer.StorageMountObserver
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager
+import me.gm.cleaner.runtime.server.storage.StorageMountObserver
 import me.gm.cleaner.runtime.server.orchestrator.EventConsumerScheduler
 import me.gm.cleaner.runtime.server.orchestrator.HookRecoveryCoordinator
 import me.gm.cleaner.runtime.server.orchestrator.MediaProviderRecoveryStrategy

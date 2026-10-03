@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer;
+package me.gm.cleaner.runtime.server.storage;
 
 import android.os.storage.VolumeInfo;
 
@@ -6,6 +6,7 @@ import androidx.annotation.CallSuper;
 
 import api.SystemService;
 import me.gm.cleaner.runtime.server.CleanerServer;
+import me.gm.cleaner.runtime.server.lifecycle.BaseObserver;
 
 public class StorageMountObserver extends BaseObserver implements IStorageEventListener {
     private final StorageEventListenerDelegate mListener = new StorageEventListenerDelegate();

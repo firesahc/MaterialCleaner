@@ -7,9 +7,9 @@ import hidden.HiddenApiBridge.UserHandle_isIsolated
 import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.model.PackageStatus
-import me.gm.cleaner.runtime.server.observer.BaseProcessObserver
-import me.gm.cleaner.runtime.server.observer.ObserverManager
-import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate
+import me.gm.cleaner.runtime.server.process.BaseProcessObserver
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager
+import me.gm.cleaner.runtime.server.storage.StorageEventListenerDelegate
 import me.gm.cleaner.runtime.server.orchestrator.LayerId
 import me.gm.cleaner.runtime.server.orchestrator.LayerReport
 import me.gm.cleaner.runtime.server.orchestrator.LayerState

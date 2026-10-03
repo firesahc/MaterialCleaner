@@ -24,7 +24,7 @@ import me.gm.cleaner.core.config.SecurityHelper;
 import me.gm.cleaner.runtime.server.BuildConfig;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.core.config.ServicePreferences;
-import me.gm.cleaner.runtime.server.observer.ObserverManager;
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager;
 
 public class CleanerServer extends ContextWrapper {
     public final Handler handler = new Handler(Looper.getMainLooper());

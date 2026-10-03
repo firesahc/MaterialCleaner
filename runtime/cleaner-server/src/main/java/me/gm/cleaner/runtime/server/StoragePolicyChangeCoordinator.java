@@ -9,7 +9,7 @@ import java.util.Set;
 
 import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
-import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
+import me.gm.cleaner.runtime.server.process.PackageInfoMapper;
 import me.gm.cleaner.runtime.server.VfsRuntimePolicy;
 
 /**

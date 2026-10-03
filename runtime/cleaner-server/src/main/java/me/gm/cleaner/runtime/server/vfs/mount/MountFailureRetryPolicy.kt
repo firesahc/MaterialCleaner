@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.vfs.mount
 
 /**
  * 挂载失败的处置分类：区分可重试失败、永久失败与 namespace 污染。

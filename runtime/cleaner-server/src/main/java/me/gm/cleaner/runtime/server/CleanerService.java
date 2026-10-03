@@ -42,11 +42,11 @@ import me.gm.cleaner.core.common.nio.RootWorkerService;
 import me.gm.cleaner.server.ICleanerService;
 import me.gm.cleaner.server.IFileChangeObserver;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
-import me.gm.cleaner.runtime.server.observer.ActivityManagerLogsObserver;
-import me.gm.cleaner.runtime.server.observer.FileSystemObserver;
-import me.gm.cleaner.runtime.server.observer.ObserverManager;
-import me.gm.cleaner.runtime.server.observer.StorageEventListenerDelegate;
-import me.gm.cleaner.runtime.server.observer.StorageMountObserver;
+import me.gm.cleaner.runtime.server.process.ActivityManagerLogsObserver;
+import me.gm.cleaner.runtime.server.recording.FileSystemObserver;
+import me.gm.cleaner.runtime.server.lifecycle.ObserverManager;
+import me.gm.cleaner.runtime.server.storage.StorageEventListenerDelegate;
+import me.gm.cleaner.runtime.server.storage.StorageMountObserver;
 
 public class CleanerService extends ICleanerService.Stub {
     private static final String TAG = "CleanerService";

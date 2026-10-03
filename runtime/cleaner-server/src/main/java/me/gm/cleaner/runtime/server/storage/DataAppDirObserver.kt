@@ -1,10 +1,11 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.storage
 
 import android.content.Intent
 import android.os.Build
 import android.os.FileObserver
 import androidx.core.net.toUri
 import api.SystemService
+import me.gm.cleaner.runtime.server.lifecycle.BaseIntentObserver
 import java.io.File
 
 class DataAppDirObserver : BaseIntentObserver() {

@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer
+package me.gm.cleaner.runtime.server.lifecycle
 
 import androidx.annotation.CallSuper
 

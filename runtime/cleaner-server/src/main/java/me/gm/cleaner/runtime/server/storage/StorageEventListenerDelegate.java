@@ -1,4 +1,4 @@
-package me.gm.cleaner.runtime.server.observer;
+package me.gm.cleaner.runtime.server.storage;
 
 import android.os.Build;
 import android.os.storage.VolumeInfo;
