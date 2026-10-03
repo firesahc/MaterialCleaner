@@ -49,7 +49,6 @@ public class StoragePolicyChangeCoordinator {
 
     public void onStorageRedirectChanged() {
         final var previousPackages = currentStorageRedirectPackages();
-        ServicePreferences.INSTANCE.invalidateSrCache();
         PackageInfoMapper.invalidate();
         // 同 M1：refreshPolicy 前置 → VFS 先切 → 发布同一份策略快照 → Hook 异步跟进。
         final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
@@ -65,7 +64,6 @@ public class StoragePolicyChangeCoordinator {
     }
 
     public void onReadOnlyChanged() {
-        ServicePreferences.INSTANCE.invalidateReadOnlyCache();
         final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
         try {
             snapshot = VfsRuntimePolicy.INSTANCE.refreshPolicy();

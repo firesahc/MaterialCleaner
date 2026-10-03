@@ -27,6 +27,7 @@ import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.getPackageSrZipped
 import me.gm.cleaner.core.config.replaceRedirectRules
 import me.gm.cleaner.databinding.PromptDialogBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
@@ -137,7 +138,7 @@ abstract class BasePromptActivity : AppCompatActivity() {
                     withContext(Dispatchers.IO) {
                         val wizard = MountWizard(packageInfo)
                         val answers = wizard.retrodictAnswers(
-                            ServicePreferences.getPackageSrZipped(packageName)
+                            ConfiguredPolicyStoreProvider.instance.getPackageSrZipped(packageName)
                         )
                         answers.q2 = true
                         answers.updateMountRules {

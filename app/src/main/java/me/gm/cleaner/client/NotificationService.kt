@@ -26,6 +26,7 @@ import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.getPackageSrZipped
 import me.gm.cleaner.core.config.removeRedirectRules
 import me.gm.cleaner.core.config.replaceRedirectRules
 import me.gm.cleaner.net.OnlineAppCategory
@@ -181,7 +182,7 @@ class NotificationService : Service() {
                         wizard.answerBasedOnRecord(answers, emptyList(), appTypeMarks)
 
                         if (rulesByTemplate ==
-                            ServicePreferences.getPackageSrZipped(packageInfo.packageName)
+                            ConfiguredPolicyStoreProvider.instance.getPackageSrZipped(packageInfo.packageName)
                         ) {
                             val refreshPackages =
                                 getSharedProcessPackages(packageInfo).map { it.packageName }

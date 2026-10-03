@@ -34,7 +34,11 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.client.ui.storageredirect.RedirectReachabilityAnalyzer
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.StoragePolicyEditTransaction
+import me.gm.cleaner.core.config.getPackageSrCount
+import me.gm.cleaner.core.config.getPackageSrZipped
 import me.gm.cleaner.net.NOTIFICATION_CHANNEL
 import me.gm.cleaner.settings.BaseSettingsFragment
 import me.gm.cleaner.settings.theme.ThemeUtil
@@ -141,12 +145,12 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                             setAllAppsSupplier { inputApps }
                             setSelection(
                                 inputPackageNames.asSequence()
-                                    .filter { ServicePreferences.getPackageSrCount(it) == 0 }
+                                    .filter { ConfiguredPolicyStoreProvider.instance.getPackageSrCount(it) == 0 }
                                     .toSet()
                             )
                             addOnPositiveButtonClickListener { checkedApps ->
                                 MainScope().launch(Dispatchers.IO) {
-                                    ServicePreferences.beginBatchOperation()
+                                    val tx = StoragePolicyEditTransaction()
                                     for (packageInfo in checkedApps) {
                                         val list = mutableListOf<Pair<String, String>>()
                                         val rules = input.getJSONArray(packageInfo.packageName)
@@ -154,11 +158,9 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                                             val rule = rules.getJSONArray(i)
                                             list.add(rule.getString(0) to rule.getString(1))
                                         }
-                                        ServicePreferences.putStorageRedirect(
-                                            list, listOf(packageInfo.packageName)
-                                        )
+                                        tx.putRedirect(list, listOf(packageInfo.packageName))
                                     }
-                                    ServicePreferences.endBatchOperation()
+                                    tx.commit()
                                     CleanerClient.service?.notifySrChanged()
                                 }
                             }
@@ -226,13 +228,13 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                         val readOnlyPaths =
                             ServiceMoreOptionsPreferences.editReadOnlyTemplate.sorted()
                         MainScope().launch(Dispatchers.IO) {
-                            ServicePreferences.beginBatchOperation()
+                            val tx = StoragePolicyEditTransaction()
                             val selectedApps = checkedApps.mapNotNull { packageInfo ->
                                 installedNonsystemApps.firstOrNull { it.packageName == packageInfo.packageName }
                             }
                             for (pi in selectedApps) {
-                                val rules =
-                                    ServicePreferences.getPackageSrZipped(pi.packageName)
+                                val rules = ConfiguredPolicyStoreProvider.instance
+                                    .getPackageSrZipped(pi.packageName)
                                 val mountedReadOnlyPaths = readOnlyPaths.asSequence()
                                     .map { path ->
                                         RedirectReachabilityAnalyzer.mountedPath(rules, path)
@@ -241,11 +243,9 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                                         RuntimeFileUtils.isKnownAppDirPaths(path, pi.packageName)
                                     }
                                     .toList()
-                                ServicePreferences.putReadOnly(
-                                    mountedReadOnlyPaths, listOf(pi.packageName)
-                                )
+                                tx.putReadOnly(mountedReadOnlyPaths, listOf(pi.packageName))
                             }
-                            ServicePreferences.endBatchOperation()
+                            tx.commit()
                             CleanerClient.service?.notifyReadOnlyChanged()
                         }
                     }
@@ -267,17 +267,15 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                     addOnPositiveButtonClickListener { checkedApps ->
                         val answers = ServiceMoreOptionsPreferences.editMountRulesTemplate
                         MainScope().launch(Dispatchers.IO) {
-                            ServicePreferences.beginBatchOperation()
+                            val tx = StoragePolicyEditTransaction()
                             val selectedApps = checkedApps.mapNotNull { packageInfo ->
                                 installedNonSystemApps.firstOrNull { it.packageName == packageInfo.packageName }
                             }
                             for (pi in selectedApps) {
                                 val wizard = MountWizard(pi)
-                                ServicePreferences.putStorageRedirect(
-                                    wizard.createRules(answers), listOf(pi.packageName)
-                                )
+                                tx.putRedirect(wizard.createRules(answers), listOf(pi.packageName))
                             }
-                            ServicePreferences.endBatchOperation()
+                            tx.commit()
                             CleanerClient.service?.notifySrChanged()
                         }
                     }

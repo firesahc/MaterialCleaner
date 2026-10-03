@@ -120,89 +120,12 @@ object ServicePreferences {
         notifyListeners()
     }
 
-    // STORAGE REDIRECT：委托旧策略适配层，行为不变。
-    // @App
-    @Synchronized
-    fun putStorageRedirect(rawRules: List<Pair<String, String>>, packageNames: List<String>) =
-        LegacyStoragePolicyAdapter.putStorageRedirect(rawRules, packageNames)
-
-    // @App
-    @Synchronized
-    fun removeStorageRedirect(packageNames: List<String>) =
-        LegacyStoragePolicyAdapter.removeStorageRedirect(packageNames)
-
-    // @App
-    fun getUninstalledSrPackages(installedPackages: Set<String>): List<String> =
-        LegacyStoragePolicyAdapter.getUninstalledSrPackages(installedPackages)
-
-    // @App
-    // @Server
-    val srPackages: Set<String>
-        get() = LegacyStoragePolicyAdapter.srPackages
-
-    // @App
-    // @Server
-    val srRulesCount: Int
-        get() = LegacyStoragePolicyAdapter.srRulesCount
-
-    // @App
-    // @Server
-    fun getPackageSrCount(packageName: String): Int =
-        LegacyStoragePolicyAdapter.getPackageSrCount(packageName)
-
-    // @App
-    // @Server
-    fun getPackageSr(packageName: String, userId: Int): Pair<List<String>, List<String>> =
-        LegacyStoragePolicyAdapter.getPackageSr(packageName, userId)
-
-    // @App
-    // @Server
-    fun getPackageSrZipped(packageName: String, userId: Int = 0): List<Pair<String, String>> =
-        LegacyStoragePolicyAdapter.getPackageSrZipped(packageName, userId)
-
-    // @Server
-    @Synchronized
-    fun invalidateSrCache() = LegacyStoragePolicyAdapter.invalidateSrCache()
-
-    // @App
-    @Synchronized
-    fun beginBatchOperation() = LegacyStoragePolicyAdapter.beginBatchOperation()
-
-    // @App
-    @Synchronized
-    fun endBatchOperation() = LegacyStoragePolicyAdapter.endBatchOperation()
-
+    // STORAGE REDIRECT：读写与批量已直迁配置存储；仅分享导出读原始文件。
     // @App
     // @Server
     fun readRawStorageRedirect(): String = LegacyStoragePolicyAdapter.readRawStorageRedirect()
 
-    // READ ONLY：委托旧策略适配层，行为不变。
-    // @App
-    @Synchronized
-    fun putReadOnly(rawRules: List<String>, packageNames: List<String>) =
-        LegacyStoragePolicyAdapter.putReadOnly(rawRules, packageNames)
-
-    // @App
-    @Synchronized
-    fun removeReadOnly(packageNames: List<String>) =
-        LegacyStoragePolicyAdapter.removeReadOnly(packageNames)
-
-    // @App
-    fun getUninstalledReadOnlyPackages(installedPackages: Set<String>): List<String> =
-        LegacyStoragePolicyAdapter.getUninstalledReadOnlyPackages(installedPackages)
-
-    // @App
-    fun getPackageReadOnly(packageName: String, userId: Int = 0): List<String> =
-        LegacyStoragePolicyAdapter.getPackageReadOnly(packageName, userId)
-
-    // @Server
-    fun getAllReadOnly(): Map<String, List<String>> =
-        LegacyStoragePolicyAdapter.getAllReadOnly()
-
-    // @Server
-    @Synchronized
-    fun invalidateReadOnlyCache() = LegacyStoragePolicyAdapter.invalidateReadOnlyCache()
-
+    // READ ONLY：读写与批量已直迁配置存储。
     // @App
     // @Server
     fun readRawReadOnly(): String = LegacyStoragePolicyAdapter.readRawReadOnly()

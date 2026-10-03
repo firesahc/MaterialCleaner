@@ -9,7 +9,9 @@ import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.AppLabelCache
-import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
+import me.gm.cleaner.core.config.getPackageReadOnly
+import me.gm.cleaner.core.config.getPackageSrCount
 import me.gm.cleaner.model.PackageStatus
 
 class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default) {
@@ -38,8 +40,8 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
             AppListModel(
                 pi,
                 AppLabelCache.getPackageLabel(pi),
-                ServicePreferences.getPackageSrCount(pi.packageName),
-                ServicePreferences.getPackageReadOnly(pi.packageName).size,
+                ConfiguredPolicyStoreProvider.instance.getPackageSrCount(pi.packageName),
+                ConfiguredPolicyStoreProvider.instance.getPackageReadOnly(pi.packageName).size,
                 parseMountState(srPackageStatus[pi.packageName])
             )
         }
@@ -75,8 +77,8 @@ class AppListLoader(private val defaultDispatcher: CoroutineDispatcher = Dispatc
         withContext(defaultDispatcher) {
             old.map {
                 it.copy(
-                    mountRulesCount = ServicePreferences.getPackageSrCount(it.packageInfo.packageName),
-                    readOnlyCount = ServicePreferences.getPackageReadOnly(it.packageInfo.packageName).size
+                    mountRulesCount = ConfiguredPolicyStoreProvider.instance.getPackageSrCount(it.packageInfo.packageName),
+                    readOnlyCount = ConfiguredPolicyStoreProvider.instance.getPackageReadOnly(it.packageInfo.packageName).size
                 )
             }
         }

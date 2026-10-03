@@ -16,7 +16,8 @@ import me.gm.cleaner.client.OrchestratedLayerStatus
 import me.gm.cleaner.client.OrchestratedRuntimeStatus
 import me.gm.cleaner.client.ServerState
 import me.gm.cleaner.client.ServerStateMachine
-import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
+import me.gm.cleaner.core.config.srPackages
 
 /**
  * 状态卡视图引用：Fragment 在 onCreateView 中组装，onDestroyView 时 detach。
@@ -78,7 +79,7 @@ class StatusCardController(
     private val strings: StatusStrings,
     private val getOrchestratedStatus: () -> OrchestratedRuntimeStatus? = CleanerClient::getOrchestratedStatus,
     private val isRoot: () -> Boolean = { runCatching { Shell.getShell().isRoot }.getOrDefault(false) },
-    private val configuredCount: () -> Int = { ServicePreferences.srPackages.size },
+    private val configuredCount: () -> Int = { ConfiguredPolicyStoreProvider.instance.srPackages.size },
     private val isManuallyStopped: () -> Boolean = { ServerStateMachine.isSessionManuallyStopped },
     private val guard: () -> Boolean = { true },
 ) {

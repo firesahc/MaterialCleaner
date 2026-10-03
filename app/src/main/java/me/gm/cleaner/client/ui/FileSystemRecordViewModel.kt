@@ -19,7 +19,9 @@ import kotlinx.coroutines.launch
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.client.CleanerClient
 import me.gm.cleaner.dao.AppLabelCache
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.getPackageReadOnly
 import me.gm.cleaner.model.BulkCursor
 import me.gm.cleaner.model.FileSystemEvent
 import me.gm.cleaner.model.FileSystemRecordContract
@@ -41,7 +43,7 @@ class FileSystemRecordViewModel(application: Application) :
             if (BuildConfig.DEBUG) Log.w("CleanerTest", "eventModelMapper: getPackageInfo failed", e)
             null
         }
-        val readOnlyPaths = ServicePreferences.getPackageReadOnly(
+        val readOnlyPaths = ConfiguredPolicyStoreProvider.instance.getPackageReadOnly(
             event.packageName, RuntimeFileUtils.extractUserIdFromPath(event.path)
         )
         FileSystemRecordModel(

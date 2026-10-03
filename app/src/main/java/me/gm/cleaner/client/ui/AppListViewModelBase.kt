@@ -11,7 +11,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import me.gm.cleaner.BuildConfig
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.getUninstalledReadOnlyPackages
+import me.gm.cleaner.core.config.getUninstalledSrPackages
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.collatorComparator
 
@@ -110,9 +113,10 @@ abstract class AppListViewModelBase(application: Application) :
             .asSequence()
             .map { it.packageInfo.packageName }
             .toSet()
+        val store = ConfiguredPolicyStoreProvider.instance
         val uninstalledPackages =
-            (ServicePreferences.getUninstalledSrPackages(installedPackages) +
-                    ServicePreferences.getUninstalledReadOnlyPackages(installedPackages) +
+            (store.getUninstalledSrPackages(installedPackages) +
+                    store.getUninstalledReadOnlyPackages(installedPackages) +
                     ServicePreferences.denylist.toSet() - installedPackages).distinct()
         if (BuildConfig.DEBUG) Log.i(
             "CleanerTest",
