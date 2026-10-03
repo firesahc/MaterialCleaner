@@ -6,7 +6,7 @@ import android.util.Log
 import androidx.room.Room
 import api.SystemService
 import me.gm.cleaner.core.common.RuntimeFileUtils
-import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.runtime.server.VfsRuntimePolicy
 import me.gm.cleaner.runtime.server.record.FileSystemRecord.Companion.create
 import me.gm.cleaner.runtime.server.record.FileSystemRecordDao
 import me.gm.cleaner.runtime.server.record.FileSystemRecordDatabase
@@ -102,7 +102,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
         timeMillis: Long, packageName: String, path: String, flags: Int,
         isAppSpecificStorage: Boolean
     ) {
-        if (ServicePreferences.upsert) {
+        if (VfsRuntimePolicy.currentPolicy().behavior.upsertRecords) {
             dao.upsert(create(timeMillis, packageName, path, flags, isAppSpecificStorage))
         } else {
             dao.insert(create(timeMillis, packageName, path, flags, isAppSpecificStorage))
@@ -113,7 +113,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
     }
 
     fun onEvent(timeMillis: Long, packageName: String, path: String, flags: Int) {
-        if (ServicePreferences.recordSharedStorage) {
+        if (VfsRuntimePolicy.currentPolicy().behavior.recordSharedStorage) {
             if (RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDirParent, path)) {
                 onVerifiedEvent(timeMillis, packageName, path, flags)
             } else {
@@ -135,9 +135,9 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
             intArrayOf(0, 1)
         }
         return if (queryText.isNullOrBlank()) {
-            dao.queryAll(isHideAppSpecificStorageArg, ServicePreferences.denylist)
+            dao.queryAll(isHideAppSpecificStorageArg, VfsRuntimePolicy.currentPolicy().behavior.deniedPackages.toList())
         } else {
-            dao.queryText(isHideAppSpecificStorageArg, ServicePreferences.denylist, queryText)
+            dao.queryText(isHideAppSpecificStorageArg, VfsRuntimePolicy.currentPolicy().behavior.deniedPackages.toList(), queryText)
         }
     }
 
@@ -158,7 +158,7 @@ class FileSystemObserver(private val server: CleanerServer) : BaseObserver() {
             PRUNE_UNINSTALLED -> {
                 val uninstalledApps = dao.recordedPackages().toSet() -
                         SystemService.getInstalledPackagesFromAllUsersNoThrow(0)
-                            .map { it.packageName }.toSet() + ServicePreferences.denylist
+                            .map { it.packageName }.toSet() + VfsRuntimePolicy.currentPolicy().behavior.deniedPackages
                 dao.deleteTimeBefore(System.currentTimeMillis(), *uninstalledApps.toTypedArray())
             }
 
