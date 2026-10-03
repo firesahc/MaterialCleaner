@@ -10,6 +10,8 @@ import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+import me.gm.cleaner.runtime.mediaprovider.hook.bootstrap.MediaProviderRuntime;
+import me.gm.cleaner.runtime.mediaprovider.hook.media.MediaProviderHooksService;
 
 public class XposedInit implements IXposedHookLoadPackage {
     private final MediaProviderHooksService mediaProviderHooksService = new MediaProviderHooksService();

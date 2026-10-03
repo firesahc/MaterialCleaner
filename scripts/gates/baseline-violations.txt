@@ -1,6 +1,7 @@
 app/src/main/java/me/gm/cleaner/client/ui/storageredirect/MountWizard.kt	1320
 core/storage-redirect-databus/src/main/java/me/gm/cleaner/core/storage/redirect/databus/DataBus.kt	836
-runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/NativeHookStatus.kt	822
+runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/NativeHookStatus.kt	823
+runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/HookPolicyCache.kt	802
 word:app/src/main/java/me/gm/cleaner/client/BasePromptActivity.kt|denylist	9
 word:app/src/main/java/me/gm/cleaner/client/NotificationService.kt|denylist	8
 word:app/src/main/java/me/gm/cleaner/client/ui/AppListViewModelBase.kt|denylist	1
@@ -30,12 +31,12 @@ word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotP
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|ConfiguredMountPoint	10
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|denylist	3
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/VfsRuntimePolicy.kt|denylist	1
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/FuseNativePolicyAdapter.kt|configured_mount_points	2
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/FuseNativePolicyAdapter.kt|ConfiguredMountPoint	5
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|configured_mount_points	8
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|ConfiguredMountPoint	11
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|denylist	10
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/fuse/FuseNativePolicyAdapter.kt|configured_mount_points	2
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/fuse/FuseNativePolicyAdapter.kt|ConfiguredMountPoint	5
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/HookPolicyCache.kt|configured_mount_points	8
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/HookPolicyCache.kt|ConfiguredMountPoint	11
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/HookPolicyCache.kt|denylist	10
 word:core/storage-redirect-domain/src/test/java/me/gm/cleaner/core/storage/redirect/domain/RedirectDifferentialTest.kt|ConfiguredMountPoint	2
 word:core/storage-redirect-domain/src/main/java/me/gm/cleaner/core/storage/redirect/domain/RuntimeBehaviorPolicy.kt|denylist	1
 word:core/storage-redirect-domain/src/test/java/me/gm/cleaner/core/storage/redirect/domain/RuntimeBehaviorPolicyTest.kt|denylist	1
-word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyRefreshScheduler.kt|configured_mount_points	1
+word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/bridge/HookPolicyRefreshScheduler.kt|configured_mount_points	1
