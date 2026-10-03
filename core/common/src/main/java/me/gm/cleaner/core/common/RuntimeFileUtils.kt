@@ -20,8 +20,17 @@ import kotlin.io.path.OnErrorResult
 import kotlin.io.path.copyToRecursively
 import kotlin.io.path.createParentDirectories
 import kotlin.io.path.deleteRecursively
+import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
 import kotlin.io.path.pathString
+
+@JvmOverloads
+fun Path.listDirectoryEntriesSafe(glob: String = "*"): List<Path> =
+    try {
+        listDirectoryEntries(glob)
+    } catch (e: Exception) {
+        emptyList()
+    }
 
 object RuntimeFileUtils {
     @Volatile
@@ -56,6 +65,14 @@ object RuntimeFileUtils {
 
     val androidSandboxDir: File
         get() = androidDir.resolve("sandbox")
+
+    val defaultExternalNoScan: Array<File>
+        get() = arrayOf(
+            androidDataDir,
+            androidMediaDir,
+            androidObbDir,
+            androidSandboxDir
+        )
 
     fun buildExternalStorageAppDataDirs(packageName: String): File =
         androidDataDir.resolve(packageName)
@@ -167,6 +184,21 @@ object RuntimeFileUtils {
             errorOccurred = true
         }
         return !errorOccurred
+    }
+
+    @delegate:SuppressLint("SoonBlockedPrivateApi")
+    val standardDirs: Array<String> by lazy {
+        Environment::class.java.getDeclaredField("STANDARD_DIRECTORIES")
+            .apply { isAccessible = true }[null] as Array<String>
+    }
+
+    fun isStandardDirectory(dir: String): Boolean {
+        for (valid in standardDirs) {
+            if (valid.equals(dir, true)) {
+                return true
+            }
+        }
+        return false
     }
 
     fun Int.toUserId(): Int = this / AID_USER_OFFSET

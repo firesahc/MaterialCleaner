@@ -4,8 +4,8 @@ DirectoryScanner.removeDefaultExclude('**/.gitattributes')
 
 rootProject.name = "Cleaner"
 
-// ── 应用与共享模块 ──
-include ':app', ':shared'
+// ── 应用模块 ──
+include ':app'
 
 // ── 架构模块 ──
 include ':core:ipc-contract'

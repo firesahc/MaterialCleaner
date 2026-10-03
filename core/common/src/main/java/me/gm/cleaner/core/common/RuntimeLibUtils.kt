@@ -23,7 +23,7 @@ object RuntimeLibUtils {
         }
     }
 
-    private fun getLibEntryName(name: String): String = "lib/${Build.SUPPORTED_ABIS[0]}/lib$name.so"
+    fun getLibEntryName(name: String): String = "lib/${Build.SUPPORTED_ABIS[0]}/lib$name.so"
 
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     @JvmStatic

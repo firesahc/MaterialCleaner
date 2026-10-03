@@ -39,8 +39,8 @@ import me.gm.cleaner.net.NOTIFICATION_CHANNEL
 import me.gm.cleaner.settings.BaseSettingsFragment
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.starter.Starter
-import me.gm.cleaner.util.FileUtils
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.RequesterFragment
 import me.gm.cleaner.util.fitsSystemWindowInsets
@@ -186,7 +186,7 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         addPreferencesFromResource(R.xml.root_preferences)
 
         val aggressivelyPromptForReadingMediaFiles = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.aggressively_prompt_for_reading_media_files_key)
+            getString(me.gm.cleaner.R.string.aggressively_prompt_for_reading_media_files_key)
         )!!
         aggressivelyPromptForReadingMediaFiles.onPreferenceChangeListener = object :
             NotifyServerPreferenceChangeListener() {
@@ -238,7 +238,7 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                                         RedirectReachabilityAnalyzer.mountedPath(rules, path)
                                     }
                                     .filterNot { path ->
-                                        FileUtils.isKnownAppDirPaths(path, pi.packageName)
+                                        RuntimeFileUtils.isKnownAppDirPaths(path, pi.packageName)
                                     }
                                     .toList()
                                 ServicePreferences.putReadOnly(
@@ -287,12 +287,12 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         }
 
         val autoLogging = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.auto_logging_key)
+            getString(me.gm.cleaner.R.string.auto_logging_key)
         )!!
         autoLogging.onPreferenceChangeListener = notifyPreferencesChangedListener
 
         val recordSharedStorage = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.record_shared_storage_key)
+            getString(me.gm.cleaner.R.string.record_shared_storage_key)
         )
         recordSharedStorage?.onPreferenceChangeListener = object :
             NotifyServerPreferenceChangeListener() {
@@ -309,7 +309,7 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         }
 
         val recordExternalAppSpecificStorage = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.record_external_app_specific_storage_key)
+            getString(me.gm.cleaner.R.string.record_external_app_specific_storage_key)
         )
         recordExternalAppSpecificStorage?.onPreferenceChangeListener = object :
             NotifyServerPreferenceChangeListener() {
@@ -319,7 +319,7 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         }
 
         val upsert = findPreference<SwitchPreferenceCompat>(
-            getString(me.gm.cleaner.shared.R.string.upsert_key)
+            getString(me.gm.cleaner.R.string.upsert_key)
         )
         upsert?.onPreferenceChangeListener = notifyPreferencesChangedListener
 

@@ -17,7 +17,7 @@ import me.gm.cleaner.client.CleanerServerLauncher
 import me.gm.cleaner.client.LaunchReason
 import me.gm.cleaner.client.ServiceBootStateStore
 import me.gm.cleaner.dao.RootPreferences
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 
 class BootCompleteReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {

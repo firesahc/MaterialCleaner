@@ -27,7 +27,7 @@ import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.starter.Starter
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.util.PermissionUtils.notifySafe
 import me.gm.cleaner.util.getParcelableExtraCompat
 

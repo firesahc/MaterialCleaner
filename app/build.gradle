@@ -238,7 +238,6 @@ dependencies {
     implementation project(':core:storage-redirect-domain')
     implementation project(':runtime:media-provider-hook')
     runtimeOnly project(':runtime:cleaner-server')
-    implementation project(':shared')
     compileOnly files('libs/api-82.jar')
 
     implementation "androidx.activity:activity-ktx:1.9.3"

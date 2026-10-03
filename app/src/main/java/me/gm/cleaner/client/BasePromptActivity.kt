@@ -27,8 +27,8 @@ import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.core.config.ServicePreferences
 import me.gm.cleaner.databinding.PromptDialogBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
-import me.gm.cleaner.util.FileUtils
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.util.getParcelableExtraCompat
 import java.io.File
 import kotlin.io.path.Path
@@ -66,10 +66,10 @@ abstract class BasePromptActivity : AppCompatActivity() {
                 wizard.getRecommendDirs(mediaType)[0].resolve(label).path to Path(path).parent.pathString
 
             NotificationService.ACTION_MEDIA_NOT_FOUND -> {
-                val standardParents = FileUtils.standardDirs
-                    .map { FileUtils.externalStorageDir.resolve(it) }
+                val standardParents = RuntimeFileUtils.standardDirs
+                    .map { RuntimeFileUtils.externalStorageDir.resolve(it) }
                 val recommendAccessibleDir = standardParents.firstOrNull {
-                    FileUtils.startsWith(it, path)
+                    RuntimeFileUtils.startsWith(it, path)
                 }?.path ?: Path(path).parent.pathString
                 recommendAccessibleDir to recommendAccessibleDir
             }

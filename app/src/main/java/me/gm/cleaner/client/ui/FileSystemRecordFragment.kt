@@ -147,8 +147,8 @@ class FileSystemRecordFragment : BaseServiceSettingsFragment() {
             .listView
         val callback = (listView.adapter as PreferencePositionCallback)
         val preferenceAdapterPositions = arrayOf(
-            me.gm.cleaner.shared.R.string.record_shared_storage_key,
-            me.gm.cleaner.shared.R.string.record_external_app_specific_storage_key
+            me.gm.cleaner.R.string.record_shared_storage_key,
+            me.gm.cleaner.R.string.record_external_app_specific_storage_key
         )
             .map { keyStringId -> callback.getPreferenceAdapterPosition(getString(keyStringId)) }
             .filter { position -> position != RecyclerView.NO_POSITION }

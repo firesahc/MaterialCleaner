@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.flowOn
 import me.gm.cleaner.BuildConfig
 import me.gm.cleaner.R
 import me.gm.cleaner.browser.filepicker.FilePickerDialog.Companion.SelectType
-import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.util.fileNameComparator
-import me.gm.cleaner.util.listDirectoryEntriesSafe
+import me.gm.cleaner.core.common.listDirectoryEntriesSafe
 import me.gm.cleaner.util.listFormat
 import java.nio.file.Path
 import java.util.function.Consumer
@@ -25,7 +25,7 @@ import kotlin.io.path.name
 class FilePickerViewModel(application: Application) : AndroidViewModel(application) {
     internal val onPositiveButtonClickListeners: MutableSet<Consumer<Path>> = mutableSetOf()
 
-    private fun defaultPath(): Path = FileUtils.externalStorageDir.toPath()
+    private fun defaultPath(): Path = RuntimeFileUtils.externalStorageDir.toPath()
 
     private val pathFlow: MutableStateFlow<Path> = MutableStateFlow(defaultPath())
     var path: Path

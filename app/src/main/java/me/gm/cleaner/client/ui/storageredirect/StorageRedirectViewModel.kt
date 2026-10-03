@@ -36,7 +36,7 @@ import me.gm.cleaner.model.PackageStatus
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.util.PermissionUtils
-import me.gm.cleaner.util.FileUtils.toUserId
+import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
 import me.gm.cleaner.widget.recyclerview.DiffArrayList
 
 class StorageRedirectViewModel(private val application: Application, state: SavedStateHandle) :

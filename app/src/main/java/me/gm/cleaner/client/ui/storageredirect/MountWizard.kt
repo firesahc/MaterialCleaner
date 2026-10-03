@@ -46,7 +46,7 @@ import me.gm.cleaner.databinding.StorageRedirectCategoryMountWizardQuestionsAcce
 import me.gm.cleaner.databinding.StorageRedirectCategoryMountWizardQuestionsBinding
 import me.gm.cleaner.model.FileSystemEvent
 import me.gm.cleaner.util.ClipboardUtils
-import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.util.OpenUtils
 import me.gm.cleaner.util.PermissionUtils
 import me.gm.cleaner.util.getResourceIdByAttr
@@ -442,11 +442,11 @@ class MountWizard(private val packageInfo: PackageInfo) {
     }
 
     // SUBMIT
-    private val sdDir: String = FileUtils.externalStorageDir.path
-    private val dataDir: String = FileUtils.androidDataDir.resolve(packageName).path
-    private val mediaDir: String = FileUtils.androidMediaDir.resolve(packageName).path
-    private val obbDir: String = FileUtils.androidObbDir.resolve(packageName).path
-    private val sandboxDir: String = FileUtils.androidSandboxDir.resolve(packageName).path
+    private val sdDir: String = RuntimeFileUtils.externalStorageDir.path
+    private val dataDir: String = RuntimeFileUtils.androidDataDir.resolve(packageName).path
+    private val mediaDir: String = RuntimeFileUtils.androidMediaDir.resolve(packageName).path
+    private val obbDir: String = RuntimeFileUtils.androidObbDir.resolve(packageName).path
+    private val sandboxDir: String = RuntimeFileUtils.androidSandboxDir.resolve(packageName).path
     private val filesDir: String = File(dataDir, "files").path
     private val cacheDir: String = File(dataDir, "cache").path
 
@@ -501,13 +501,13 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 .filter { it.packageName != packageName }
                 .forEach { otherPackageInfo ->
                     val otherDataDir =
-                        FileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path
+                        RuntimeFileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path
                     if (!rules.contains(otherDataDir to otherDataDir)) {
                         rules += otherDataDir to otherDataDir
                     }
                     if (answers.q12) {
                         val otherObbDir =
-                            FileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path
+                            RuntimeFileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path
                         if (!rules.contains(otherObbDir to otherObbDir)) {
                             rules += otherObbDir to otherObbDir
                         }
@@ -528,10 +528,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 .filter { it.packageName != packageName }
                 .flatMap { otherPackageInfo ->
                     sequenceOf(
-                        FileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path to
-                                FileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path,
-                        FileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path to
-                                FileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path,
+                        RuntimeFileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path to
+                                RuntimeFileUtils.androidDataDir.resolve(otherPackageInfo.packageName).path,
+                        RuntimeFileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path to
+                                RuntimeFileUtils.androidObbDir.resolve(otherPackageInfo.packageName).path,
                     )
                 }.toSet()
         } catch (_: Exception) {
@@ -628,14 +628,14 @@ class MountWizard(private val packageInfo: PackageInfo) {
 
     private val speciallyAllowedDirs: List<String> by lazy {
         val speciallyAllowedDirs = mutableSetOf<String>()
-        FileUtils.defaultExternalNoScan.forEach { dir ->
+        RuntimeFileUtils.defaultExternalNoScan.forEach { dir ->
             var parent = dir
             do {
                 if (!speciallyAllowedDirs.add(parent.path)) {
                     break
                 }
                 parent = parent.parentFile!!
-            } while (FileUtils.startsWith(FileUtils.externalStorageDirParent, parent))
+            } while (RuntimeFileUtils.startsWith(RuntimeFileUtils.externalStorageDirParent, parent))
         }
         speciallyAllowedDirs.toList()
     }
@@ -651,21 +651,21 @@ class MountWizard(private val packageInfo: PackageInfo) {
             // Writing files inside androidDataDir or androidObbDir will never succeed on R,
             // despite whether apps have storage permission.
             usefulRecords = usefulRecords.filterNot { event ->
-                val path = FileUtils.getPathAsUser(event.path, 0)
-                arrayOf(FileUtils.androidDataDir, FileUtils.androidObbDir).any { dir ->
-                    FileUtils.startsWith(dir, path)
+                val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
+                arrayOf(RuntimeFileUtils.androidDataDir, RuntimeFileUtils.androidObbDir).any { dir ->
+                    RuntimeFileUtils.startsWith(dir, path)
                 }
             }
         }
         if (!hasStoragePermissions) {
             // If an app doesn't have storage permission,
             // writing files outside of standard dirs will never succeed.
-            val standardParents = FileUtils.standardDirs
-                .map { File(sdDir, it) } + FileUtils.androidDir
+            val standardParents = RuntimeFileUtils.standardDirs
+                .map { File(sdDir, it) } + RuntimeFileUtils.androidDir
             usefulRecords = usefulRecords.filter { event ->
-                val path = FileUtils.getPathAsUser(event.path, 0)
+                val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
                 standardParents.any { standardDir ->
-                    FileUtils.startsWith(standardDir, path)
+                    RuntimeFileUtils.startsWith(standardDir, path)
                 }
             }
         }
@@ -674,8 +674,8 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 AppType.DOWNLOAD -> {
                     val marks = appTypeMarks.marks
                     usefulRecords = usefulRecords.filterNot { event ->
-                        val path = FileUtils.getPathAsUser(event.path, 0)
-                        marks.any { mark -> FileUtils.startsWith(mark, path) }
+                        val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
+                        marks.any { mark -> RuntimeFileUtils.startsWith(mark, path) }
                     }
                 }
 
@@ -687,14 +687,14 @@ class MountWizard(private val packageInfo: PackageInfo) {
         usefulRecords = usefulRecords
             // allow writing files inside obbDir and mediaDir
             .filterNot { event ->
-                val path = FileUtils.getPathAsUser(event.path, 0)
-                FileUtils.startsWith(mediaDir, path) ||
-                        FileUtils.startsWith(obbDir, path) ||
-                        FileUtils.startsWith(sandboxDir, path)
+                val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
+                RuntimeFileUtils.startsWith(mediaDir, path) ||
+                        RuntimeFileUtils.startsWith(obbDir, path) ||
+                        RuntimeFileUtils.startsWith(sandboxDir, path)
             }
             // allow create speciallyAllowedDirs
             .filterNot { event ->
-                val path = FileUtils.getPathAsUser(event.path, 0)
+                val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
                 event.flags and 0x40000000 != 0 && event.flags and FileObserver.CREATE != 0 &&
                         speciallyAllowedDirs.any { it.equals(path, true) }
             }
@@ -724,7 +724,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
                 }
 
                 else -> if (getRecommendDirs(mediaType)
-                        .none { dir -> FileUtils.startsWith(dir, event.path) }
+                        .none { dir -> RuntimeFileUtils.startsWith(dir, event.path) }
                 ) {
                     q1Reasons += event
                 }
@@ -738,12 +738,12 @@ class MountWizard(private val packageInfo: PackageInfo) {
         ).forEach { (mediaType, publicDir) ->
             val events = mediaPaths[mediaType] ?: emptyList()
             events.forEach { event ->
-                val path = FileUtils.getPathAsUser(event.path, 0)
+                val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
                 val recommendDir = getRecommendDirs(mediaType)
-                    .firstOrNull { dir -> FileUtils.startsWith(dir, path) }
+                    .firstOrNull { dir -> RuntimeFileUtils.startsWith(dir, path) }
                 if (recommendDir != null) {
                     val mergeIndex = accessiblePlaces.indexOfFirst { dir ->
-                        FileUtils.startsWith(dir, path)
+                        RuntimeFileUtils.startsWith(dir, path)
                     }
                     if (mergeIndex == -1) {
                         accessiblePlaces += recommendDir.path
@@ -763,10 +763,10 @@ class MountWizard(private val packageInfo: PackageInfo) {
                     do {
                         parent = parent.parentFile!!
                         mergeIndex = mountRules.indexOfFirst { (source, target) ->
-                            redirectSource == source && FileUtils.startsWith(parent, target)
+                            redirectSource == source && RuntimeFileUtils.startsWith(parent, target)
                         }
                     } while (mergeIndex == -1 &&
-                        FileUtils.childOf(sdDir, parent.parent!!)
+                        RuntimeFileUtils.childOf(sdDir, parent.parent!!)
                     )
                     if (mergeIndex == -1) {
                         mountRules += redirectSource to File(path).parent!!
@@ -805,15 +805,15 @@ class MountWizard(private val packageInfo: PackageInfo) {
         val q1Iterator = q1Reasons.iterator()
         while (q1Iterator.hasNext()) {
             val event = q1Iterator.next()
-            val path = FileUtils.getPathAsUser(event.path, 0)
-            if (accessiblePlaces.any { dir -> FileUtils.childOf(dir, path) }) {
+            val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
+            if (accessiblePlaces.any { dir -> RuntimeFileUtils.childOf(dir, path) }) {
                 val mergeIndex = inaccessiblePlaces.indexOfFirst { dir ->
-                    FileUtils.startsWith(dir, path) || FileUtils.startsWith(path, dir)
+                    RuntimeFileUtils.startsWith(dir, path) || RuntimeFileUtils.startsWith(path, dir)
                 }
                 if (mergeIndex == -1) {
                     inaccessiblePlaces += path
                 } else {
-                    if (FileUtils.childOf(path, inaccessiblePlaces[mergeIndex])) {
+                    if (RuntimeFileUtils.childOf(path, inaccessiblePlaces[mergeIndex])) {
                         inaccessiblePlaces[mergeIndex] = path
                     }
                 }
@@ -823,9 +823,9 @@ class MountWizard(private val packageInfo: PackageInfo) {
         }
         // dirRecords
         dirRecords.forEach { event ->
-            val path = FileUtils.getPathAsUser(event.path, 0)
-            if (mountRules.none { (source, target) -> FileUtils.startsWith(target, path) } &&
-                accessiblePlaces.none { dir -> FileUtils.startsWith(dir, path) }
+            val path = RuntimeFileUtils.getPathAsUser(event.path, 0)
+            if (mountRules.none { (source, target) -> RuntimeFileUtils.startsWith(target, path) } &&
+                accessiblePlaces.none { dir -> RuntimeFileUtils.startsWith(dir, path) }
             ) {
                 q1Reasons += event
             }
@@ -838,7 +838,7 @@ class MountWizard(private val packageInfo: PackageInfo) {
                     val targets = answers.mountRules().unzip().second
                     mountRules += marks
                         .filter { mark ->
-                            targets.none { target -> FileUtils.startsWith(mark, target) }
+                            targets.none { target -> RuntimeFileUtils.startsWith(mark, target) }
                         }
                         .map { mark -> downloadDir to mark }
                 }
@@ -902,11 +902,11 @@ class MountWizard(private val packageInfo: PackageInfo) {
 
     fun getRecommendDirs(mediaType: Int): List<File> {
         val recommendDirs = when (mediaType) {
-            FileColumns.MEDIA_TYPE_PLAYLIST -> FileUtils.standardDirs.map {
+            FileColumns.MEDIA_TYPE_PLAYLIST -> RuntimeFileUtils.standardDirs.map {
                 File(sdDir, it)
             }
 
-            FileColumns.MEDIA_TYPE_SUBTITLE -> FileUtils.standardDirs.map {
+            FileColumns.MEDIA_TYPE_SUBTITLE -> RuntimeFileUtils.standardDirs.map {
                 File(sdDir, it)
             }
 
@@ -1004,12 +1004,12 @@ class MountWizard(private val packageInfo: PackageInfo) {
             }
             .plus(dirOps)
             .filterNot {
-                sdDir == it.from || FileUtils.isStandardDirectory(
+                sdDir == it.from || RuntimeFileUtils.isStandardDirectory(
                     it.from.substring(sdDir.length + File.separator.length)
                 )
             }
             .filterNot {
-                FileUtils.startsWith(it.from, it.to)
+                RuntimeFileUtils.startsWith(it.from, it.to)
             }
             .distinct()
             .filter {
@@ -1045,8 +1045,8 @@ class MountWizard(private val packageInfo: PackageInfo) {
         companion object {
 
             fun create(from: String, to: String, packageName: String): DirOp {
-                val oldDirInternal = FileUtils.isKnownAppDirPaths(from, packageName)
-                val newDirInternal = FileUtils.isKnownAppDirPaths(to, packageName)
+                val oldDirInternal = RuntimeFileUtils.isKnownAppDirPaths(from, packageName)
+                val newDirInternal = RuntimeFileUtils.isKnownAppDirPaths(to, packageName)
                 val oldDirExternal = !oldDirInternal
                 val newDirExternal = !newDirInternal
                 return when {

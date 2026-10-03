@@ -4,7 +4,7 @@ import android.content.Context
 import android.system.Os
 import android.util.Log
 import me.gm.cleaner.BuildConfig
-import me.gm.cleaner.util.LibUtils
+import me.gm.cleaner.core.common.RuntimeLibUtils
 import java.io.File
 import java.io.IOException
 import java.util.zip.ZipFile
@@ -29,9 +29,9 @@ object Starter {
 
     @Throws(IOException::class)
     private fun copyStarter(context: Context, out: File): String {
-        val so = LibUtils.getLibEntryName("starter")
+        val so = RuntimeLibUtils.getLibEntryName("starter")
         if (BuildConfig.DEBUG) Log.i("CleanerTest", "Starter.copyStarter: so=$so, out=${out.absolutePath}")
-        ZipFile(LibUtils.getLibSourceDir(context.applicationInfo)).use { apk ->
+        ZipFile(RuntimeLibUtils.getLibSourceDir(context.applicationInfo)).use { apk ->
             val entry = apk.getEntry(so) ?: throw NoSuchFileException(File(so))
             apk.getInputStream(entry).use { input ->
                 out.outputStream().use { output ->

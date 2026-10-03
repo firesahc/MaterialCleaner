@@ -42,9 +42,9 @@ import me.gm.cleaner.databinding.StorageRedirectFragmentBinding
 import me.gm.cleaner.net.NetworkConnectionState
 import me.gm.cleaner.net.Website
 import me.gm.cleaner.util.DividerDecoration
-import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import me.gm.cleaner.util.PermissionUtils
-import me.gm.cleaner.util.SystemPropertiesUtils
+import me.gm.cleaner.core.common.RuntimeSystemProperties
 import me.gm.cleaner.util.fitsSystemWindowInsets
 import me.gm.cleaner.util.fixEdgeEffect
 import me.gm.cleaner.util.listFormat
@@ -188,7 +188,7 @@ class StorageRedirectFragment : BaseFragment() {
         }
         viewModel.initMountWizard(args.pi)
 
-        if (SystemPropertiesUtils.getBoolean("persist.sys.fuse", false) ?: false &&
+        if (RuntimeSystemProperties.getBoolean("persist.sys.fuse", false) ?: false &&
             CleanerClient.pingBinder()
         ) {
             val readOnlyHeaderAdapter = ReadOnlyHeaderAdapter()
@@ -433,7 +433,7 @@ class StorageRedirectFragment : BaseFragment() {
                             RedirectReachabilityAnalyzer.mountedPath(rules, path)
                         }
                         .filterNot { path ->
-                            FileUtils.isKnownAppDirPaths(path, args.pi.packageName)
+                            RuntimeFileUtils.isKnownAppDirPaths(path, args.pi.packageName)
                         }
                         .filterNot { path ->
                             viewModel.readOnlyPaths.contains(path)

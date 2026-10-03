@@ -24,7 +24,7 @@ import me.gm.cleaner.model.BulkCursor
 import me.gm.cleaner.model.FileSystemEvent
 import me.gm.cleaner.model.FileSystemRecordContract
 import me.gm.cleaner.server.IFileChangeObserver
-import me.gm.cleaner.util.FileUtils
+import me.gm.cleaner.core.common.RuntimeFileUtils
 import java.lang.ref.WeakReference
 import java.util.concurrent.Executors
 import kotlin.io.path.Path
@@ -42,7 +42,7 @@ class FileSystemRecordViewModel(application: Application) :
             null
         }
         val readOnlyPaths = ServicePreferences.getPackageReadOnly(
-            event.packageName, FileUtils.extractUserIdFromPath(event.path)
+            event.packageName, RuntimeFileUtils.extractUserIdFromPath(event.path)
         )
         FileSystemRecordModel(
             event,
