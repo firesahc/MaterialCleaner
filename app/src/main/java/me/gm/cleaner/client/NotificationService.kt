@@ -24,7 +24,10 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.dao.ServiceMoreOptionsPreferences
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.removeRedirectRules
+import me.gm.cleaner.core.config.replaceRedirectRules
 import me.gm.cleaner.net.OnlineAppCategory
 import me.gm.cleaner.starter.Starter
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
@@ -73,9 +76,14 @@ class NotificationService : Service() {
                         computeHashCode(packageInfo.packageName, NOTIFICATION_CHANNEL_ADDED)
                     )
                     MainScope().launch(Dispatchers.IO) {
-                        ServicePreferences.removeStorageRedirect(
+                        val sharedProcessPackages =
                             getSharedProcessPackages(packageInfo).map { it.packageName }
-                        )
+                        val removeResult = ConfiguredPolicyStoreProvider.instance.updateRedirect(null) {
+                            it.removeRedirectRules(sharedProcessPackages)
+                        }
+                        if (!removeResult.success) {
+                            Log.e("MC/Policy", "remove redirect failed: ${removeResult.error}")
+                        }
                         if (CleanerClient.pingBinder()) {
                             CleanerClient.service?.notifySrChanged()
                         }
@@ -158,9 +166,13 @@ class NotificationService : Service() {
                 val wizard = MountWizard(packageInfo)
                 val answers = ServiceMoreOptionsPreferences.editMountRulesTemplate
                 val rulesByTemplate = wizard.createRules(answers)
-                ServicePreferences.putStorageRedirect(
-                    rulesByTemplate, getSharedProcessPackages(packageInfo).map { it.packageName }
-                )
+                val templatePackages = getSharedProcessPackages(packageInfo).map { it.packageName }
+                val putResult = ConfiguredPolicyStoreProvider.instance.updateRedirect(null) {
+                    it.replaceRedirectRules(rulesByTemplate, templatePackages)
+                }
+                if (!putResult.success) {
+                    Log.e("MC/Policy", "put redirect failed: ${putResult.error}")
+                }
                 CleanerClient.service?.notifySrChanged()
                 buildPackageAddedNotification(context, packageInfo)
                 MainScope().launch {
@@ -171,10 +183,14 @@ class NotificationService : Service() {
                         if (rulesByTemplate ==
                             ServicePreferences.getPackageSrZipped(packageInfo.packageName)
                         ) {
-                            ServicePreferences.putStorageRedirect(
-                                wizard.createRules(answers),
+                            val refreshPackages =
                                 getSharedProcessPackages(packageInfo).map { it.packageName }
-                            )
+                            val refreshResult = ConfiguredPolicyStoreProvider.instance.updateRedirect(null) {
+                                it.replaceRedirectRules(wizard.createRules(answers), refreshPackages)
+                            }
+                            if (!refreshResult.success) {
+                                Log.e("MC/Policy", "put redirect failed: ${refreshResult.error}")
+                            }
                             CleanerClient.service?.notifySrChanged()
                         }
                     }

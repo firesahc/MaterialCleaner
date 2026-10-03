@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo
 import android.media.MediaScannerConnection
 import android.os.Bundle
 import android.os.Process
+import android.util.Log
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -24,7 +25,9 @@ import me.gm.cleaner.client.ui.storageredirect.MountWizard
 import me.gm.cleaner.client.ui.storageredirect.RedirectReachabilityAnalyzer
 import me.gm.cleaner.dao.AppLabelCache
 import me.gm.cleaner.dao.RootPreferences
+import me.gm.cleaner.core.config.ConfiguredPolicyStoreProvider
 import me.gm.cleaner.core.config.ServicePreferences
+import me.gm.cleaner.core.config.replaceRedirectRules
 import me.gm.cleaner.databinding.PromptDialogBinding
 import me.gm.cleaner.settings.theme.ThemeUtil
 import me.gm.cleaner.core.common.RuntimeFileUtils
@@ -169,7 +172,11 @@ abstract class BasePromptActivity : AppCompatActivity() {
 
                         val sharedProcessPackages = getSharedProcessPackages(packageInfo)
                             .map { it.packageName }
-                        ServicePreferences.putStorageRedirect(rules, sharedProcessPackages)
+                        val writeResult = ConfiguredPolicyStoreProvider.instance
+                            .updateRedirect(null) { it.replaceRedirectRules(rules, sharedProcessPackages) }
+                        if (!writeResult.success) {
+                            Log.e("MC/Policy", "put redirect failed: ${writeResult.error}")
+                        }
                         CleanerClient.service?.notifySrChanged()
                         CleanerClient.service?.remount(sharedProcessPackages.toTypedArray())
                     }
