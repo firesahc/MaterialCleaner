@@ -53,12 +53,12 @@ public class CleanerService extends ICleanerService.Stub {
     private final CleanerServer mServer;
     private final int mManagerAid;
     private final RemoteCallbackList<IFileChangeObserver> mFileChangeObservers = new RemoteCallbackList<>();
-    private final StorageRedirectConfigController mStorageRedirectConfigController;
+    private final StoragePolicyChangeCoordinator mStoragePolicyChangeCoordinator;
 
     public CleanerService(final CleanerServer service, final int uid) {
         mServer = service;
         mManagerAid = uid;
-        mStorageRedirectConfigController = new StorageRedirectConfigController(service);
+        mStoragePolicyChangeCoordinator = new StoragePolicyChangeCoordinator(service);
     }
 
     private void enforceManager(final Object func) {
@@ -219,19 +219,19 @@ public class CleanerService extends ICleanerService.Stub {
     @Override
     public void notifyPreferencesChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyPreferencesChanged" : 12);
-        mStorageRedirectConfigController.onPreferencesChanged();
+        mStoragePolicyChangeCoordinator.onPreferencesChanged();
     }
 
     @Override
     public void notifySrChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifySrChanged" : 13);
-        mStorageRedirectConfigController.onStorageRedirectChanged();
+        mStoragePolicyChangeCoordinator.onStorageRedirectChanged();
     }
 
     @Override
     public void notifyReadOnlyChanged() {
         enforceManager(BuildConfig.DEBUG ? "notifyReadOnlyChanged" : 14);
-        mStorageRedirectConfigController.onReadOnlyChanged();
+        mStoragePolicyChangeCoordinator.onReadOnlyChanged();
     }
 
     @Override

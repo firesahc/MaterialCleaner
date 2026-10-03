@@ -22,7 +22,7 @@ App（编辑意图，经 Binder 受控触发 remount）
   → ConfiguredPolicyStore（配置事实源，CAS，双文件）
   → RuntimePolicyProjector（唯一投影口，CORRUPT 熔断，generation 自增在校验后）
   → RedirectPolicySnapshot{storage, behavior}（逻辑分拆，聚合发布，同代原子）
-  → VfsRuntimeConfigStore / HookPolicyCache / FuseMountPoints（各域独立投影缓存）
+  → VfsRuntimePolicy / HookPolicyCache / FuseMountPoints（各域独立投影缓存）
   → Mounter / Insert-Fuse（Query 仅记录） / Mount.cpp
   → DataBus（transport only：快照/信号/事件/cursor/lease/原子写/权限/健康）
 ```

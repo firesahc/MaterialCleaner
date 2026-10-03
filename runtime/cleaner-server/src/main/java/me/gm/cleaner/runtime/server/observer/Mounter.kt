@@ -17,7 +17,7 @@ import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.common.err.ErrorLogThrottle
 import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
 import api.SystemService
-import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
+import me.gm.cleaner.runtime.server.VfsRuntimePolicy
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
@@ -51,7 +51,7 @@ class Mounter {
     private val errorLogThrottle = ErrorLogThrottle()
 
     fun mountForAllPackages(): Boolean =
-        VfsRuntimeConfigStore.shouldMountForAllPackages()
+        VfsRuntimePolicy.shouldMountForAllPackages()
 
     fun bindMountAsync(packageName: String, pid: Int, uid: Int) {
         handler.post {
@@ -64,18 +64,18 @@ class Mounter {
     }
 
     internal val isFuseBpfEnabled: Boolean
-        get() = VfsRuntimeConfigStore.isFuseBpfEnabled()
+        get() = VfsRuntimePolicy.isFuseBpfEnabled()
 
     private fun bindMountLocked(packageName: String, pid: Int, uid: Int): Boolean {
         totalAttempts.incrementAndGet()
         // 代际标注：使 mount 与 FUSE apply（同代际快照）可在日志中直接配对。
-        val policyGeneration = VfsRuntimeConfigStore.currentPolicy().generation
+        val policyGeneration = VfsRuntimePolicy.currentPolicy().generation
         Log.i("MC_REDIRECT", "[Mounter] bindMountLocked pkg=$packageName pid=$pid uid=$uid " +
                 "attempt=${totalAttempts.get()} gen=$policyGeneration")
         val userId = uid.toUserId()
         val recordExternalAppSpecificStorage =
-            VfsRuntimeConfigStore.shouldRecordExternalAppSpecificStorage(packageName)
-        val plan = VfsRuntimeConfigStore.getMountPlan(packageName, userId)
+            VfsRuntimePolicy.shouldRecordExternalAppSpecificStorage(packageName)
+        val plan = VfsRuntimePolicy.getMountPlan(packageName, userId)
 
         if (plan == null || plan.isEmpty()) {
             val result = RuntimeFileUtils.bind_mount_result(
@@ -387,7 +387,7 @@ class Mounter {
         val remountPackages = mutableSetOf<String>()
         for (procInfo in procList) {
             procInfo.pkgList.forEach { packageName ->
-                val plan = VfsRuntimeConfigStore.getMountPlan(
+                val plan = VfsRuntimePolicy.getMountPlan(
                     packageName,
                     procInfo.uid.toUserId(),
                 ) ?: return@forEach
@@ -426,13 +426,13 @@ class Mounter {
             val selection = ProcessMountSelectionPolicy.resolve(
                 packageNames = procInfo.pkgList,
                 redirectRuleSignature = { packageName ->
-                    VfsRuntimeConfigStore.getMountPlan(packageName, userId)?.let { plan ->
+                    VfsRuntimePolicy.getMountPlan(packageName, userId)?.let { plan ->
                         plan.sources.zip(plan.targets)
                     }
                 },
                 shouldUnmountDataRestriction = { packageName ->
                     !isFuseBpfEnabled &&
-                            VfsRuntimeConfigStore
+                            VfsRuntimePolicy
                                 .shouldRecordExternalAppSpecificStorage(packageName)
                 },
             )
@@ -449,7 +449,7 @@ class Mounter {
                     if (bindMountLocked(selection.packageName, procInfo.pid, procInfo.uid)) {
                         // 等价包与代表包共享同一 namespace，登记相同的 pid 与目录。
                         equivalentPackages.forEach { packageName ->
-                            val plan = VfsRuntimeConfigStore.getMountPlan(packageName, userId)
+                            val plan = VfsRuntimePolicy.getMountPlan(packageName, userId)
                                 ?: return@forEach
                             pidRecords.put(packageName, procInfo.pid)
                             if (!mkdirRecords.containsKey(packageName)) {

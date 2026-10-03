@@ -13,7 +13,7 @@ import me.gm.cleaner.core.storage.redirect.domain.RuntimeMountPlan
  * ServicePreferences、系统属性探测散落到 mount 热路径中。
  * 记录语义由 [RuntimeBehaviorPolicy] 决定，这里只做视图委托。
  */
-object VfsRuntimeConfigStore {
+object VfsRuntimePolicy {
     @Volatile
     private var policySnapshot: RedirectPolicySnapshot? = null
 

@@ -4,7 +4,7 @@ import android.app.ActivityManager
 import androidx.annotation.CallSuper
 import api.SystemService
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
-import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore
+import me.gm.cleaner.runtime.server.VfsRuntimePolicy
 import java.util.concurrent.CopyOnWriteArraySet
 
 abstract class BaseProcessObserver : BaseObserver() {
@@ -33,7 +33,7 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun remountAll() {
         mounter.forProcListAsync(
-            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            getRunningAppProcesses(VfsRuntimePolicy.getStorageRedirectPackages()),
             false,
             true,
         )
@@ -41,7 +41,7 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun remountAllWithCheck() {
         mounter.forProcListAsync(
-            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            getRunningAppProcesses(VfsRuntimePolicy.getStorageRedirectPackages()),
             true,
             true,
         )
@@ -49,7 +49,7 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun recordAll() {
         mounter.forProcListAsync(
-            getRunningAppProcesses(VfsRuntimeConfigStore.getStorageRedirectPackages()),
+            getRunningAppProcesses(VfsRuntimePolicy.getStorageRedirectPackages()),
             true,
             false,
         )

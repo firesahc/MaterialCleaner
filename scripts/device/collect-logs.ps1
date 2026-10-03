@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $Serial = Get-DeviceSerial -Serial $Serial
 $dir = New-ArtifactDir -Serial $Serial -Tag 'logs'
-$log = Invoke-Adb -Serial $Serial -AdbArgs @('logcat', '-d', '-s', 'MC_REDIRECT:D', 'StorageRedirectConfigController:D') -TimeoutSec 60
+$log = Invoke-Adb -Serial $Serial -AdbArgs @('logcat', '-d', '-s', 'MC_REDIRECT:D', 'StoragePolicyChangeCoordinator:D') -TimeoutSec 60
 Write-ProbeLog -Dir $dir -Name 'logcat.txt' -Content $log | Out-Null
 $diag = Invoke-AdbShell -Serial $Serial -Command "ls -lt /data/local/tmp/cleaner/bus/events 2>&1 | head -20"
 Write-ProbeLog -Dir $dir -Name 'events.txt' -Content $diag | Out-Null

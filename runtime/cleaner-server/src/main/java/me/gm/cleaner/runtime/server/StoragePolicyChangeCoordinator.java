@@ -10,7 +10,7 @@ import java.util.Set;
 import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.runtime.server.hookbridge.MediaProviderHookGateway;
 import me.gm.cleaner.runtime.server.observer.PackageInfoMapper;
-import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore;
+import me.gm.cleaner.runtime.server.VfsRuntimePolicy;
 
 /**
  * Handles storage redirect configuration change commands.
@@ -19,12 +19,12 @@ import me.gm.cleaner.runtime.server.VfsRuntimeConfigStore;
  * effects needed after config writes: preference reload, snapshot publishing,
  * Hook refresh and VFS remount.
  */
-public class StorageRedirectConfigController {
-    private static final String TAG = "StorageRedirectConfigController";
+public class StoragePolicyChangeCoordinator {
+    private static final String TAG = "StoragePolicyChangeCoordinator";
 
     private final CleanerServer mServer;
 
-    public StorageRedirectConfigController(final CleanerServer server) {
+    public StoragePolicyChangeCoordinator(final CleanerServer server) {
         mServer = server;
     }
 
@@ -37,7 +37,7 @@ public class StorageRedirectConfigController {
         // 这里显式阻断 remount/publish，避免 Binder 异常穿透，保留 last-known-good。
         final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
         try {
-            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+            snapshot = VfsRuntimePolicy.INSTANCE.refreshPolicy();
         } catch (final IllegalArgumentException e) {
             Log.e(TAG, "onPreferencesChanged: configured policy CORRUPT, keep last-known-good", e);
             return;
@@ -54,7 +54,7 @@ public class StorageRedirectConfigController {
         // 同 M1：refreshPolicy 前置 → VFS 先切 → 发布同一份策略快照 → Hook 异步跟进。
         final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
         try {
-            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+            snapshot = VfsRuntimePolicy.INSTANCE.refreshPolicy();
         } catch (final IllegalArgumentException e) {
             Log.e(TAG, "onStorageRedirectChanged: configured policy CORRUPT, keep last-known-good", e);
             return;
@@ -68,7 +68,7 @@ public class StorageRedirectConfigController {
         ServicePreferences.INSTANCE.invalidateReadOnlyCache();
         final me.gm.cleaner.core.storage.redirect.domain.RedirectPolicySnapshot snapshot;
         try {
-            snapshot = VfsRuntimeConfigStore.INSTANCE.refreshPolicy();
+            snapshot = VfsRuntimePolicy.INSTANCE.refreshPolicy();
         } catch (final IllegalArgumentException e) {
             Log.e(TAG, "onReadOnlyChanged: configured policy CORRUPT, keep last-known-good", e);
             return;
@@ -79,7 +79,7 @@ public class StorageRedirectConfigController {
 
     private LinkedHashSet<String> currentStorageRedirectPackages() {
         return new LinkedHashSet<>(
-                VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages()
+                VfsRuntimePolicy.INSTANCE.getStorageRedirectPackages()
         );
     }
 
@@ -88,7 +88,7 @@ public class StorageRedirectConfigController {
         if (previousPackages != null) {
             affectedPackages.addAll(previousPackages);
         }
-        affectedPackages.addAll(VfsRuntimeConfigStore.INSTANCE.getStorageRedirectPackages());
+        affectedPackages.addAll(VfsRuntimePolicy.INSTANCE.getStorageRedirectPackages());
         if (!affectedPackages.isEmpty()) {
             mServer.vfsLayerController.remount(affectedPackages.toArray(new String[0]));
         }

@@ -38,7 +38,7 @@ object SnapshotPublisher {
 
         val userIds = SystemService.getUserIdsNoThrow()
         val policy = RuntimePolicyProjector.project(userIds)
-        VfsRuntimeConfigStore.updatePolicy(policy)
+        VfsRuntimePolicy.updatePolicy(policy)
 
         // 关键三件套批量提交：全部写入成功后才统一发信号，
         // 避免 Hook 观察到半批状态造成三层不一致。
@@ -72,7 +72,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
-        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        VfsRuntimePolicy.updatePolicy(snapshot)
 
         val json = serializeRedirectPolicy(snapshot)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_REDIRECT_POLICY, json)
@@ -93,7 +93,7 @@ object SnapshotPublisher {
      * 规则变更时必须保持两者 generation/publisherEpoch 一致，避免 Hook
      * 和 native 层看到来自不同策略代数的事实。
      *
-     * @param policy 传入时复用调用方已构建并更新到 VfsRuntimeConfigStore 的
+     * @param policy 传入时复用调用方已构建并更新到 VfsRuntimePolicy 的
      *   同一份快照，保证 remount 与发布使用同一代策略（顺序治理）。
      */
     @JvmOverloads
@@ -101,7 +101,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
-        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        VfsRuntimePolicy.updatePolicy(snapshot)
         val batchResult = SnapshotBatchCommitter.commit(
             publications = listOf(
                 redirectPolicyPublication(snapshot),
@@ -125,7 +125,7 @@ object SnapshotPublisher {
         }
 
         val snapshot = RuntimePolicyProjector.projectStopped()
-        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        VfsRuntimePolicy.updatePolicy(snapshot)
 
         val batchResult = SnapshotBatchCommitter.commit(
             publications = listOf(
@@ -149,7 +149,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
-        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        VfsRuntimePolicy.updatePolicy(snapshot)
 
         val json = serializeReadOnly(snapshot)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_READ_ONLY, json)
@@ -166,7 +166,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val snapshot = policy ?: RuntimePolicyProjector.project(SystemService.getUserIdsNoThrow())
-        VfsRuntimeConfigStore.updatePolicy(snapshot)
+        VfsRuntimePolicy.updatePolicy(snapshot)
         val mountPoints = RedirectPolicyDeriver.buildConfiguredMountPoints(snapshot)
 
         val json = serializeConfiguredMountPoints(mountPoints)
@@ -183,7 +183,7 @@ object SnapshotPublisher {
         if (!DataBus.ensureInitialized()) return false
 
         val caps = PlatformCapabilitiesDetector.detect()
-        VfsRuntimeConfigStore.updateCapabilities(caps)
+        VfsRuntimePolicy.updateCapabilities(caps)
         val json = PlatformCapabilitiesDetector.toJson(caps)
         val written = DataBus.writeSnapshot(DataBus.SNAPSHOT_PLATFORM_CAPABILITIES, json)
         val signaled = written && DataBus.signal(DataBus.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)

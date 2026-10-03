@@ -29,7 +29,7 @@ word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/RuntimePo
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|configured_mount_points	6
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|ConfiguredMountPoint	10
 word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/SnapshotPublisher.kt|denylist	3
-word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/VfsRuntimeConfigStore.kt|denylist	1
+word:runtime/cleaner-server/src/main/java/me/gm/cleaner/runtime/server/VfsRuntimePolicy.kt|denylist	1
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/FuseNativePolicyAdapter.kt|configured_mount_points	2
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/FuseNativePolicyAdapter.kt|ConfiguredMountPoint	5
 word:runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/HookPolicyCache.kt|configured_mount_points	8
