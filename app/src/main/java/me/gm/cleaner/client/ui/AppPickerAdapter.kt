@@ -17,7 +17,11 @@ class AppPickerAdapter(private val viewModel: AppPickerViewModel) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val binding = holder.binding
         val model = getItem(position)
-        binding.iconImage.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(binding.root.context.packageManager))
+        val context = binding.root.context
+        binding.iconImage.setImageDrawable(
+            model.packageInfo.applicationInfo?.loadIcon(context.packageManager)
+                ?: context.packageManager.defaultActivityIcon
+        )
         binding.principalText.text = model.label
         binding.labelText.text = model.packageInfo.packageName
         binding.checkbox.isChecked = model.isChecked
