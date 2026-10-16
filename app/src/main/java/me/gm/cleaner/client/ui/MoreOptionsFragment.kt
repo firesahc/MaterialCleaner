@@ -213,34 +213,31 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         logStatsPollingJob = lifecycleScope.launch {
             while (isActive) {
                 try {
-                    val stats = CleanerClient.service?.getLogDirStats()
+                    // 同步 Binder 调用及目录遍历放在 IO 线程，避免阻塞 UI 主线程。
+                    val stats = withContext(Dispatchers.IO) {
+                        CleanerClient.service?.getLogDirStats()
+                    }
                     if (stats != null) {
                         val available = stats.getBoolean("available")
                         val totalBytes = stats.getLong("totalBytes")
                         val fileCount = stats.getInt("fileCount")
-                        withContext(Dispatchers.Main) {
-                            updateAutoLoggingSummary(available, totalBytes, fileCount)
-                            if (available != lastStatsAvailable) {
-                                Log.d("MC/MoreOptions", "Log stats available changed: $available")
-                                lastStatsAvailable = available
-                            }
+                        updateAutoLoggingSummary(available, totalBytes, fileCount)
+                        if (available != lastStatsAvailable) {
+                            Log.d("MC/MoreOptions", "Log stats available changed: $available")
+                            lastStatsAvailable = available
                         }
                     } else {
-                        withContext(Dispatchers.Main) {
-                            updateAutoLoggingSummary(false, 0L, 0)
-                            if (lastStatsAvailable) {
-                                Log.w("MC/MoreOptions", "Cleaner service unavailable, cannot fetch log stats")
-                                lastStatsAvailable = false
-                            }
+                        updateAutoLoggingSummary(false, 0L, 0)
+                        if (lastStatsAvailable) {
+                            Log.w("MC/MoreOptions", "Cleaner service unavailable, cannot fetch log stats")
+                            lastStatsAvailable = false
                         }
                     }
                 } catch (e: Exception) {
                     Log.w("MC/MoreOptions", "Failed to fetch log stats", e)
-                    withContext(Dispatchers.Main) {
-                        updateAutoLoggingSummary(false, 0L, 0)
-                        if (lastStatsAvailable) {
-                            lastStatsAvailable = false
-                        }
+                    updateAutoLoggingSummary(false, 0L, 0)
+                    if (lastStatsAvailable) {
+                        lastStatsAvailable = false
                     }
                 }
                 delay(10_000)

@@ -73,12 +73,6 @@ public class AutoLogging {
     /**
      * 只读统计日志目录的总大小和文件数量。
      * 不创建、不删除、不修改任何文件。
-     *
-     * @return Bundle 包含 totalBytes (long)、fileCount (int)、available (boolean)
-     */
-    /**
-     * 只读统计日志目录的总大小和文件数量。
-     * 不创建、不删除、不修改任何文件。
      * <p>
      * 统计口径：仅统计目录第一层中的普通文件，不递归子目录，不跟随符号链接。
      *
@@ -89,7 +83,8 @@ public class AutoLogging {
         try {
             final var path = sLogsDir.toPath();
 
-            // 区分目录状态：目录明确不存在，返回零占用
+            // 目录不存在时，返回零占用。Files.exists() 在某些 I/O 异常下也可能返回 false，
+            // 但这类异常会被外层 try-catch 捕获并返回 available=false，不会被误报为零占用。
             if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
                 result.putLong("totalBytes", 0L);
                 result.putInt("fileCount", 0);
@@ -110,7 +105,9 @@ public class AutoLogging {
             int fileCount = 0;
 
             try (var stream = Files.list(path)) {
-                for (var file : stream.iterator()) {
+                var iterator = stream.iterator();
+                while (iterator.hasNext()) {
+                    var file = iterator.next();
                     if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
                         totalBytes += Files.size(file);
                         fileCount++;
