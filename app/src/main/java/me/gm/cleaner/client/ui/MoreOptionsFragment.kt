@@ -23,6 +23,7 @@ import androidx.preference.SwitchPreferenceCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.snackbar.Snackbar
 import com.topjohnwu.superuser.internal.Utils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
@@ -233,6 +234,9 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                             lastStatsAvailable = false
                         }
                     }
+                } catch (e: CancellationException) {
+                    // 页面离开或协程被取消，不应当作为统计故障处理
+                    throw e
                 } catch (e: Exception) {
                     Log.w("MC/MoreOptions", "Failed to fetch log stats", e)
                     updateAutoLoggingSummary(false, 0L, 0)

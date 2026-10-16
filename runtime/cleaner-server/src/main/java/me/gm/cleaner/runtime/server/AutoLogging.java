@@ -8,6 +8,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.attribute.BasicFileAttributes;
 
 import me.gm.cleaner.runtime.server.BuildConfig;
 
@@ -83,17 +85,27 @@ public class AutoLogging {
         try {
             final var path = sLogsDir.toPath();
 
-            // 目录不存在时，返回零占用。Files.exists() 在某些 I/O 异常下也可能返回 false，
-            // 但这类异常会被外层 try-catch 捕获并返回 available=false，不会被误报为零占用。
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            // 读取目录属性，区分：目录明确不存在、目录状态不可用、正常目录
+            BasicFileAttributes dirAttrs;
+            try {
+                dirAttrs = Files.readAttributes(
+                        path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            } catch (NoSuchFileException e) {
+                // 目录明确不存在，返回零占用
                 result.putLong("totalBytes", 0L);
                 result.putInt("fileCount", 0);
                 result.putBoolean("available", true);
                 return result;
+            } catch (Exception e) {
+                // 其他 I/O 异常，无法确认目录状态，不伪装成零占用
+                result.putLong("totalBytes", 0L);
+                result.putInt("fileCount", 0);
+                result.putBoolean("available", false);
+                return result;
             }
 
-            // 路径存在但不是目录（可能是符号链接或普通文件），无法统计
-            if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (!dirAttrs.isDirectory()) {
+                // 路径存在但不是目录（可能是符号链接或普通文件），无法统计
                 result.putLong("totalBytes", 0L);
                 result.putInt("fileCount", 0);
                 result.putBoolean("available", false);
@@ -108,9 +120,22 @@ public class AutoLogging {
                 var iterator = stream.iterator();
                 while (iterator.hasNext()) {
                     var file = iterator.next();
-                    if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                        totalBytes += Files.size(file);
-                        fileCount++;
+                    try {
+                        BasicFileAttributes fileAttrs = Files.readAttributes(
+                                file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                        if (fileAttrs.isRegularFile()) {
+                            totalBytes += fileAttrs.size();
+                            fileCount++;
+                        }
+                        // 如果不是普通文件（目录、符号链接等），静默跳过
+                    } catch (NoSuchFileException e) {
+                        // 文件在遍历过程中已被删除，静默跳过
+                    } catch (Exception e) {
+                        // 无法读取单个文件属性，统计不可用，不伪装成完整结果
+                        result.putLong("totalBytes", totalBytes);
+                        result.putInt("fileCount", fileCount);
+                        result.putBoolean("available", false);
+                        return result;
                     }
                 }
             }
