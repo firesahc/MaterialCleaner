@@ -7,6 +7,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.MatrixCursor;
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteCallbackList;
@@ -454,5 +455,11 @@ public class CleanerService extends ICleanerService.Stub {
             remoteException.initCause(e);
             throw remoteException;
         }
+    }
+
+    @Override
+    public Bundle getLogDirStats() {
+        enforceManager(BuildConfig.DEBUG ? "getLogDirStats" : 32);
+        return mServer.mAutoLogging.getLogDirStats();
     }
 }

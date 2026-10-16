@@ -26,6 +26,7 @@ import com.topjohnwu.superuser.internal.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.R
@@ -60,6 +61,9 @@ class MoreOptionsFragment : BaseSettingsFragment() {
     private lateinit var importLauncher: ActivityResultLauncher<Array<String>>
     private val notifyPreferencesChangedListener: NotifyServerPreferenceChangeListener
         get() = NotifyServerPreferenceChangeListener()
+
+    private var logStatsPollingJob: kotlinx.coroutines.Job? = null
+    private var lastStatsAvailable: Boolean = true
 
     class PostNotificationRequesterFragment : RequesterFragment() {
         @SuppressLint("InlinedApi")
@@ -192,6 +196,78 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         super.onDestroyView()
         shareLauncher.unregister()
         importLauncher.unregister()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startLogStatsPolling()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopLogStatsPolling()
+    }
+
+    private fun startLogStatsPolling() {
+        if (logStatsPollingJob?.isActive == true) return
+        logStatsPollingJob = lifecycleScope.launch {
+            while (isActive) {
+                try {
+                    val stats = CleanerClient.service?.getLogDirStats()
+                    if (stats != null) {
+                        val available = stats.getBoolean("available")
+                        val totalBytes = stats.getLong("totalBytes")
+                        val fileCount = stats.getInt("fileCount")
+                        withContext(Dispatchers.Main) {
+                            updateAutoLoggingSummary(available, totalBytes, fileCount)
+                            if (available != lastStatsAvailable) {
+                                Log.d("MC/MoreOptions", "Log stats available changed: $available")
+                                lastStatsAvailable = available
+                            }
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            updateAutoLoggingSummary(false, 0L, 0)
+                            if (lastStatsAvailable) {
+                                Log.w("MC/MoreOptions", "Cleaner service unavailable, cannot fetch log stats")
+                                lastStatsAvailable = false
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("MC/MoreOptions", "Failed to fetch log stats", e)
+                    withContext(Dispatchers.Main) {
+                        updateAutoLoggingSummary(false, 0L, 0)
+                        if (lastStatsAvailable) {
+                            lastStatsAvailable = false
+                        }
+                    }
+                }
+                delay(10_000)
+            }
+        }
+    }
+
+    private fun stopLogStatsPolling() {
+        logStatsPollingJob?.cancel()
+        logStatsPollingJob = null
+    }
+
+    private fun updateAutoLoggingSummary(available: Boolean, totalBytes: Long, fileCount: Int) {
+        val autoLogging = findPreference<SwitchPreferenceCompat>(
+            getString(me.gm.cleaner.R.string.auto_logging_key)
+        ) ?: return
+
+        val baseSummary = getString(R.string.auto_logging_summary)
+        val statsLine = if (available) {
+            val sizeStr = android.text.format.Formatter.formatShortFileSize(
+                requireContext(), totalBytes
+            )
+            getString(R.string.auto_logging_stats_summary, sizeStr, fileCount)
+        } else {
+            getString(R.string.log_stats_unavailable)
+        }
+        autoLogging.summary = baseSummary + "\n" + statsLine
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {

@@ -1,6 +1,7 @@
 package me.gm.cleaner.runtime.server;
 
 import android.os.Build;
+import android.os.Bundle;
 import android.util.Log;
 
 import java.io.File;
@@ -67,5 +68,65 @@ public class AutoLogging {
             grabLogs(System.currentTimeMillis(),
                     "/system/bin/logcat -b main,system,crash");
         }
+    }
+
+    /**
+     * 只读统计日志目录的总大小和文件数量。
+     * 不创建、不删除、不修改任何文件。
+     *
+     * @return Bundle 包含 totalBytes (long)、fileCount (int)、available (boolean)
+     */
+    /**
+     * 只读统计日志目录的总大小和文件数量。
+     * 不创建、不删除、不修改任何文件。
+     * <p>
+     * 统计口径：仅统计目录第一层中的普通文件，不递归子目录，不跟随符号链接。
+     *
+     * @return Bundle 包含 totalBytes (long)、fileCount (int)、available (boolean)
+     */
+    public Bundle getLogDirStats() {
+        final var result = new Bundle();
+        try {
+            final var path = sLogsDir.toPath();
+
+            // 区分目录状态：目录明确不存在，返回零占用
+            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+                result.putLong("totalBytes", 0L);
+                result.putInt("fileCount", 0);
+                result.putBoolean("available", true);
+                return result;
+            }
+
+            // 路径存在但不是目录（可能是符号链接或普通文件），无法统计
+            if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+                result.putLong("totalBytes", 0L);
+                result.putInt("fileCount", 0);
+                result.putBoolean("available", false);
+                return result;
+            }
+
+            // 正常目录：统计第一层普通文件
+            long totalBytes = 0L;
+            int fileCount = 0;
+
+            try (var stream = Files.list(path)) {
+                for (var file : stream.iterator()) {
+                    if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+                        totalBytes += Files.size(file);
+                        fileCount++;
+                    }
+                }
+            }
+
+            result.putLong("totalBytes", totalBytes);
+            result.putInt("fileCount", fileCount);
+            result.putBoolean("available", true);
+        } catch (Exception e) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "getLogDirStats failed", e);
+            result.putLong("totalBytes", 0L);
+            result.putInt("fileCount", 0);
+            result.putBoolean("available", false);
+        }
+        return result;
     }
 }

@@ -83,6 +83,8 @@
     <string name="aggressively_prompt_for_reading_media_files_summary">會出現很多不必要的提示，不過如果您對儲存重定向功能還不熟悉，開啟有助於減少意外問題</string>
     <string name="auto_logging_title">保存日誌到檔案用於診斷</string>
     <string name="auto_logging_summary">持續將 logcat 輸出寫入 /data/local/tmp/cleaner_logs/，有助於排查啟動或崩潰問題。</string>
+    <string name="auto_logging_stats_summary">日誌：%1$s，共 %2$d 個檔案</string>
+    <string name="log_stats_unavailable">暫時無法獲取日誌統計</string>
     <string name="app_category_title">在線應用類型標記</string>
     <string name="record_shared_storage_title">記錄共享儲存空間中的文件操作</string>
     <string name="record_external_app_specific_storage_title">（實驗性）記錄外部應用專屬儲存空間中的文件操作</string>

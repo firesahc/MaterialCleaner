@@ -1,5 +1,6 @@
 package me.gm.cleaner.server;
 
+import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import me.gm.cleaner.browser.IRootFileService;
 import me.gm.cleaner.browser.IRootWorkerService;
@@ -80,4 +81,8 @@ interface ICleanerService {
     OrchestratedStatus getOrchestratedStatus() = 30;
 
     ParcelFileDescriptor openDiagnosticsArchive() = 31;
+
+    // 获取日志目录统计信息（总大小、文件数量）
+    // 返回 Bundle: { totalBytes: long, fileCount: int, available: boolean }
+    Bundle getLogDirStats() = 32;
 }
