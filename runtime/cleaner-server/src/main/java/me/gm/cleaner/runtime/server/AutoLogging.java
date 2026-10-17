@@ -67,6 +67,12 @@ public class AutoLogging {
     public synchronized void reconcileWithPreferences() {
         final boolean desired = ServicePreferences.INSTANCE.getAutoLogging()
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
+        // 结算死引用：进程被外部终止等异常退出时，不把"引用存在"误判为"仍在运行"。
+        // 结算后若 desired 仍成立，走下方 start 分支即自然完成自愈重启。
+        if (mLogProcess != null && !mLogProcess.isAlive()) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "logcat process exited unexpectedly");
+            mLogProcess = null;
+        }
         if (desired && mLogProcess == null) {
             startContinuousLogging();
         } else if (!desired && mLogProcess != null) {
@@ -93,8 +99,9 @@ public class AutoLogging {
      * 命令的 exec 替换优化。仅在调用方已持有状态锁时执行。
      */
     private void startContinuousLogging() {
+        File logFile = null;
         try {
-            final var logFile = createLogFile(System.currentTimeMillis());
+            logFile = createLogFile(System.currentTimeMillis());
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 mLogProcess = new ProcessBuilder(
                         "/system/bin/logcat", "-b", "main,system,crash")
@@ -104,6 +111,14 @@ public class AutoLogging {
                         "auto logging started: " + logFile.getName());
             }
         } catch (final IOException e) {
+            // 进程启动失败时本次创建的文件不可保留，防止反复失败累积空文件。
+            if (logFile != null) {
+                try {
+                    Files.deleteIfExists(logFile.toPath());
+                } catch (final IOException ignored) {
+                    // 删除失败最多残留 0 字节文件，不升级告警
+                }
+            }
             Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "startContinuousLogging failed", e);
         }
     }
