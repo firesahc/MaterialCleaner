@@ -112,7 +112,7 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean = try {
             true
         } finally {
-            lifecycleScope.launch {
+            lifecycleScope.launch(Dispatchers.IO) {
                 delay(100)
                 preferenceManager.sharedPreferences?.edit(true) { }
                 CleanerClient.service?.notifyPreferencesChanged()
