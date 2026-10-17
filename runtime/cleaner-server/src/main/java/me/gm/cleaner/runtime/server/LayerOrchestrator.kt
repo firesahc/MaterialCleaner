@@ -69,9 +69,8 @@ class LayerOrchestrator(
 
         server.mPackageReceiver.registerPackageReceiver()
 
-        if (ServicePreferences.autoLogging) {
-            server.mAutoLogging.registerBootShutdownReceiver(AutoLogging.MODE_CONTINUOUSLY)
-        }
+        // 日志采集进程按配置对账：应启用而未运行则启动，应停用则保持未运行。
+        server.mAutoLogging.reconcileWithPreferences()
 
         val dataBusReady = SnapshotPublisher.publishAll()
 

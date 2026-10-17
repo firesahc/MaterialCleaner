@@ -10,13 +10,20 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.TimeUnit;
 
+import me.gm.cleaner.core.config.ServicePreferences;
 import me.gm.cleaner.runtime.server.BuildConfig;
 
 
 public class AutoLogging {
-    public static final int MODE_CONTINUOUSLY = 1;
     private static final File sLogsDir = new File("/data/local/tmp/cleaner_logs");
+
+    /**
+     * 当前日志采集进程；非 null 表示正在写日志文件。
+     * 由本类 synchronized 公开方法独占维护，状态对账在单点收敛。
+     */
+    private volatile Process mLogProcess;
 
     public AutoLogging(final android.content.pm.PackageInfo packageInfo) {
     }
@@ -52,23 +59,75 @@ public class AutoLogging {
         }
     }
 
-    private void grabLogs(final Object logName, final String cmd) {
-        try {
-            final var logFile = createLogFile(logName);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                new ProcessBuilder("sh", "-c", cmd)
-                        .redirectOutput(logFile)
-                        .start();
-            }
-        } catch (final IOException e) {
-            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "grabLogs failed", e);
+    /**
+     * 按当前配置对账日志采集进程的实际状态：应启用而未运行则启动，应停用而仍在运行则停止。
+     * <p>
+     * 幂等：状态已一致时为无操作；可在任意线程调用。
+     */
+    public synchronized void reconcileWithPreferences() {
+        final boolean desired = ServicePreferences.INSTANCE.getAutoLogging()
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
+        if (desired && mLogProcess == null) {
+            startContinuousLogging();
+        } else if (!desired && mLogProcess != null) {
+            shutdownProcess("disabled by preference");
         }
     }
 
-    public void registerBootShutdownReceiver(int mode) {
-        if (mode == MODE_CONTINUOUSLY) {
-            grabLogs(System.currentTimeMillis(),
-                    "/system/bin/logcat -b main,system,crash");
+    /**
+     * 无条件停止日志采集进程，用于服务退出前的子进程回收。
+     * <p>
+     * 幂等：进程未运行时为无操作。
+     */
+    public synchronized void shutdown() {
+        if (mLogProcess != null) {
+            shutdownProcess("server exiting");
+        }
+    }
+
+    /**
+     * 启动持续日志采集：logcat 输出被重定向到日志目录中的新文件。
+     * <p>
+     * 直接启动 logcat 可执行文件，不经 {@code sh -c}：停止时
+     * {@code destroy()} 无条件命中采集进程本身，不依赖 shell 对单条
+     * 命令的 exec 替换优化。仅在调用方已持有状态锁时执行。
+     */
+    private void startContinuousLogging() {
+        try {
+            final var logFile = createLogFile(System.currentTimeMillis());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mLogProcess = new ProcessBuilder(
+                        "/system/bin/logcat", "-b", "main,system,crash")
+                        .redirectOutput(logFile)
+                        .start();
+                Log.i(BuildConfig.LIBRARY_PACKAGE_NAME,
+                        "auto logging started: " + logFile.getName());
+            }
+        } catch (final IOException e) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "startContinuousLogging failed", e);
+        }
+    }
+
+    /**
+     * 停止并回收采集进程：先 SIGTERM 优雅退出，超时则 SIGKILL 兜底。
+     * 先清引用再销毁，防止停止过程中的并发对账命中半完成状态。
+     */
+    private void shutdownProcess(final String reason) {
+        final var process = mLogProcess;
+        mLogProcess = null;
+        Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "auto logging stopped: " + reason);
+        process.destroy();
+        try {
+            if (!process.waitFor(3, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                process.waitFor(1, TimeUnit.SECONDS);
+            }
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+        } catch (final RuntimeException e) {
+            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "shutdownProcess wait failed", e);
+            process.destroyForcibly();
         }
     }
 
