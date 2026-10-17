@@ -228,7 +228,9 @@ class MoreOptionsFragment : BaseSettingsFragment() {
                             lastStatsAvailable = available
                         }
                     } else {
-                        updateAutoLoggingSummary(false, 0L, 0)
+                        // Cleaner service is not bound/running: show an actionable hint
+                        // instead of the generic "temporarily unavailable" message.
+                        updateAutoLoggingServiceUnavailable()
                         if (lastStatsAvailable) {
                             Log.w("MC/MoreOptions", "Cleaner service unavailable, cannot fetch log stats")
                             lastStatsAvailable = false
@@ -269,6 +271,14 @@ class MoreOptionsFragment : BaseSettingsFragment() {
             getString(R.string.log_stats_unavailable)
         }
         autoLogging.summary = baseSummary + "\n" + statsLine
+    }
+
+    private fun updateAutoLoggingServiceUnavailable() {
+        val autoLogging = findPreference<SwitchPreferenceCompat>(
+            getString(me.gm.cleaner.R.string.auto_logging_key)
+        ) ?: return
+        val baseSummary = getString(R.string.auto_logging_summary)
+        autoLogging.summary = baseSummary + "\n" + getString(R.string.log_stats_service_unavailable)
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {

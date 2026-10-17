@@ -110,6 +110,7 @@
     <string name="auto_logging_summary">Continuously writes logcat output to /data/local/tmp/cleaner_logs/. Useful for troubleshooting boot or crash issues.</string>
     <string name="auto_logging_stats_summary">Logs: %1$s across %2$d files</string>
     <string name="log_stats_unavailable">Log stats temporarily unavailable</string>
+    <string name="log_stats_service_unavailable">Cleaner service not running. Please start the service.</string>
     <string name="app_category_default" translatable="false">https://raw.githubusercontent.com/MaterialCleaner/AppsTypeMarks/main/</string>
     <string name="app_category_title">Online Apps Type Marks</string>
     <string name="record_shared_storage_title">Record file operations in shared storage</string>

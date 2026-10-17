@@ -85,6 +85,7 @@
     <string name="auto_logging_summary">持续将 logcat 输出写入 /data/local/tmp/cleaner_logs/，有助于排查启动或崩溃问题。</string>
     <string name="auto_logging_stats_summary">日志：%1$s，共 %2$d 个文件</string>
     <string name="log_stats_unavailable">暂时无法获取日志统计</string>
+    <string name="log_stats_service_unavailable">Cleaner 服务未运行，请启动服务</string>
     <string name="app_category_title">在线应用类型标记</string>
     <string name="record_shared_storage_title">记录共享存储空间中的文件操作</string>
     <string name="record_external_app_specific_storage_title">（实验性）记录外部应用专属存储空间中的文件操作</string>
