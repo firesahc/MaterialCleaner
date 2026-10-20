@@ -1,12 +1,14 @@
 package me.gm.cleaner.core.common.err
 
+import org.json.JSONObject
+
 /**
  * 结构化错误事件：全项目错误上报的最小标准载体。
  *
  * 设计约束：
- * - 纯 Kotlin 数据类，不携带任何序列化依赖；JSON 化由各进程侧消费方自行完成
- *   （hook 侧并入 [me.gm.cleaner.runtime.mediaprovider.hook.NativeHookStatus] 快照段，
- *   server 侧由 DiagnosticArchive / OrchestratedStatus 聚合导出）。
+ * - 纯 Kotlin 数据类，不携带平台依赖；JSON 化由 [toJson] 单一实现，
+ *   hook 侧并入 [me.gm.cleaner.runtime.mediaprovider.hook.NativeHookStatus] 快照段，
+ *   server 侧由 DiagnosticArchive / OrchestratedStatus 聚合导出。
  * - [pathDigest] 是路径的 SHA-256 前 8 字节十六进制摘要而非明文，
  *     使错误事件可以安全进入快照与诊断包；明文路径仅允许出现在 debug 日志。
  * - [atElapsed] 必须取自单调时钟（SystemClock.elapsedRealtime 或等价物），
@@ -45,4 +47,21 @@ data class ErrorEvent(
         if (generation > 0L) append(" gen=").append(generation)
         detail?.let { append(" detail=").append(it) }
     }
+
+    /**
+     * JSON Lines 的一行表示：持久化载体与诊断包导出的唯一格式来源。
+     *
+     * 字段集由本函数单一维护，app 侧 client_error_journal.jsonl 与
+     * server 侧 errors/journal.jsonl 因此格式一致由代码保证，
+     * 离线工具可统一归并，无需依赖各处注释约定。
+     */
+    fun toJson(): String = JSONObject().apply {
+        put("code", code)
+        put("atElapsed", atElapsed)
+        if (errno != 0) put("errno", errno)
+        subject?.let { put("subject", it) }
+        pathDigest?.let { put("pathDigest", it) }
+        if (generation > 0L) put("generation", generation)
+        detail?.let { put("detail", it) }
+    }.toString()
 }

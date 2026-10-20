@@ -449,26 +449,13 @@ object DiagnosticArchive {
      * 导出结构化错误事件流水（JSON Lines，每行一个 ErrorEvent 的紧凑表示）。
      * 与 orchestrated_status.json 中的 recentErrors 数组同源，
      * 供离线工具按错误码归并统计。
+     *
+     * 取持久层全文而非内存快照：持久层跨服务重启保留，
+     * 内存环形缓冲只有 50 条且进程重启即清零。
      */
     private fun addErrorJournal(zip: ZipOutputStream) {
         runCatching {
-            val events = ServerErrorJournal.snapshot()
-            if (events.isEmpty()) {
-                addText(zip, "errors/journal.jsonl", "")
-                return
-            }
-            val lines = events.joinToString(separator = "\n") { event ->
-                JSONObject().apply {
-                    put("code", event.code)
-                    put("atElapsed", event.atElapsed)
-                    if (event.errno != 0) put("errno", event.errno)
-                    event.subject?.let { put("subject", it) }
-                    event.pathDigest?.let { put("pathDigest", it) }
-                    if (event.generation > 0L) put("generation", event.generation)
-                    event.detail?.let { put("detail", it) }
-                }.toString()
-            }
-            addText(zip, "errors/journal.jsonl", lines)
+            addText(zip, "errors/journal.jsonl", ServerErrorJournal.exportJsonL())
         }.onFailure {
             addText(zip, "errors/journal_error.txt", it.stackTraceToString())
         }
