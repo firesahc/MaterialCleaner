@@ -1,3 +1,4 @@
+#include <cerrno>
 #include <libgen.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -7,6 +8,7 @@
 #include "android-base/stringprintf.h"
 #include "android_filesystem_config.h"
 #include "fuse_policy.h"
+#include "logging.h"
 #include "obfs-string.h"
 #include "FileUtils.h"
 
@@ -42,6 +44,10 @@ namespace FileUtils {
 #ifdef DEBUG
                 LOGI("mkdir: %s"_iobfs.c_str(), item.c_str());
 #endif
+            } else {
+                // 失败路径：错误日志不受 #ifdef DEBUG 门控，release 包同样要留下证据。
+                LOGE("Failed to mkdir(%s, %d): %s"_iobfs.c_str(), item.c_str(), mode,
+                     strerror(errno));
             }
         }
         return true;
@@ -70,15 +76,12 @@ namespace FileUtils {
             return false;
         }
         if (TEMP_FAILURE_RETRY(chmod(path, mode)) == -1) {
-#ifdef DEBUG
+            // 错误日志不受 #ifdef DEBUG 门控：release 包同样要留下证据。
             LOGE("Failed to chmod(%s, %d): %s"_iobfs.c_str(), path, mode, strerror(errno));
-#endif
             return false;
         }
         if (TEMP_FAILURE_RETRY(chown(path, uid, gid)) == -1) {
-#ifdef DEBUG
             LOGE("Failed to chown(%s, %d, %d): %s"_iobfs.c_str(), path, uid, gid, strerror(errno));
-#endif
             return false;
         }
         return true;
