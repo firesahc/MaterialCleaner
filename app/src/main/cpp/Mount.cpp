@@ -260,20 +260,22 @@ static bool wait_zygote(int pid) {
 }
 
 /// @see https://android.googlesource.com/platform/frameworks/native/+/master/cmds/dumpstate/DumpstateUtil.cpp#46
+/// 失败原因走 logcat（LOGE）而不是 printf：stdout 会被 daemon 化重定向到 /dev/null，
+/// 走 stdout 会让"挂载子进程卡死/等待超时"这类关键证据彻底丢失。
 static bool waitpid_with_timeout(pid_t pid, int timeout_ms, int *status) {
     sigset_t child_mask, old_mask;
     sigemptyset(&child_mask);
     sigaddset(&child_mask, SIGCHLD);
     // block SIGCHLD before we check if a process has exited
     if (sigprocmask(SIG_BLOCK, &child_mask, &old_mask) == -1) {
-        printf("*** sigprocmask failed: %s\n"_iobfs.c_str(), strerror(errno));
+        LOGE("*** sigprocmask failed: %s"_iobfs.c_str(), strerror(errno));
         return false;
     }
     // if the child has exited already, handle and reset signals before leaving
     pid_t child_pid = sys_waitpid(pid, status, WNOHANG);
     if (child_pid != pid) {
         if (child_pid > 0) {
-            printf("*** Waiting for pid %d, got pid %d instead\n"_iobfs.c_str(), pid, child_pid);
+            LOGE("*** Waiting for pid %d, got pid %d instead"_iobfs.c_str(), pid, child_pid);
             sigprocmask(SIG_SETMASK, &old_mask, nullptr);
             return false;
         }
@@ -289,7 +291,7 @@ static bool waitpid_with_timeout(pid_t pid, int timeout_ms, int *status) {
     int saved_errno = errno;
     // Set the signals back the way they were.
     if (sigprocmask(SIG_SETMASK, &old_mask, nullptr) == -1) {
-        printf("*** sigprocmask failed: %s\n"_iobfs.c_str(), strerror(errno));
+        LOGE("*** sigprocmask failed: %s"_iobfs.c_str(), strerror(errno));
         if (ret == 0) {
             return false;
         }
@@ -299,16 +301,16 @@ static bool waitpid_with_timeout(pid_t pid, int timeout_ms, int *status) {
         if (errno == EAGAIN) {
             errno = ETIMEDOUT;
         } else {
-            printf("*** sigtimedwait failed: %s\n"_iobfs.c_str(), strerror(errno));
+            LOGE("*** sigtimedwait failed: %s"_iobfs.c_str(), strerror(errno));
         }
         return false;
     }
     child_pid = sys_waitpid(pid, status, WNOHANG);
     if (child_pid != pid) {
         if (child_pid != -1) {
-            printf("*** Waiting for pid %d, got pid %d instead\n"_iobfs.c_str(), pid, child_pid);
+            LOGE("*** Waiting for pid %d, got pid %d instead"_iobfs.c_str(), pid, child_pid);
         } else {
-            printf("*** waitpid failed: %s\n"_iobfs.c_str(), strerror(errno));
+            LOGE("*** waitpid failed: %s"_iobfs.c_str(), strerror(errno));
         }
         return false;
     }
