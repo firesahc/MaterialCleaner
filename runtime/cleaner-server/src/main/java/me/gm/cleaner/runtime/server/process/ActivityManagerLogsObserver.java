@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import me.gm.cleaner.core.common.RuntimeFileUtils;
 import me.gm.cleaner.runtime.server.BuildConfig;
@@ -117,6 +118,20 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
     private volatile long mStartAtMs = 0L;
     private volatile long mLastReadAtMs = 0L;
     private final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
+
+    /**
+     * 当前 AM 日志采集子进程。
+     *
+     * <p>生命周期契约（本项目对 logcat 子进程的统一约定）：
+     * 子进程必须由创建者持有句柄，并在**调用线程内同步终结**。
+     * 原因：服务退出的路径是 {@code onDestroy()} → {@code System.exit(0)}，
+     * JVM 会立即终止；把终结动作委托给另一个线程的 finally 块，
+     * 必然来不及执行（实测：优雅退出后该 logcat 变为 PPID=1 的孤儿进程）。
+     */
+    private volatile Process mLogcatProcess;
+
+    /** 停止流程是否已开始：用于终结"停止期间才创建出来"的子进程。 */
+    private volatile boolean mStopped = false;
 
     public ActivityManagerLogsObserver(final CleanerServer server) {
         mServer = server;
@@ -321,6 +336,7 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
 
                 while (true) {
                     process = Runtime.getRuntime().exec(new String(logcat));
+                    registerLogcatProcess(process);
                     final var reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
                     for (var line = reader.readLine(); line != null; line = reader.readLine()) {
                         // 存活心跳：只要还在消费行，尾巴就活着；卡住（Binder 阻塞/logd wedged）
@@ -379,11 +395,17 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
             } catch (final IOException | InterruptedException e) {
                 Log.e("ActivityManagerLogsObserver", "Logcat reading loop exited unexpectedly", e);
             } finally {
-                mServer.noticeDispatcher.broadcastIntent(broadcastIntent ->
-                        broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)
-                );
-                if (process != null) {
-                    process.destroy();
+                // 先终结子进程再广播：回收必须在服务退出路径上同步完成，
+                // 不能依赖另一个线程的 finally 时机（System.exit(0) 会抢先）。
+                stopLogcatProcess();
+                // 广播失败不得影响子进程回收：原实现把广播放在 destroy 之前，
+                // 广播抛异常会直接跳过回收。
+                try {
+                    mServer.noticeDispatcher.broadcastIntent(broadcastIntent ->
+                            broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)
+                    );
+                } catch (final Throwable t) {
+                    Log.w("ActivityManagerLogsObserver", "broadcast logcat shutdown failed", t);
                 }
                 mExecutor.shutdown();
             }
@@ -427,5 +449,59 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
     public void onDestroy() {
         super.onDestroy();
         mExecutor.shutdownNow();
+        // 同步终结采集子进程：必须在 onDestroy 返回前完成，
+        // 因为调用方紧接着 System.exit(0) 终止 JVM，届时另一个线程的
+        // finally 块不会再有机会执行 destroy。
+        stopLogcatProcess();
+    }
+
+    /**
+     * 登记当前采集子进程。
+     *
+     * <p>若停止流程已经开始（{@link #mStopped}），说明本进程是在停止过程中
+     * 才被创建出来的——此时必须立即终结它，否则它将成为无人回收的孤儿。
+     */
+    private synchronized void registerLogcatProcess(final Process process) {
+        if (mStopped) {
+            destroyProcess(process);
+            return;
+        }
+        mLogcatProcess = process;
+    }
+
+    /**
+     * 同步终结采集子进程。
+     *
+     * <p>幂等：重复调用时无副作用。停止标记置位后，停止期间新创建的
+     * 子进程会被 {@link #registerLogcatProcess} 立即终结。
+     */
+    private synchronized void stopLogcatProcess() {
+        mStopped = true;
+        final var process = mLogcatProcess;
+        mLogcatProcess = null;
+        if (process != null) {
+            destroyProcess(process);
+        }
+    }
+
+    /**
+     * 终结一个 logcat 子进程：先 SIGTERM 优雅退出，超时后 SIGKILL 兜底。
+     *
+     * <p>每步独立兜底异常：回收失败不得向上抛出，否则会中断服务退出流程。
+     */
+    private static void destroyProcess(final Process process) {
+        process.destroy();
+        try {
+            if (!process.waitFor(1, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                process.waitFor(500, TimeUnit.MILLISECONDS);
+            }
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            process.destroyForcibly();
+        } catch (final RuntimeException e) {
+            Log.w("ActivityManagerLogsObserver", "destroy logcat process failed", e);
+            process.destroyForcibly();
+        }
     }
 }
