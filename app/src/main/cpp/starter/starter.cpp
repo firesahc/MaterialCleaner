@@ -24,8 +24,21 @@
 #define SERVER_CLASS_PATH "me.gm.cleaner.runtime.server.CleanerServerLoader"
 #define FAILURE_PREFIX "Failure:"
 
+/// 失败信息双通道输出：
+/// - stderr：app 侧 launcher 只读这个通道，用于把启动失败原因带回客户端；
+/// - logcat：诊断包（DiagnosticArchive）以 logcat 为证据源。
+/// 两者都要写：daemon(false, false) 会把 stdin/stdout/stderr 一并重定向到 /dev/null，
+/// daemon 之后的失败只剩 logcat 这一条证据链。
+#define report_failure(...) do { \
+    fprintf(stderr, __VA_ARGS__); \
+    fflush(stderr); \
+    LOGE(__VA_ARGS__); \
+} while (0)
+
 static void run_server(const char *dex_path, const char *main_class, const char *process_name) {
     if (setenv("CLASSPATH", dex_path, true)) {
+        const int saved_errno = errno;
+        report_failure("%s Can't set CLASSPATH: %s\n", FAILURE_PREFIX, strerror(saved_errno));
         exit(1);
     }
 
@@ -81,6 +94,9 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
     ARG_END(argv)
 
     if (execvp((const char *) argv[0], argv)) {
+        const int saved_errno = errno;
+        report_failure("%s Can't exec %s: %s\n", FAILURE_PREFIX, (const char *) argv[0],
+                       strerror(saved_errno));
         exit(1);
     }
 }
@@ -89,8 +105,7 @@ static void start_server(const char *path, const char *main_class, const char *p
     if (daemon(false, false) == 0) {
         run_server(path, main_class, process_name);
     } else {
-        printf("%s Can't create daemon\n", FAILURE_PREFIX);
-        fflush(stdout);
+        report_failure("%s Can't create daemon\n", FAILURE_PREFIX);
         exit(1);
     }
 }
@@ -99,8 +114,8 @@ static int check_selinux(const char *s, const char *t, const char *c, const char
     int res = se::selinux_check_access(s, t, c, p, nullptr);
 #ifdef DEBUG
     if (res != 0) {
-        printf("info: selinux_check_access %s %s %s %s: %d\n", s, t, c, p, res);
-        fflush(stdout);
+        fprintf(stderr, "info: selinux_check_access %s %s %s %s: %d\n", s, t, c, p, res);
+        fflush(stderr);
     }
 #endif
     return res;
@@ -114,8 +129,8 @@ static int switch_cgroup() {
         return -1;
     }
 #ifdef DEBUG
-    printf("info: cgroup is /uid_%d/pid_%d\n", s_cuid, s_cpid);
-    fflush(stdout);
+    fprintf(stderr, "info: cgroup is /uid_%d/pid_%d\n", s_cuid, s_cpid);
+    fflush(stderr);
 #endif
     if (cgroup::switch_cgroup(spid, -1, -1) != 0) {
         return -1;
@@ -137,8 +152,7 @@ int main(int argc, char **argv) {
     }
 
     if (getuid() != 0) {
-        printf("%s Can't access root\n", FAILURE_PREFIX);
-        fflush(stdout);
+        report_failure("%s Can't access root\n", FAILURE_PREFIX);
         exit(1);
     }
 
@@ -177,16 +191,14 @@ int main(int argc, char **argv) {
         if (strcmp(SERVER_NAME, name) != 0) return;
 
         if (TEMP_FAILURE_RETRY(kill(pid, SIGKILL))) {
-            printf("%s Can't kill %d, please kill it manually or restart your phone.\n",
-                   FAILURE_PREFIX, pid);
-            fflush(stdout);
+            report_failure("%s Can't kill %d, please kill it manually or restart your phone.\n",
+                           FAILURE_PREFIX, pid);
             exit(1);
         }
     });
 
     if (access(apk_path, R_OK) != 0) {
-        printf("%s Can't access %s\n", FAILURE_PREFIX, apk_path);
-        fflush(stdout);
+        report_failure("%s Can't access %s\n", FAILURE_PREFIX, apk_path);
         exit(1);
     }
 
