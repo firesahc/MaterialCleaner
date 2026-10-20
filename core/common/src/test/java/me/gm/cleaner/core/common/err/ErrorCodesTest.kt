@@ -64,4 +64,43 @@ class ErrorCodesTest {
             domains.toSet(),
         )
     }
+
+    /**
+     * 预留码清单与注册表保持同步。
+     *
+     * 背景：注册表允许包含当前没有生产产出点的码（失败语义契约），但
+     * "已注册"极易被误读为"该类失败已被观测上报"。RESERVED_CODES 把这层
+     * 区别显式化：某码接入生产路径后必须从清单与预留分区一并移出，
+     * 否则清单会与现实脱节。
+     *
+     * 本断言只能校验清单与注册表的对应关系；"某个预留码是否真的没有
+     * 生产引用"需要跨模块源码扫描，不适合放在单元测试里（模块工作目录
+     * 假设脆弱），该事实由评审与 grep 核对保证。
+     */
+    @Test
+    fun `预留码清单与注册表一致且不遗漏`() {
+        val registered = ErrorCodes::class.java.declaredFields
+            .filter { it.type == String::class.java && java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .map {
+                it.isAccessible = true
+                it.get(null) as String
+            }
+            .toSet()
+        val reserved = ErrorCodes.RESERVED_CODES
+        assertTrue("预留码清单不得为空", reserved.isNotEmpty())
+        for (code in reserved) {
+            assertTrue("预留码 $code 未在注册表中定义", registered.contains(code))
+        }
+        assertEquals(
+            "预留码清单存在重复项",
+            reserved.size,
+            reserved.toSet().size,
+        )
+        val active = registered - reserved
+        assertTrue("已接入码不得为空", active.isNotEmpty())
+        assertTrue(
+            "已接入码应多于预留码，否则说明错误码体系整体未接入生产路径",
+            active.size > reserved.size,
+        )
+    }
 }
