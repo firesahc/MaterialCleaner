@@ -48,4 +48,11 @@ object LogTagFilter {
      * 供 logcat 使用的过滤串，**必须**以 `*:S` 结尾。
      */
     val FILTER_SPEC: String = TAGS.joinToString(separator = " ") { "$it:*" } + " *:S"
+
+    /**
+     * 过滤串的数组形式，供 Java 侧拼装 logcat 命令使用。
+     * 避免调用方各自拆分字符串导致口径分叉。
+     */
+    @JvmStatic
+    fun filterSpecArgs(): Array<String> = FILTER_SPEC.split(" ").toTypedArray()
 }
