@@ -75,6 +75,10 @@ object CleanerServerLauncher {
         }
         if (!ensureValid("after_root_check")) return false
 
+        // 先尝试优雅退出：binder 存活时 server 会走 onDestroy 回收日志采集子进程。
+        // 直接强杀会让这些子进程被 init 收养成孤儿，每次重启泄漏一批。
+        // 强杀仅作兜底：binder 未连通或旧 server 无响应时仍需终止旧实例。
+        CleanerClient.exit()
         CleanerClient.killServerProcess()
         if (!ensureValid("after_kill_old_server")) return false
 
