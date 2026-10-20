@@ -55,4 +55,23 @@ object LogTagFilter {
      */
     @JvmStatic
     fun filterSpecArgs(): Array<String> = FILTER_SPEC.split(" ").toTypedArray()
+
+    /**
+     * 主采集通道的完整命令参数：main/system buffer + 本项目 tag 过滤。
+     *
+     * 采集命令集中在此构造，使"过滤串必须以 `*:S` 结尾"这一不变式只有一处
+     * 实现，并由单元测试守住。
+     */
+    @JvmStatic
+    fun mainChannelArgs(): Array<String> =
+        arrayOf("-b", "main,system") + filterSpecArgs()
+
+    /**
+     * 崩溃采集通道的命令参数：crash buffer 全量，不施加 tag 过滤。
+     *
+     * 崩溃的 logcat tag 是崩溃进程名或 AndroidRuntime，无法用固定白名单
+     * 穷举，施加过滤会把崩溃证据直接丢弃。
+     */
+    @JvmStatic
+    fun crashChannelArgs(): Array<String> = arrayOf("-b", "crash")
 }

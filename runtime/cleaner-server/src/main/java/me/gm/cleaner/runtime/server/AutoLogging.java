@@ -111,9 +111,9 @@ public class AutoLogging {
     private void startContinuousLogging() {
         final var stamp = System.currentTimeMillis();
         mCrashLogProcess = startLogcat(
-                new String[]{"-b", "crash"}, stamp, "crash", false);
+                LogTagFilter.crashChannelArgs(), stamp, "crash");
         mLogProcess = startLogcat(
-                new String[]{"-b", "main,system"}, stamp, "log", true);
+                LogTagFilter.mainChannelArgs(), stamp, "log");
     }
 
     /**
@@ -123,19 +123,16 @@ public class AutoLogging {
      * {@code destroy()} 无条件命中采集进程本身，不依赖 shell 对单条
      * 命令的 exec 替换优化。
      *
-     * @param filtered 是否施加本项目 tag 过滤（crash 通道不施加）
+     * @param args 完整命令参数（buffer 选择与过滤串），由 [LogTagFilter] 统一构造
      */
-    private Process startLogcat(final String[] buffers, final long stamp,
-                                final String fileTag, final boolean filtered) {
+    private Process startLogcat(final String[] args, final long stamp,
+                                final String fileTag) {
         File logFile = null;
         try {
             logFile = createLogFile(stamp, fileTag);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 final var builder = new ProcessBuilder("/system/bin/logcat");
-                builder.command().addAll(Arrays.asList(buffers));
-                if (filtered) {
-                    builder.command().addAll(Arrays.asList(LogTagFilter.filterSpecArgs()));
-                }
+                builder.command().addAll(Arrays.asList(args));
                 builder.redirectOutput(logFile);
                 final var process = builder.start();
                 Log.i(BuildConfig.LIBRARY_PACKAGE_NAME,
