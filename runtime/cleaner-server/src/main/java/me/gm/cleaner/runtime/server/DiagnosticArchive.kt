@@ -12,12 +12,8 @@ import me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal
 import me.gm.cleaner.runtime.server.vfs.VfsProcessCensus
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.text.SimpleDateFormat
@@ -30,7 +26,6 @@ object DiagnosticArchive {
     private const val TAG = "DiagnosticArchive"
     private const val OUTPUT_DIR = "/data/local/tmp/cleaner_diagnostics"
     private const val AUTO_LOG_DIR = "/data/local/tmp/cleaner_logs"
-    private const val MAX_TEXT_FILE_BYTES = 512 * 1024
     private const val MAX_AUTO_LOG_FILES = 8
     private const val MAX_EVENT_FILES = 20
 
@@ -402,28 +397,6 @@ object DiagnosticArchive {
         }
     }
 
-    /**
-     * 展示 Hook 层本次会话记录的结构化失败事实。
-     *
-     * 无此段说明该次快照生成于字段引入之前（或 Hook 侧尚未记录），
-     * 两种情况都按"无 Hook 侧失败记录"陈述，不臆断原因。
-     */
-    private fun StringBuilder.appendHookErrorsSummary(root: JSONObject) {
-        val hookErrors = root.optJSONObject("hookErrors") ?: return
-        val count = hookErrors.optInt("count", 0)
-        val dropped = hookErrors.optInt("droppedCount", 0)
-        val items = hookErrors.optJSONArray("items")
-        appendLine("- hookErrors: count=$count, dropped=$dropped")
-        if (items != null) {
-            for (i in 0 until items.length()) {
-                val item = items.optJSONObject(i) ?: continue
-                val code = item.optString("code", "")
-                val detail = item.optString("detail", "")
-                appendLine("    [$code] ${detail}")
-            }
-        }
-    }
-
     private fun StringBuilder.appendNativeHookSummaryZhCn(root: JSONObject) {
         val mediaProvider = root.optJSONObject("mediaProvider")
         val inline = root.optJSONObject("inline")
@@ -451,22 +424,6 @@ object DiagnosticArchive {
     /**
      * 中文版 Hook 失败事实摘要，语义与英文版一致。
      */
-    private fun StringBuilder.appendHookErrorsSummaryZhCn(root: JSONObject) {
-        val hookErrors = root.optJSONObject("hookErrors") ?: return
-        val count = hookErrors.optInt("count", 0)
-        val dropped = hookErrors.optInt("droppedCount", 0)
-        val items = hookErrors.optJSONArray("items")
-        appendLine("- hookErrors：条数=$count，已丢弃=$dropped")
-        if (items != null) {
-            for (i in 0 until items.length()) {
-                val item = items.optJSONObject(i) ?: continue
-                val code = item.optString("code", "")
-                val detail = item.optString("detail", "")
-                appendLine("    [$code] ${detail}")
-            }
-        }
-    }
-
     private fun addStatus(zip: ZipOutputStream, server: CleanerServer) {
         runCatching {
             val status = server.layerOrchestrator.collectStatusJson()
@@ -655,32 +612,6 @@ object DiagnosticArchive {
         }
     }
 
-    private fun addDirectoryFiles(
-        zip: ZipOutputStream,
-        dir: File,
-        entryPrefix: String,
-        maxFiles: Int,
-    ) {
-        val all = dir.listFiles()
-            ?.filter { isRegularFileNoFollow(it) }
-            ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.name })
-            ?: emptyList()
-        val files = all.take(maxFiles)
-        addText(zip, "$entryPrefix/manifest.txt", buildString {
-            appendLine("path=${dir.path}")
-            appendLine("exists=${dir.exists()}")
-            // 可审计：记录目录总数，排障者可判断证据是否完整
-            appendLine("total=${all.size}")
-            appendLine("included=${files.size}")
-            for (file in files) {
-                appendLine("${file.name}\tsize=${file.length()}\tmodified=${file.lastModified()}")
-            }
-        })
-        for (file in files) {
-            addFileTail(zip, file, "$entryPrefix/${file.name}", MAX_TEXT_FILE_BYTES)
-        }
-    }
-
     private fun addCommand(zip: ZipOutputStream, entryName: String, command: String) {
         val result = DiagnosticCommandRunner.runCommand(command)
         addText(zip, entryName, buildString {
@@ -713,118 +644,6 @@ object DiagnosticArchive {
         addText(zip, entryName, section.toString(2))
     }
 
-    /**
-     * 取文件首尾两段并标注中段省略。
-     *
-     * 头段覆盖服务启动瞬间（启动失败证据位于采集周期的开头），尾段覆盖最近现场。
-     * 只取尾部会丢掉启动期上下文，而"排查启动或崩溃问题"正是该功能的目的。
-     */
-    private fun addFileHeadAndTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
-        runCatching {
-            val headBytes = maxBytes / 2
-            val tailBytes = maxBytes - headBytes
-            val content = buildString {
-                appendLine("path=${file.path}")
-                appendLine("size=${file.length()}")
-                appendLine("modified=${file.lastModified()}")
-                if (file.length() > maxBytes) {
-                    appendLine("truncated=middle omitted, headBytes=$headBytes, tailBytes=$tailBytes")
-                }
-                appendLine()
-                append(readFileHead(file, headBytes))
-                if (file.length() > maxBytes) {
-                    appendLine()
-                    appendLine("... [middle omitted: ${file.length() - maxBytes} bytes] ...")
-                    appendLine()
-                }
-                append(readFileTail(file, tailBytes))
-            }
-            addText(zip, entryName, content)
-        }.onFailure {
-            addText(zip, "$entryName.error.txt", it.stackTraceToString())
-        }
-    }
-
-    private fun readFileHead(file: File, maxBytes: Int): String {
-        val output = ByteArrayOutputStream()
-        FileInputStream(file).use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var remaining = maxBytes
-            while (remaining > 0) {
-                val read = input.read(buffer, 0, minOf(buffer.size, remaining))
-                if (read < 0) break
-                output.write(buffer, 0, read)
-                remaining -= read
-            }
-        }
-        return output.toString(StandardCharsets.UTF_8.name())
-    }
-
-    private fun addFileTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
-        runCatching {
-            val content = buildString {
-                appendLine("path=${file.path}")
-                appendLine("size=${file.length()}")
-                appendLine("modified=${file.lastModified()}")
-                if (file.length() > maxBytes) {
-                    appendLine("truncated=head omitted, tailBytes=$maxBytes")
-                }
-                appendLine()
-                append(readFileTail(file, maxBytes))
-            }
-            addText(zip, entryName, content)
-        }.onFailure {
-            addText(zip, "$entryName.error.txt", it.stackTraceToString())
-        }
-    }
-
-    private fun readFileTail(file: File, maxBytes: Int): String {
-        val output = ByteArrayOutputStream()
-        if (file.length() <= maxBytes) {
-            FileInputStream(file).use { input ->
-                input.copyTo(output)
-            }
-        } else {
-            RandomAccessFile(file, "r").use { raf ->
-                raf.seek(file.length() - maxBytes)
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var remaining = maxBytes
-                while (remaining > 0) {
-                    val read = raf.read(buffer, 0, minOf(buffer.size, remaining))
-                    if (read < 0) break
-                    output.write(buffer, 0, read)
-                    remaining -= read
-                }
-            }
-        }
-        return output.toString(StandardCharsets.UTF_8.name())
-    }
-
-    private fun addText(zip: ZipOutputStream, entryName: String, content: String) {
-        zip.putNextEntry(ZipEntry(safeEntryName(entryName)))
-        zip.write(redact(content).toByteArray(Charsets.UTF_8))
-        zip.closeEntry()
-    }
-
-    private fun redact(content: String): String {
-        var redacted = content
-        val fingerprint = Build.FINGERPRINT
-        if (fingerprint.isNotBlank()) {
-            redacted = redacted.replace(fingerprint, "<build-fingerprint>")
-        }
-        redacted = redacted
-            .replace(Regex("/data/app/[^\\s\\n\\r]+"), "/data/app/<redacted>")
-            .replace(Regex("/mnt/expand/[0-9A-Fa-f-]+"), "/mnt/expand/<volume>")
-            .replace(Regex("(?i)\\b[0-9a-f]{24,}\\b"), "<hex-id>")
-        return redacted
-    }
-
-    private fun safeEntryName(name: String): String =
-        name.replace('\\', '/').trimStart('/').replace("../", "_")
-
-    private fun isRegularFileNoFollow(file: File): Boolean =
-        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
-
     private fun cleanupOldArchives(dir: File) {
         runCatching {
             dir.listFiles()
@@ -839,4 +658,35 @@ object DiagnosticArchive {
 
     // 命令执行实现见 DiagnosticCommandRunner（G2 粒度抽离）；
     // 历史 CommandResult 已迁移为 DiagnosticCommandRunner.CommandResult。
+    // zip 写入与脱敏基础能力见文件末尾的顶层函数（G2 粒度抽离）。
 }
+
+/**
+ * 写入一个文本条目到诊断包。
+ *
+ * 置于顶层 internal：既被本文件的编排逻辑使用，也被
+ * [DiagnosticFileSection] 的文件取用逻辑使用。
+ */
+internal fun addText(zip: ZipOutputStream, entryName: String, content: String) {
+    zip.putNextEntry(ZipEntry(safeEntryName(entryName)))
+    zip.write(redact(content).toByteArray(Charsets.UTF_8))
+    zip.closeEntry()
+}
+
+/** 脱敏：移除构建指纹、APK 路径与长十六进制标识。 */
+internal fun redact(content: String): String {
+    var redacted = content
+    val fingerprint = Build.FINGERPRINT
+    if (fingerprint.isNotBlank()) {
+        redacted = redacted.replace(fingerprint, "<build-fingerprint>")
+    }
+    redacted = redacted
+        .replace(Regex("/data/app/[^\\s\\n\\r]+"), "/data/app/<redacted>")
+        .replace(Regex("/mnt/expand/[0-9A-Fa-f-]+"), "/mnt/expand/<volume>")
+        .replace(Regex("(?i)\\b[0-9a-f]{24,}\\b"), "<hex-id>")
+    return redacted
+}
+
+/** zip 条目名净化：去掉路径穿越与前导斜杠。 */
+internal fun safeEntryName(name: String): String =
+    name.replace('\\', '/').trimStart('/').replace("../", "_")
