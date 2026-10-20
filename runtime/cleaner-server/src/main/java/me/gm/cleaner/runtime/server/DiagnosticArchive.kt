@@ -587,7 +587,7 @@ object DiagnosticArchive {
             }
         })
         for (file in files) {
-            addFileTail(zip, file, "logs/auto/${file.name}", MAX_TEXT_FILE_BYTES)
+            addFileHeadAndTail(zip, file, "logs/auto/${file.name}", MAX_TEXT_FILE_BYTES)
         }
     }
 
@@ -668,6 +668,53 @@ object DiagnosticArchive {
             JSONObject(content).optJSONObject(sectionName)
         }.getOrNull() ?: return
         addText(zip, entryName, section.toString(2))
+    }
+
+    /**
+     * 取文件首尾两段并标注中段省略。
+     *
+     * 头段覆盖服务启动瞬间（启动失败证据位于采集周期的开头），尾段覆盖最近现场。
+     * 只取尾部会丢掉启动期上下文，而"排查启动或崩溃问题"正是该功能的目的。
+     */
+    private fun addFileHeadAndTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
+        runCatching {
+            val headBytes = maxBytes / 2
+            val tailBytes = maxBytes - headBytes
+            val content = buildString {
+                appendLine("path=${file.path}")
+                appendLine("size=${file.length()}")
+                appendLine("modified=${file.lastModified()}")
+                if (file.length() > maxBytes) {
+                    appendLine("truncated=middle omitted, headBytes=$headBytes, tailBytes=$tailBytes")
+                }
+                appendLine()
+                append(readFileHead(file, headBytes))
+                if (file.length() > maxBytes) {
+                    appendLine()
+                    appendLine("... [middle omitted: ${file.length() - maxBytes} bytes] ...")
+                    appendLine()
+                }
+                append(readFileTail(file, tailBytes))
+            }
+            addText(zip, entryName, content)
+        }.onFailure {
+            addText(zip, "$entryName.error.txt", it.stackTraceToString())
+        }
+    }
+
+    private fun readFileHead(file: File, maxBytes: Int): String {
+        val output = ByteArrayOutputStream()
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var remaining = maxBytes
+            while (remaining > 0) {
+                val read = input.read(buffer, 0, minOf(buffer.size, remaining))
+                if (read < 0) break
+                output.write(buffer, 0, read)
+                remaining -= read
+            }
+        }
+        return output.toString(StandardCharsets.UTF_8.name())
     }
 
     private fun addFileTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
