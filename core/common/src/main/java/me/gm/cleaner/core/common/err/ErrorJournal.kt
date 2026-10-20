@@ -8,8 +8,15 @@ package me.gm.cleaner.core.common.err
  * - [snapshot] 返回按时间升序的只读副本，供 OrchestratedStatus 发布与
  *   DiagnosticArchive 导出 errors/journal.jsonl；
  * - 容量上限防止罕见风暴场景下的内存无界增长。
+ *
+ * 可选的 [sink] 为持久化输出通道：每次 [record] 后被调用一次，用于把事件
+ * 追加写入磁盘载体，使根因流水跨进程死亡与设备重启后仍可导出。sink 的调用
+ * 在缓冲锁之外执行（文件 IO 不占用锁），其失败由 sink 自身消化。
  */
-class ErrorJournal(private val capacity: Int = DEFAULT_CAPACITY) {
+class ErrorJournal(
+    private val capacity: Int = DEFAULT_CAPACITY,
+    private val sink: ((ErrorEvent) -> Unit)? = null,
+) {
 
     init {
         require(capacity in 1..MAX_CAPACITY) {
@@ -27,6 +34,12 @@ class ErrorJournal(private val capacity: Int = DEFAULT_CAPACITY) {
                 buffer.removeFirst()
             }
             buffer.addLast(event)
+        }
+        // 持久化输出在缓冲锁之外执行：文件 IO 不占用锁，也不阻塞并发 record。
+        try {
+            sink?.invoke(event)
+        } catch (t: Throwable) {
+            // 持久化失败不影响内存留痕与业务流程。
         }
     }
 

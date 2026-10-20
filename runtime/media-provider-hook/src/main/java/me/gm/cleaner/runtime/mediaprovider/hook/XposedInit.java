@@ -12,8 +12,10 @@ import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
+import me.gm.cleaner.core.common.err.ErrorCodes;
 import me.gm.cleaner.runtime.mediaprovider.hook.bootstrap.MediaProviderRuntime;
 import me.gm.cleaner.runtime.mediaprovider.hook.media.MediaProviderHooksService;
+import me.gm.cleaner.runtime.mediaprovider.hook.policy.NativeHookStatus;
 
 public class XposedInit implements IXposedHookLoadPackage {
     private static final String TAG = "MC_REDIRECT";
@@ -49,6 +51,10 @@ public class XposedInit implements IXposedHookLoadPackage {
         if (mediaProviderClass == null) {
             Log.e(TAG, "[XposedInit] Cannot resolve " + MEDIA_PROVIDER_CLASS +
                     " in " + lpparam.packageName + "; only the base-class hook is active");
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_LOAD_CLASS_NOT_FOUND,
+                    "stage=resolve_media_provider_class, package=" + lpparam.packageName
+                            + ", class=" + MEDIA_PROVIDER_CLASS);
             return;
         }
 
@@ -70,6 +76,10 @@ public class XposedInit implements IXposedHookLoadPackage {
             Log.i(TAG, "[XposedInit] " + MEDIA_PROVIDER_CLASS + ".attachInfo hook installed");
         } catch (Throwable t) {
             Log.w(TAG, "[XposedInit] " + MEDIA_PROVIDER_CLASS + ".attachInfo hook not installed", t);
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_LOAD_FAILED,
+                    "stage=install_attach_info_hook, package=" + lpparam.packageName
+                            + ", failureType=" + t.getClass().getSimpleName());
         }
 
         try {
@@ -91,6 +101,10 @@ public class XposedInit implements IXposedHookLoadPackage {
             Log.i(TAG, "[XposedInit] " + MEDIA_PROVIDER_CLASS + ".onCreate fallback hook installed");
         } catch (Throwable t) {
             Log.w(TAG, "[XposedInit] " + MEDIA_PROVIDER_CLASS + ".onCreate fallback hook not installed", t);
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_LOAD_FAILED,
+                    "stage=install_oncreate_fallback_hook, package=" + lpparam.packageName
+                            + ", failureType=" + t.getClass().getSimpleName());
         }
     }
 
@@ -135,6 +149,10 @@ public class XposedInit implements IXposedHookLoadPackage {
                     });
         } catch (Throwable t) {
             Log.w(TAG, "[XposedInit] ContentProvider.attachInfo base hook not installed", t);
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_LOAD_FAILED,
+                    "stage=install_base_attach_info_hook, package=" + lpparam.packageName
+                            + ", failureType=" + t.getClass().getSimpleName());
         }
     }
 

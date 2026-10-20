@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.common.err.ErrorJournal
-import org.json.JSONObject
 import java.io.File
 
 /**
@@ -29,7 +28,7 @@ object ClientErrorJournal {
     private const val MAX_FILE_BYTES: Int = 64 * 1024
 
     private val lock = Any()
-    private val journal = ErrorJournal(capacity = DEFAULT_CAPACITY)
+    private val journal = ErrorJournal(capacity = DEFAULT_CAPACITY, sink = ::appendToStorage)
 
     @Volatile
     private var journalFile: File? = null
@@ -41,12 +40,7 @@ object ClientErrorJournal {
     }
 
     /** 记录一条错误事件：内存环形缓冲 + 持久层追加。永不抛出。 */
-    fun record(event: ErrorEvent) {
-        synchronized(lock) {
-            journal.record(event)
-            appendToStorageLocked(event)
-        }
-    }
+    fun record(event: ErrorEvent) = journal.record(event)
 
     /** 内存缓冲快照（仅本会话）；跨会话历史请用 [exportJsonL]。 */
     fun snapshot(): List<ErrorEvent> = synchronized(lock) { journal.snapshot() }
@@ -67,14 +61,16 @@ object ClientErrorJournal {
         }.getOrDefault("")
     }
 
-    private fun appendToStorageLocked(event: ErrorEvent) {
+    private fun appendToStorage(event: ErrorEvent) {
         val file = journalFile ?: return
-        runCatching {
-            rollIfNeededLocked(file)
-            file.appendText(eventToJson(event) + "\n")
-        }.onFailure {
-            // 持久化失败不阻断内存留痕与业务流程。
-            Log.w(TAG, "failed to append error event to storage", it)
+        synchronized(lock) {
+            runCatching {
+                rollIfNeededLocked(file)
+                file.appendText(event.toJson() + "\n")
+            }.onFailure {
+                // 持久化失败不阻断内存留痕与业务流程。
+                Log.w(TAG, "failed to append error event to storage", it)
+            }
         }
     }
 
@@ -87,15 +83,4 @@ object ClientErrorJournal {
 
     private fun readLineCount(file: File): Int =
         runCatching { file.readLines().size }.getOrDefault(0)
-
-    /** 字段集与 server 端 errors/journal.jsonl 保持一致，便于离线工具统一归并。 */
-    private fun eventToJson(event: ErrorEvent): String = JSONObject().apply {
-        put("code", event.code)
-        put("atElapsed", event.atElapsed)
-        if (event.errno != 0) put("errno", event.errno)
-        event.subject?.let { put("subject", it) }
-        event.pathDigest?.let { put("pathDigest", it) }
-        if (event.generation > 0L) put("generation", event.generation)
-        event.detail?.let { put("detail", it) }
-    }.toString()
 }

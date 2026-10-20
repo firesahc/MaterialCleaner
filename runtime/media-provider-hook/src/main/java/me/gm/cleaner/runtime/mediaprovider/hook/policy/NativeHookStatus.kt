@@ -1,4 +1,5 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.policy
+import android.os.SystemClock
 import android.util.Log
 import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookDataBusBridge
@@ -13,6 +14,18 @@ object NativeHookStatus {
 
     /** 快照内受控文本（错误详情等）的最大长度，超出截断。 */
     private const val MAX_TEXT_LENGTH = 200
+
+    /**
+     * Hook 层失败事实列表（hookErrors）的容量上限，超出淘汰最旧条目。
+     * 上限存在的意义是：异常风暴下快照体积仍然有界，且不会挤掉早先的根因线索。
+     */
+    private const val MAX_HOOK_ERRORS = 20
+
+    /**
+     * Hook 层失败事实的日志 tag。
+     * 与 Hook 侧其它日志（XposedInit / AbstractGuardedHook）保持一致，便于 grep。
+     */
+    private const val HOOK_ERROR_LOG_TAG = "MC_REDIRECT"
 
     /**
      * 宿主预期异常（swallowedHostExceptions）计数的快照发布最小间隔。
@@ -193,6 +206,17 @@ object NativeHookStatus {
     private var guardedSwallowedHostExceptions = 0L
     @Volatile
     private var guardedSwallowedLastPublishAt = 0L
+
+    // ── Hook 层失败事实（本次 Hook 会话内收集） ──
+    // 语义边界：只陈述"发生了什么"，不做状态裁决。消费方据此把
+    // "MediaProvider Hook unavailable" 这类模糊结论细化为
+    // 目标类缺失 / 桥注册失败 / binder 死亡 / 重试耗尽 / 熔断打开。
+    // 写入方可能是宿主任意线程（Hook 方法在宿主线程被调用），故用显式锁保护。
+    private val hookErrorLock = Any()
+    private val hookErrors = java.util.ArrayDeque<HookErrorEntry>()
+
+    /** 因超出 [MAX_HOOK_ERRORS] 被淘汰的条目数；>0 表示列表被截断过。 */
+    private var hookErrorDroppedCount = 0L
 
     fun markMediaProviderHookLoaded(packageName: String) {
         mediaProviderHookLoaded = true
@@ -607,6 +631,67 @@ object NativeHookStatus {
         }
     }
 
+    /**
+     * 记录一条 Hook 层失败事实。
+     *
+     * 约束（按优先级排序，均为硬约束）：
+     * 1. **永不抛出** —— 调用点在宿主线程执行，一旦抛出就会污染宿主进程，
+     *    因此整段逻辑用 runCatching 包裹；
+     * 2. **线程安全** —— Hook 方法可能在宿主多线程并发进入；
+     * 3. **容量有界** —— 最多保留 [MAX_HOOK_ERRORS] 条，超出淘汰最旧。
+     *
+     * 记录后立即发布快照，让失败事实进入既有结构化通道
+     * （DataBus 快照 `native_hook_status.json` 的 `hookErrors` 段）。
+     *
+     * @param code 统一错误码，必须引用 [ErrorCodes.HOOK_JAVA_*] 常量，
+     *             便于消费方机器归并同类故障。
+     * @param detail 受控短文本（阶段名/包名/异常类名等），
+     *                禁止写入明文路径或任何用户数据。
+     */
+    fun recordHookError(code: String, detail: String?) {
+        runCatching {
+            val entry = HookErrorEntry(
+                code = code.take(MAX_TEXT_LENGTH),
+                atElapsedRealtimeMillis = monotonicMillis(),
+                detail = detail?.take(MAX_TEXT_LENGTH).orEmpty(),
+            )
+            synchronized(hookErrorLock) {
+                while (hookErrors.size >= MAX_HOOK_ERRORS) {
+                    hookErrors.removeFirst()
+                    hookErrorDroppedCount += 1L
+                }
+                hookErrors.addLast(entry)
+            }
+            // 先发布快照再打日志：发布路径自身已吞掉异常，不会阻断日志输出；
+            // 日志是"快照没发布成功"时的兜底可见性。
+            publishSnapshot()
+            Log.w(
+                HOOK_ERROR_LOG_TAG,
+                "hook error recorded: code=" + entry.code + ", detail=" + entry.detail
+            )
+        }.onFailure {
+            runCatching { Log.w(TAG, "recordHookError failed: " + code, it) }
+        }
+    }
+
+    /**
+     * 单调时钟毫秒数。
+     *
+     * 优先使用 Android 的 elapsedRealtime；非 Android 运行时（如 JVM 单测）
+     * 回退到 nanoTime，保证该入口在任何环境下都不抛异常。
+     */
+    private fun monotonicMillis(): Long = runCatching {
+        SystemClock.elapsedRealtime()
+    }.getOrElse {
+        System.nanoTime() / 1_000_000L
+    }
+
+    /** 读取失败事实列表的不可变副本与被淘汰条数（供快照序列化使用）。 */
+    private fun snapshotHookErrors(): Pair<List<HookErrorEntry>, Long> =
+        synchronized(hookErrorLock) {
+            hookErrors.toList() to hookErrorDroppedCount
+        }
+
     fun publishSnapshot() {
         runCatching {
             val json = toJson()
@@ -667,6 +752,22 @@ object NativeHookStatus {
                 put("totalOpenTransitions", guardedTotalOpenTransitions)
                 put("recoveredCount", guardedRecoveredCount)
                 put("swallowedHostExceptions", guardedSwallowedHostExceptions)
+            })
+            // Hook 层失败事实：把"为什么 Hook 不可用"落到可机器读取的字段上。
+            // 纯附加段，既有字段语义不变，老消费方忽略即可。
+            put("hookErrors", JSONObject().apply {
+                val (entries, dropped) = snapshotHookErrors()
+                put("count", entries.size)
+                put("droppedCount", dropped)
+                put("items", JSONArray().apply {
+                    entries.forEach { entry ->
+                        put(JSONObject().apply {
+                            put("code", entry.code)
+                            put("atElapsedRealtimeMillis", entry.atElapsedRealtimeMillis)
+                            put("detail", entry.detail)
+                        })
+                    }
+                })
             })
             put("inline", JSONObject().apply {
                 put("state", inlineState)
@@ -755,4 +856,19 @@ object NativeHookStatus {
             put("failedMethods", JSONArray(failedMethods))
         }
     }
+
+    /**
+     * 一条 Hook 层失败事实。
+     *
+     * @param code 统一错误码（[ErrorCodes.HOOK_JAVA_*]）。
+     * @param atElapsedRealtimeMillis 单调时钟时间戳（elapsedRealtime）。
+     *        单调钟只保证同一次进程生命周期内的先后顺序，不跨重启可比，
+     *        这正是"本次 Hook 会话内"事实所需要的语义。
+     * @param detail 受控短文本，禁止明文路径与用户数据。
+     */
+    private data class HookErrorEntry(
+        val code: String,
+        val atElapsedRealtimeMillis: Long,
+        val detail: String,
+    )
 }

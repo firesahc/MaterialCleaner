@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 import me.gm.cleaner.core.config.ServicePreferences;
@@ -20,10 +21,19 @@ public class AutoLogging {
     private static final File sLogsDir = new File("/data/local/tmp/cleaner_logs");
 
     /**
-     * 当前日志采集进程；非 null 表示正在写日志文件。
-     * 由本类 synchronized 公开方法独占维护，状态对账在单点收敛。
+     * 主采集进程：main/system buffer，按本项目 tag 聚焦（见 [LogTagFilter]）。
+     * 非 null 表示正在写日志文件。
      */
     private volatile Process mLogProcess;
+
+    /**
+     * 崩溃采集进程：crash buffer 全量。
+     * <p>
+     * 独立于主进程的原因：崩溃的 logcat tag 是崩溃进程名（native 崩溃）或
+     * AndroidRuntime，无法用固定白名单穷举，若并入主进程会被 tag 过滤丢弃。
+     * 该 buffer 仅在崩溃时写入，体积可忽略。
+     */
+    private volatile Process mCrashLogProcess;
 
     public AutoLogging(final android.content.pm.PackageInfo packageInfo) {
     }
@@ -40,10 +50,10 @@ public class AutoLogging {
         return sLogsDir;
     }
 
-    private static File createLogFile(final Object logName) throws IOException {
+    private static File createLogFile(final long stamp, final String fileTag) throws IOException {
         final var dir = prepareLogsDir();
         final var logFile = Files.createTempFile(
-                dir.toPath(), logName.toString() + "-", ".log").toFile();
+                dir.toPath(), stamp + "-" + fileTag + "-", ".log").toFile();
         setOwnerOnly(logFile, false);
         return logFile;
     }
@@ -69,14 +79,12 @@ public class AutoLogging {
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O;
         // 结算死引用：进程被外部终止等异常退出时，不把"引用存在"误判为"仍在运行"。
         // 结算后若 desired 仍成立，走下方 start 分支即自然完成自愈重启。
-        if (mLogProcess != null && !mLogProcess.isAlive()) {
-            Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "logcat process exited unexpectedly");
-            mLogProcess = null;
-        }
+        mLogProcess = settleIfExited(mLogProcess, "logcat");
+        mCrashLogProcess = settleIfExited(mCrashLogProcess, "logcat crash");
         if (desired && mLogProcess == null) {
             startContinuousLogging();
-        } else if (!desired && mLogProcess != null) {
-            shutdownProcess("disabled by preference");
+        } else if (!desired) {
+            shutdownAll("disabled by preference");
         }
     }
 
@@ -86,29 +94,50 @@ public class AutoLogging {
      * 幂等：进程未运行时为无操作。
      */
     public synchronized void shutdown() {
-        if (mLogProcess != null) {
-            shutdownProcess("server exiting");
+        shutdownAll("server exiting");
+    }
+
+    private static Process settleIfExited(final Process process, final String label) {
+        if (process == null || process.isAlive()) {
+            return process;
         }
+        Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, label + " process exited unexpectedly");
+        return null;
     }
 
     /**
-     * 启动持续日志采集：logcat 输出被重定向到日志目录中的新文件。
+     * 启动持续日志采集：主通道按本项目 tag 聚焦，崩溃通道独立全量。
+     */
+    private void startContinuousLogging() {
+        final var stamp = System.currentTimeMillis();
+        mCrashLogProcess = startLogcat(
+                LogTagFilter.crashChannelArgs(), stamp, "crash");
+        mLogProcess = startLogcat(
+                LogTagFilter.mainChannelArgs(), stamp, "log");
+    }
+
+    /**
+     * 拉起一个 logcat 采集进程。
      * <p>
      * 直接启动 logcat 可执行文件，不经 {@code sh -c}：停止时
      * {@code destroy()} 无条件命中采集进程本身，不依赖 shell 对单条
-     * 命令的 exec 替换优化。仅在调用方已持有状态锁时执行。
+     * 命令的 exec 替换优化。
+     *
+     * @param args 完整命令参数（buffer 选择与过滤串），由 [LogTagFilter] 统一构造
      */
-    private void startContinuousLogging() {
+    private Process startLogcat(final String[] args, final long stamp,
+                                final String fileTag) {
         File logFile = null;
         try {
-            logFile = createLogFile(System.currentTimeMillis());
+            logFile = createLogFile(stamp, fileTag);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                mLogProcess = new ProcessBuilder(
-                        "/system/bin/logcat", "-b", "main,system,crash")
-                        .redirectOutput(logFile)
-                        .start();
+                final var builder = new ProcessBuilder("/system/bin/logcat");
+                builder.command().addAll(Arrays.asList(args));
+                builder.redirectOutput(logFile);
+                final var process = builder.start();
                 Log.i(BuildConfig.LIBRARY_PACKAGE_NAME,
                         "auto logging started: " + logFile.getName());
+                return process;
             }
         } catch (final IOException e) {
             // 进程启动失败时本次创建的文件不可保留，防止反复失败累积空文件。
@@ -121,15 +150,28 @@ public class AutoLogging {
             }
             Log.w(BuildConfig.LIBRARY_PACKAGE_NAME, "startContinuousLogging failed", e);
         }
+        return null;
     }
 
     /**
-     * 停止并回收采集进程：先 SIGTERM 优雅退出，超时则 SIGKILL 兜底。
-     * 先清引用再销毁，防止停止过程中的并发对账命中半完成状态。
+     * 停止并回收全部采集进程：先清引用再销毁，防止停止过程中的并发对账命中半完成状态。
      */
-    private void shutdownProcess(final String reason) {
-        final var process = mLogProcess;
+    private void shutdownAll(final String reason) {
+        final var main = mLogProcess;
+        final var crash = mCrashLogProcess;
         mLogProcess = null;
+        mCrashLogProcess = null;
+        shutdownProcess(main, reason);
+        shutdownProcess(crash, reason);
+    }
+
+    /**
+     * 停止并回收单个采集进程：先 SIGTERM 优雅退出，超时则 SIGKILL 兜底。
+     */
+    private static void shutdownProcess(final Process process, final String reason) {
+        if (process == null) {
+            return;
+        }
         Log.i(BuildConfig.LIBRARY_PACKAGE_NAME, "auto logging stopped: " + reason);
         process.destroy();
         try {

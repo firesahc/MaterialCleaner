@@ -84,9 +84,21 @@ object CleanerServerLauncher {
         Starter.writeDataFiles(context)
         if (!ensureValid("after_write_data_files")) return false
 
-        val result = Shell.cmd(Starter.command).exec()
+        // libsu 只有在显式 to(stdout, stderr) 时才会填充 Result.err，
+        // 否则 Result.err 恒为空列表，失败证据会被整个丢掉。
+        val stdout = mutableListOf<String>()
+        val stderr = mutableListOf<String>()
+        val result = Shell.cmd(Starter.command).to(stdout, stderr).exec()
+        // starter 的失败信息写在 stderr（daemon 化之后只剩 logcat 一条证据链），
+        // 这里无条件留痕：daemon 化路径上父进程退出码恒为 0，不能只靠 isSuccess 判定失败。
+        val starterOutput = listOf(stderr.joinToString(), stdout.joinToString())
+            .filter { it.isNotBlank() }
+            .joinToString(" | ")
+        if (starterOutput.isNotBlank()) {
+            Log.w(TAG, "launch($reason): starter output: $starterOutput")
+        }
         if (!result.isSuccess) {
-            val detail = result.err.joinToString().take(200)
+            val detail = starterOutput.take(200)
             Log.e(TAG, "launch($reason): shell command failed: $detail")
             recordSupFailure(ErrorCodes.SUP_START_FAILED, "$reason shell failed", detail)
             CleanerClient.resetConnection()
@@ -96,9 +108,15 @@ object CleanerServerLauncher {
 
         if (!waitForBinder(isLaunchStillValid)) {
             Log.e(TAG, "launch($reason): binder timeout")
+            // 启动器已退出但 binder 没起来：把启动器留下的输出并入失败详情，
+            // 它是唯一能直接说明"服务为什么没起来"的证据（app 侧错误日志会进诊断包）。
+            val timeoutDetail = if (starterOutput.isBlank()) {
+                "starter exited but server binder never came up"
+            } else {
+                "starter exited but server binder never came up | ${starterOutput.take(200)}"
+            }
             recordSupFailure(
-                ErrorCodes.SUP_PROC_DEAD, "$reason binder timeout",
-                "starter exited but server binder never came up",
+                ErrorCodes.SUP_PROC_DEAD, "$reason binder timeout", timeoutDetail,
             )
             CleanerClient.resetConnection()
             CleanerClient.killServerProcess()

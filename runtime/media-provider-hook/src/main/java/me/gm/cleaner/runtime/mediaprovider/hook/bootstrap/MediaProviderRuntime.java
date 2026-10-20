@@ -1,5 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.bootstrap;
 
+import me.gm.cleaner.core.common.err.ErrorCodes;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.BridgeRegistrationRetryGate;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.BridgeRegistrationRetryPolicy;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookBridgeRegistrar;
@@ -54,8 +55,15 @@ public final class MediaProviderRuntime {
                 Log.i("MC_REDIRECT", "[XposedInit] MediaProviderHook created successfully");
             } catch (XposedHelpers.ClassNotFoundError e) {
                 Log.e("MC_REDIRECT", "[XposedInit] MediaProvider hook setup FAILED", e);
+                NativeHookStatus.INSTANCE.recordHookError(
+                        ErrorCodes.HOOK_JAVA_LOAD_CLASS_NOT_FOUND,
+                        "stage=bootstrap_media_provider_hook, failureType=ClassNotFoundError");
             } catch (Throwable t) {
                 Log.e("MC_REDIRECT", "[XposedInit] MediaProvider hook setup FAILED", t);
+                NativeHookStatus.INSTANCE.recordHookError(
+                        ErrorCodes.HOOK_JAVA_LOAD_FAILED,
+                        "stage=bootstrap_media_provider_hook, failureType="
+                                + t.getClass().getSimpleName());
             }
         }
     }
@@ -64,6 +72,13 @@ public final class MediaProviderRuntime {
         if (sContext != null && sService != null) {
             return HookBridgeRegistrar.registerHooksCallback(sContext, sService);
         }
+        // 回调 binder 为空 → 注册被跳过：必须留痕，否则 server 侧只能看到
+        // 一句模糊的"MediaProvider Hook unavailable"。
+        NativeHookStatus.INSTANCE.recordHookError(
+                ErrorCodes.HOOK_JAVA_REG_SERVICE_NULL,
+                "stage=register_hooks_callback, binder=" + (sService == null ? "null" : "present")
+                        + ", context=" + (sContext == null ? "null" : "present")
+                        + ", registration=skipped");
         return false;
     }
 
@@ -105,6 +120,15 @@ public final class MediaProviderRuntime {
                     // 冷却探针不计入突发预算：它本身就是预算耗尽后的低频试探。
                     attempts[0]++;
                     Log.i("MC_REDIRECT", "[XposedInit] Re-registering hooks callback...");
+                    if (BridgeRegistrationRetryPolicy.isBurstExhausted(attempts[0])) {
+                        // 突发预算耗尽 → 转入冷却。只在"转入冷却的那一次"留痕，
+                        // 后续冷却探针不再重复记录，避免刷满失败事实列表。
+                        NativeHookStatus.INSTANCE.recordHookError(
+                                ErrorCodes.HOOK_JAVA_REG_EXHAUSTED,
+                                "stage=bridge_register_retry, attempts=" + attempts[0]
+                                        + ", cooldownMs="
+                                        + BridgeRegistrationRetryPolicy.COOLDOWN_MILLIS);
+                    }
                 }
                 // 注册表监视与回调注册是两个独立事实：注册成功但监视失败时，
                 // 注册表再次死亡将无触发器，因此不能仅凭注册成功就 markIdle。

@@ -139,6 +139,8 @@ object DiagnosticArchive {
         appendLine("- databus/health.json has queue, snapshot, and permission health.")
         appendLine("- logs/logcat_material_cleaner_filtered.txt has focused runtime logs.")
         appendLine("- commands/media_provider_maps.txt and commands/media_provider_mountinfo.txt prove native loading and mount state.")
+        appendLine("- commands/dmesg_evidence.txt has kernel-side denials (SELinux avc, FUSE, mount, namespace).")
+        appendLine("- logs/logcat_crash_recent.txt and logs/logcat_media_provider_pid.txt cover crash and hook-host evidence.")
         appendLine()
 
         val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
@@ -286,6 +288,8 @@ object DiagnosticArchive {
         appendLine("- databus/health.json：队列、快照和权限健康状态。")
         appendLine("- logs/logcat_material_cleaner_filtered.txt：聚焦运行日志。")
         appendLine("- commands/media_provider_maps.txt 与 commands/media_provider_mountinfo.txt：native 加载与挂载状态证据。")
+        appendLine("- commands/dmesg_evidence.txt：内核侧拒绝证据（SELinux avc、FUSE、mount、namespace）。")
+        appendLine("- logs/logcat_crash_recent.txt 与 logs/logcat_media_provider_pid.txt：崩溃与 Hook 宿主进程证据。")
         appendLine()
 
         val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
@@ -391,9 +395,32 @@ object DiagnosticArchive {
         if (missingSymbols != null && missingSymbols.length() > 0) {
             appendLine("- missingSymbols=$missingSymbols")
         }
+        appendHookErrorsSummary(root)
         val lastError = native?.optString("lastError", "") ?: ""
         if (lastError.isNotBlank()) {
             appendLine("- lastError=$lastError")
+        }
+    }
+
+    /**
+     * 展示 Hook 层本次会话记录的结构化失败事实。
+     *
+     * 无此段说明该次快照生成于字段引入之前（或 Hook 侧尚未记录），
+     * 两种情况都按"无 Hook 侧失败记录"陈述，不臆断原因。
+     */
+    private fun StringBuilder.appendHookErrorsSummary(root: JSONObject) {
+        val hookErrors = root.optJSONObject("hookErrors") ?: return
+        val count = hookErrors.optInt("count", 0)
+        val dropped = hookErrors.optInt("droppedCount", 0)
+        val items = hookErrors.optJSONArray("items")
+        appendLine("- hookErrors: count=$count, dropped=$dropped")
+        if (items != null) {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val code = item.optString("code", "")
+                val detail = item.optString("detail", "")
+                appendLine("    [$code] ${detail}")
+            }
         }
     }
 
@@ -414,9 +441,29 @@ object DiagnosticArchive {
         if (missingSymbols != null && missingSymbols.length() > 0) {
             appendLine("- missingSymbols=$missingSymbols")
         }
+        appendHookErrorsSummaryZhCn(root)
         val lastError = native?.optString("lastError", "") ?: ""
         if (lastError.isNotBlank()) {
             appendLine("- lastError=$lastError")
+        }
+    }
+
+    /**
+     * 中文版 Hook 失败事实摘要，语义与英文版一致。
+     */
+    private fun StringBuilder.appendHookErrorsSummaryZhCn(root: JSONObject) {
+        val hookErrors = root.optJSONObject("hookErrors") ?: return
+        val count = hookErrors.optInt("count", 0)
+        val dropped = hookErrors.optInt("droppedCount", 0)
+        val items = hookErrors.optJSONArray("items")
+        appendLine("- hookErrors：条数=$count，已丢弃=$dropped")
+        if (items != null) {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val code = item.optString("code", "")
+                val detail = item.optString("detail", "")
+                appendLine("    [$code] ${detail}")
+            }
         }
     }
 
@@ -445,26 +492,13 @@ object DiagnosticArchive {
      * 导出结构化错误事件流水（JSON Lines，每行一个 ErrorEvent 的紧凑表示）。
      * 与 orchestrated_status.json 中的 recentErrors 数组同源，
      * 供离线工具按错误码归并统计。
+     *
+     * 取持久层全文而非内存快照：持久层跨服务重启保留，
+     * 内存环形缓冲只有 50 条且进程重启即清零。
      */
     private fun addErrorJournal(zip: ZipOutputStream) {
         runCatching {
-            val events = ServerErrorJournal.snapshot()
-            if (events.isEmpty()) {
-                addText(zip, "errors/journal.jsonl", "")
-                return
-            }
-            val lines = events.joinToString(separator = "\n") { event ->
-                JSONObject().apply {
-                    put("code", event.code)
-                    put("atElapsed", event.atElapsed)
-                    if (event.errno != 0) put("errno", event.errno)
-                    event.subject?.let { put("subject", it) }
-                    event.pathDigest?.let { put("pathDigest", it) }
-                    if (event.generation > 0L) put("generation", event.generation)
-                    event.detail?.let { put("detail", it) }
-                }.toString()
-            }
-            addText(zip, "errors/journal.jsonl", lines)
+            addText(zip, "errors/journal.jsonl", ServerErrorJournal.exportJsonL())
         }.onFailure {
             addText(zip, "errors/journal_error.txt", it.stackTraceToString())
         }
@@ -557,15 +591,26 @@ object DiagnosticArchive {
             zip,
             "logs/logcat_material_cleaner_filtered.txt",
             "/system/bin/logcat -d -v threadtime -b main,system,crash -t 3000 " +
-                    "MC_BOOT:* MC_EVENT:* MC_STATE:* MC_DIAG:* MC_NATIVE:* " +
-                    "MC_REDIRECT:* DataBus:* DiagnosticArchive:* CleanerService:* " +
-                    "LayerOrchestrator:* SnapshotPublisher:* HookRecoveryCoordinator:* " +
-                    "MediaProviderRecoveryStrategy:* NativeHookStatus:* HookPolicyCache:* " +
-                    "FuseNativePolicyAdapter:* HookDataBusBridge:* EventConsumerScheduler:* " +
-                    "FileSystemEventConsumer:* RedirectNoticeConsumer:* QuerySessionLeaseConsumer:* " +
-                    "ActivityManagerLogsObserver:* AMLogs:* MC/Test:* MC/StateMachine:* " +
-                    "CleanerTest:* xhook:* starter:* " +
-                    "me.gm.cleaner:* *:S",
+                    LogTagFilter.FILTER_SPEC,
+        )
+        // 崩溃 buffer 独立取证：crash 的 tag 是崩溃进程名，无法用固定白名单穷举，
+        // 故此处不做 tag 过滤；crash buffer 仅在崩溃时写入，体积可忽略。
+        addCommand(
+            zip,
+            "logs/logcat_crash_recent.txt",
+            "/system/bin/logcat -d -v threadtime -b crash -t 2000",
+        )
+        // 目标进程（MediaProvider）定向取证：Hook 住在该进程内，其自身 tag
+        // （FuseDaemon 等）不在本项目白名单内，只能按 pid 定向抓取。
+        addCommand(
+            zip,
+            "logs/logcat_media_provider_pid.txt",
+            "MPID=$(${'$'}(pidof com.android.providers.media.module " +
+                    "com.android.providers.media " +
+                    "com.google.android.providers.media.module 2>/dev/null | awk '{print ${'$'}1}')); " +
+                    "if [ -z \"${'$'}MPID\" ]; then " +
+                    "echo 'media provider process is not running (no pid found)'; " +
+                    "else /system/bin/logcat -d -v threadtime --pid=${'$'}MPID -t 2000; fi",
         )
     }
 
@@ -585,7 +630,7 @@ object DiagnosticArchive {
             }
         })
         for (file in files) {
-            addFileTail(zip, file, "logs/auto/${file.name}", MAX_TEXT_FILE_BYTES)
+            addFileHeadAndTail(zip, file, "logs/auto/${file.name}", MAX_TEXT_FILE_BYTES)
         }
     }
 
@@ -599,6 +644,11 @@ object DiagnosticArchive {
             "commands/mount_storage.txt" to "mount | grep -E '/storage|/mnt/runtime|/Android/data|fuse' || true",
             "commands/databus_tree.txt" to "ls -laR ${DataBus.BUS_ROOT} 2>&1 | head -400",
             "commands/auto_logs_tree.txt" to "ls -laR $AUTO_LOG_DIR 2>&1 | head -200",
+            // 内核侧拒绝证据：SELinux avc denied、FUSE 内核错误、mount/namespace 失败
+            // 只在内核日志可见，logcat 的 kernel buffer 在多数真机不可用（恒为空），
+            // 故必须走 dmesg 通道。tail 限制输出量，保留最近匹配。
+            "commands/dmesg_evidence.txt" to
+                    "dmesg 2>/dev/null | grep -iE 'avc|fuse|mount|namespace' | tail -2000",
         )
         for ((entry, command) in commands) {
             addCommand(zip, entry, command)
@@ -661,6 +711,53 @@ object DiagnosticArchive {
             JSONObject(content).optJSONObject(sectionName)
         }.getOrNull() ?: return
         addText(zip, entryName, section.toString(2))
+    }
+
+    /**
+     * 取文件首尾两段并标注中段省略。
+     *
+     * 头段覆盖服务启动瞬间（启动失败证据位于采集周期的开头），尾段覆盖最近现场。
+     * 只取尾部会丢掉启动期上下文，而"排查启动或崩溃问题"正是该功能的目的。
+     */
+    private fun addFileHeadAndTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {
+        runCatching {
+            val headBytes = maxBytes / 2
+            val tailBytes = maxBytes - headBytes
+            val content = buildString {
+                appendLine("path=${file.path}")
+                appendLine("size=${file.length()}")
+                appendLine("modified=${file.lastModified()}")
+                if (file.length() > maxBytes) {
+                    appendLine("truncated=middle omitted, headBytes=$headBytes, tailBytes=$tailBytes")
+                }
+                appendLine()
+                append(readFileHead(file, headBytes))
+                if (file.length() > maxBytes) {
+                    appendLine()
+                    appendLine("... [middle omitted: ${file.length() - maxBytes} bytes] ...")
+                    appendLine()
+                }
+                append(readFileTail(file, tailBytes))
+            }
+            addText(zip, entryName, content)
+        }.onFailure {
+            addText(zip, "$entryName.error.txt", it.stackTraceToString())
+        }
+    }
+
+    private fun readFileHead(file: File, maxBytes: Int): String {
+        val output = ByteArrayOutputStream()
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var remaining = maxBytes
+            while (remaining > 0) {
+                val read = input.read(buffer, 0, minOf(buffer.size, remaining))
+                if (read < 0) break
+                output.write(buffer, 0, read)
+                remaining -= read
+            }
+        }
+        return output.toString(StandardCharsets.UTF_8.name())
     }
 
     private fun addFileTail(zip: ZipOutputStream, file: File, entryName: String, maxBytes: Int) {

@@ -94,6 +94,7 @@ public class CleanerServer extends ContextWrapper {
         };
         SecurityHelper.INSTANCE.init(dpsContext);
         ServicePreferences.INSTANCE.init(dpsContext);
+        me.gm.cleaner.runtime.server.orchestrator.ServerErrorJournal.INSTANCE.init(dpsContext);
         mPackageReceiver = new PackageReceiver(this);
         mAutoLogging = new AutoLogging(packageInfo);
         mCleanerServerCallback = new CleanerServerCallback();
