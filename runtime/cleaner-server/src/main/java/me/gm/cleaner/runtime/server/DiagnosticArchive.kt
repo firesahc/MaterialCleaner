@@ -139,6 +139,8 @@ object DiagnosticArchive {
         appendLine("- databus/health.json has queue, snapshot, and permission health.")
         appendLine("- logs/logcat_material_cleaner_filtered.txt has focused runtime logs.")
         appendLine("- commands/media_provider_maps.txt and commands/media_provider_mountinfo.txt prove native loading and mount state.")
+        appendLine("- commands/dmesg_evidence.txt has kernel-side denials (SELinux avc, FUSE, mount, namespace).")
+        appendLine("- logs/logcat_crash_recent.txt and logs/logcat_media_provider_pid.txt cover crash and hook-host evidence.")
         appendLine()
 
         val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
@@ -286,6 +288,8 @@ object DiagnosticArchive {
         appendLine("- databus/health.json：队列、快照和权限健康状态。")
         appendLine("- logs/logcat_material_cleaner_filtered.txt：聚焦运行日志。")
         appendLine("- commands/media_provider_maps.txt 与 commands/media_provider_mountinfo.txt：native 加载与挂载状态证据。")
+        appendLine("- commands/dmesg_evidence.txt：内核侧拒绝证据（SELinux avc、FUSE、mount、namespace）。")
+        appendLine("- logs/logcat_crash_recent.txt 与 logs/logcat_media_provider_pid.txt：崩溃与 Hook 宿主进程证据。")
         appendLine()
 
         val status = runCatching { JSONObject(server.layerOrchestrator.collectStatusJson()) }
@@ -557,15 +561,26 @@ object DiagnosticArchive {
             zip,
             "logs/logcat_material_cleaner_filtered.txt",
             "/system/bin/logcat -d -v threadtime -b main,system,crash -t 3000 " +
-                    "MC_BOOT:* MC_EVENT:* MC_STATE:* MC_DIAG:* MC_NATIVE:* " +
-                    "MC_REDIRECT:* DataBus:* DiagnosticArchive:* CleanerService:* " +
-                    "LayerOrchestrator:* SnapshotPublisher:* HookRecoveryCoordinator:* " +
-                    "MediaProviderRecoveryStrategy:* NativeHookStatus:* HookPolicyCache:* " +
-                    "FuseNativePolicyAdapter:* HookDataBusBridge:* EventConsumerScheduler:* " +
-                    "FileSystemEventConsumer:* RedirectNoticeConsumer:* QuerySessionLeaseConsumer:* " +
-                    "ActivityManagerLogsObserver:* AMLogs:* MC/Test:* MC/StateMachine:* " +
-                    "CleanerTest:* xhook:* starter:* " +
-                    "me.gm.cleaner:* *:S",
+                    LogTagFilter.FILTER_SPEC,
+        )
+        // 崩溃 buffer 独立取证：crash 的 tag 是崩溃进程名，无法用固定白名单穷举，
+        // 故此处不做 tag 过滤；crash buffer 仅在崩溃时写入，体积可忽略。
+        addCommand(
+            zip,
+            "logs/logcat_crash_recent.txt",
+            "/system/bin/logcat -d -v threadtime -b crash -t 2000",
+        )
+        // 目标进程（MediaProvider）定向取证：Hook 住在该进程内，其自身 tag
+        // （FuseDaemon 等）不在本项目白名单内，只能按 pid 定向抓取。
+        addCommand(
+            zip,
+            "logs/logcat_media_provider_pid.txt",
+            "MPID=$(${'$'}(pidof com.android.providers.media.module " +
+                    "com.android.providers.media " +
+                    "com.google.android.providers.media.module 2>/dev/null | awk '{print ${'$'}1}')); " +
+                    "if [ -z \"${'$'}MPID\" ]; then " +
+                    "echo 'media provider process is not running (no pid found)'; " +
+                    "else /system/bin/logcat -d -v threadtime --pid=${'$'}MPID -t 2000; fi",
         )
     }
 
@@ -599,6 +614,11 @@ object DiagnosticArchive {
             "commands/mount_storage.txt" to "mount | grep -E '/storage|/mnt/runtime|/Android/data|fuse' || true",
             "commands/databus_tree.txt" to "ls -laR ${DataBus.BUS_ROOT} 2>&1 | head -400",
             "commands/auto_logs_tree.txt" to "ls -laR $AUTO_LOG_DIR 2>&1 | head -200",
+            // 内核侧拒绝证据：SELinux avc denied、FUSE 内核错误、mount/namespace 失败
+            // 只在内核日志可见，logcat 的 kernel buffer 在多数真机不可用（恒为空），
+            // 故必须走 dmesg 通道。tail 限制输出量，保留最近匹配。
+            "commands/dmesg_evidence.txt" to
+                    "dmesg 2>/dev/null | grep -iE 'avc|fuse|mount|namespace' | tail -2000",
         )
         for ((entry, command) in commands) {
             addCommand(zip, entry, command)
