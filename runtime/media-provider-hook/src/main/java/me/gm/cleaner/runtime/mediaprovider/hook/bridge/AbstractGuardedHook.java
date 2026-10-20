@@ -1,5 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.bridge;
 
+import me.gm.cleaner.core.common.err.ErrorCodes;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.NativeHookStatus;
 
 import android.os.SystemClock;
@@ -115,6 +116,9 @@ public abstract class AbstractGuardedHook extends XC_MethodHook {
             if (circuitBreaker.onSuccess(permit) ==
                     HookHandlerCircuitBreaker.SuccessOutcome.RECOVERED) {
                 onCircuitRecovered();
+                NativeHookStatus.INSTANCE.recordHookError(
+                        ErrorCodes.HOOK_JAVA_GUARD_CIRCUIT_RECOVERED,
+                        "hook=" + tag + ", method=" + methodName);
                 Log.i(LOG_TAG, "[" + tag + "] handler circuit recovered");
             }
         } catch (final Throwable t) {
@@ -131,6 +135,10 @@ public abstract class AbstractGuardedHook extends XC_MethodHook {
                     + circuitBreaker.consecutiveFailures();
             if (outcome == HookHandlerCircuitBreaker.FailureOutcome.OPENED) {
                 onCircuitOpened(failedAt + HookHandlerCircuitBreaker.COOLDOWN_MILLIS, t);
+                NativeHookStatus.INSTANCE.recordHookError(
+                        ErrorCodes.HOOK_JAVA_GUARD_CIRCUIT_OPENED,
+                        "hook=" + tag + ", method=" + methodName
+                                + ", failureType=" + failureTypeOf(t));
                 Log.e(LOG_TAG, message + ", circuit cooldown="
                         + circuitBreaker.remainingCooldownMillis(failedAt) + "ms", t);
             } else if (outcome == HookHandlerCircuitBreaker.FailureOutcome.COUNTED &&

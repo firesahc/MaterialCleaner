@@ -395,9 +395,32 @@ object DiagnosticArchive {
         if (missingSymbols != null && missingSymbols.length() > 0) {
             appendLine("- missingSymbols=$missingSymbols")
         }
+        appendHookErrorsSummary(root)
         val lastError = native?.optString("lastError", "") ?: ""
         if (lastError.isNotBlank()) {
             appendLine("- lastError=$lastError")
+        }
+    }
+
+    /**
+     * 展示 Hook 层本次会话记录的结构化失败事实。
+     *
+     * 无此段说明该次快照生成于字段引入之前（或 Hook 侧尚未记录），
+     * 两种情况都按"无 Hook 侧失败记录"陈述，不臆断原因。
+     */
+    private fun StringBuilder.appendHookErrorsSummary(root: JSONObject) {
+        val hookErrors = root.optJSONObject("hookErrors") ?: return
+        val count = hookErrors.optInt("count", 0)
+        val dropped = hookErrors.optInt("droppedCount", 0)
+        val items = hookErrors.optJSONArray("items")
+        appendLine("- hookErrors: count=$count, dropped=$dropped")
+        if (items != null) {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val code = item.optString("code", "")
+                val detail = item.optString("detail", "")
+                appendLine("    [$code] ${detail}")
+            }
         }
     }
 
@@ -418,9 +441,29 @@ object DiagnosticArchive {
         if (missingSymbols != null && missingSymbols.length() > 0) {
             appendLine("- missingSymbols=$missingSymbols")
         }
+        appendHookErrorsSummaryZhCn(root)
         val lastError = native?.optString("lastError", "") ?: ""
         if (lastError.isNotBlank()) {
             appendLine("- lastError=$lastError")
+        }
+    }
+
+    /**
+     * 中文版 Hook 失败事实摘要，语义与英文版一致。
+     */
+    private fun StringBuilder.appendHookErrorsSummaryZhCn(root: JSONObject) {
+        val hookErrors = root.optJSONObject("hookErrors") ?: return
+        val count = hookErrors.optInt("count", 0)
+        val dropped = hookErrors.optInt("droppedCount", 0)
+        val items = hookErrors.optJSONArray("items")
+        appendLine("- hookErrors：条数=$count，已丢弃=$dropped")
+        if (items != null) {
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val code = item.optString("code", "")
+                val detail = item.optString("detail", "")
+                appendLine("    [$code] ${detail}")
+            }
         }
     }
 

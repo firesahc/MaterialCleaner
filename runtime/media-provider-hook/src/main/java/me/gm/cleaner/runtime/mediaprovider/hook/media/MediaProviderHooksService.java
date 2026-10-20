@@ -1,5 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.media;
 
+import me.gm.cleaner.core.common.err.ErrorCodes;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookDataBusBridge;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookPolicyRefreshScheduler;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.HookPolicyCache;
@@ -27,6 +28,9 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
         mCleanerServerBinder = null;
         HookDataBusBridge.INSTANCE.setCallback(null);
+        NativeHookStatus.INSTANCE.recordHookError(
+                ErrorCodes.HOOK_JAVA_BINDER_DEAD,
+                "stage=server_callback_death, binder=cleaner_server_callback");
         requestReRegister("server callback died");
     };
 
@@ -90,6 +94,9 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         mCleanerServerBinder = iinterface;
         HookDataBusBridge.INSTANCE.setCallback(iinterface);
         if (iinterface == null) {
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_REG_SERVICE_NULL,
+                    "stage=set_cleaner_server_binder, binder=null, registration=skipped");
             HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints(false);
             return;
         }
@@ -99,12 +106,20 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
             mCleanerServerBinder = null;
             HookDataBusBridge.INSTANCE.setCallback(null);
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_BINDER_DEAD,
+                    "stage=link_to_death, binder=cleaner_server_callback"
+                            + ", failureType=RemoteException");
             requestReRegister("server callback linkToDeath failed");
             return;
         } catch (final RuntimeException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
             mCleanerServerBinder = null;
             HookDataBusBridge.INSTANCE.setCallback(null);
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_BINDER_DEAD,
+                    "stage=link_to_death, binder=cleaner_server_callback"
+                            + ", failureType=" + e.getClass().getSimpleName());
             requestReRegister("server callback linkToDeath failed");
             return;
         }
