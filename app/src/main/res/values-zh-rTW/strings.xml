@@ -51,6 +51,8 @@
     <string name="new_version_available">發現新版本 %s</string>
     <string name="click_to_view_release">點擊查看更新說明</string>
     <string name="update_available_channel_name">更新可用</string>
+    <string name="update_check_up_to_date">目前已是最新版本（%s）</string>
+    <string name="update_check_failed">檢查更新失敗，請檢查網路後重試</string>
     <string name="language_header">語言</string>
     <string name="language_title">語言</string>
     <string name="theme_header">主題</string>

@@ -281,6 +281,63 @@ class MoreOptionsFragment : BaseSettingsFragment() {
         autoLogging.summary = baseSummary + "\n" + getString(R.string.log_stats_service_unavailable)
     }
 
+    /**
+     * 呈现手动检查更新的结果。
+     *
+     * 三种结局各自给出可见反馈：已是最新、检查失败、发现新版本（当场弹窗，
+     * 而不是把用户丢给通知栏）。
+     */
+    private fun showUpdateCheckResult(result: me.gm.cleaner.net.UpdateChecker.UpdateCheckResult) {
+        when (result) {
+            is me.gm.cleaner.net.UpdateChecker.UpdateCheckResult.UpToDate -> {
+                Snackbar.make(
+                    requireView(),
+                    getString(R.string.update_check_up_to_date, result.current),
+                    Snackbar.LENGTH_SHORT,
+                ).show()
+            }
+
+            is me.gm.cleaner.net.UpdateChecker.UpdateCheckResult.Failed -> {
+                Snackbar.make(
+                    requireView(),
+                    getString(R.string.update_check_failed),
+                    Snackbar.LENGTH_LONG,
+                ).show()
+            }
+
+            is me.gm.cleaner.net.UpdateChecker.UpdateCheckResult.Available -> {
+                val release = result.release
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(getString(R.string.new_version_available, release.tagName))
+                    .setMessage(release.body?.take(600))
+                    .setPositiveButton(R.string.click_to_view_release) { _, _ ->
+                        openReleasePage(release.htmlUrl)
+                    }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            }
+        }
+    }
+
+    /** 打开发布页；失败时提示而不抛出。 */
+    private fun openReleasePage(url: String) {
+        if (url.isBlank()) return
+        runCatching {
+            startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url),
+                )
+            )
+        }.onFailure {
+            Snackbar.make(
+                requireView(),
+                getString(R.string.update_check_failed),
+                Snackbar.LENGTH_LONG,
+            ).show()
+        }
+    }
+
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.setStorageDeviceProtected()
         addPreferencesFromResource(R.xml.service_more_options_preferences)
@@ -503,8 +560,15 @@ class MoreOptionsFragment : BaseSettingsFragment() {
 
         val checkUpdate = findPreference<Preference>(getString(R.string.check_update_key))!!
         checkUpdate.onPreferenceClickListener = Preference.OnPreferenceClickListener {
+            // 手动检查：当场反馈结果，不受自动路径"已通知过"的去重约束——
+            // 用户主动询问时必须得到回答，否则与点击无响应无异。
+            checkUpdate.isEnabled = false
             lifecycleScope.launch(Dispatchers.IO) {
-                me.gm.cleaner.net.UpdateChecker.checkAndNotify(requireContext())
+                val result = me.gm.cleaner.net.UpdateChecker.check()
+                withContext(Dispatchers.Main) {
+                    checkUpdate.isEnabled = true
+                    showUpdateCheckResult(result)
+                }
             }
             true
         }

@@ -54,6 +54,8 @@
     <string name="new_version_available">New version %s available</string>
     <string name="click_to_view_release">Click to view release</string>
     <string name="update_available_channel_name">Update available</string>
+    <string name="update_check_up_to_date">Current version %s is up to date</string>
+    <string name="update_check_failed">Failed to check for updates. Check your network and try again.</string>
     <string name="sort_key" translatable="false">sort_by</string>
     <string name="length_key" translatable="false">length</string>
     <string name="monitor_key" translatable="false">monitor</string>
