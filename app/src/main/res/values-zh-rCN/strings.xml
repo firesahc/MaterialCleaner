@@ -212,7 +212,7 @@
     <string name="parent_directory">..</string>
 
     <!-- 服务 -->
-    <string name="confirm_exit_restart">重新启动</string>
+    <string name="confirm_restart_service">重启 Cleaner 服务</string>
     <string name="no_root_access">无法访问 root</string>
     <string name="service_need_upgrade">服务需升级</string>
     <string name="service_need_reboot">已安装更新，请重启手机</string>

@@ -66,7 +66,10 @@ class NotificationService : Service() {
                     }
                 }
 
-                NOTIFICATION_CHANNEL_SHUTDOWN, NOTIFICATION_CHANNEL_UPDATED -> {
+                NOTIFICATION_CHANNEL_SHUTDOWN -> {
+                    // 「重启 Cleaner 服务」动作：取消通知并重新拉起服务。
+                    // 版本过期通知不带动作按钮（唯一有效动作是重启手机），
+                    // 故此处不再受理 NOTIFICATION_CHANNEL_UPDATED。
                     NotificationManagerCompat.from(this).cancel(name.hashCode())
                     MainScope().launch(Dispatchers.IO) {
                         ServerStateMachine.start(StartSource.NOTIFICATION, this@NotificationService)
@@ -271,7 +274,7 @@ class NotificationService : Service() {
             .setSmallIcon(R.drawable.ic_outline_close_24)
             .setColor(context.getColor(R.color.color_primary))
             .setContentIntent(contentIntent)
-            .addAction(0, context.getString(R.string.confirm_exit_restart), pendingIntent)
+            .addAction(0, context.getString(R.string.confirm_restart_service), pendingIntent)
             .build()
         NotificationManagerCompat.from(context).run {
             val channel = NotificationChannelCompat
@@ -385,21 +388,18 @@ class NotificationService : Service() {
          * 包被替换那一刻的事件会因 App 进程被安装器杀死而永久丢失
          * （实测该 action 从未送达），不能作为唯一提醒来源。
          * 状态驱动路径按版本组合去重，同一次不一致只提示一次。
+         *
+         * 不提供动作按钮：版本过期的唯一有效动作是**重启手机**（Hook 住在
+         * Zygote 里，重启服务不换版本），由用户自行执行；给出无效动作
+         * （重启服务）会让用户误以为问题已解决。
          */
         fun showSelfUpdatedNotification(context: Context) {
-            val intent = Intent(context, NotificationService::class.java).apply {
-                putExtra(NAME, NOTIFICATION_CHANNEL_UPDATED)
-            }
-            val pendingIntent = PendingIntent.getService(
-                context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
             val notification = NotificationCompat
                 .Builder(context, NOTIFICATION_CHANNEL_UPDATED)
                 .setContentTitle(context.getString(R.string.service_need_reboot))
                 .setAutoCancel(true)
                 .setSmallIcon(R.drawable.ic_outline_update_24)
                 .setColor(context.getColor(R.color.color_primary))
-                .addAction(0, context.getString(R.string.confirm_exit_restart), pendingIntent)
                 .build()
             NotificationManagerCompat.from(context).run {
                 val channel = NotificationChannelCompat
