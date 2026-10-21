@@ -133,6 +133,15 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
     /** 停止流程是否已开始：用于终结"停止期间才创建出来"的子进程。 */
     private volatile boolean mStopped = false;
 
+    /**
+     * 主动停止标记：{@link #onDestroy()} 被调用时置位。
+     *
+     * <p>用于区分观察器线程的两种终止：
+     * - 主动停止（用户停止服务 / 服务退出）：广播只是退出副产品，app 侧不应提示；
+     * - 意外死亡（logcat 读取异常）：需要通知 app 侧走看门狗与提示闭环。
+     */
+    private volatile boolean mStopping = false;
+
     public ActivityManagerLogsObserver(final CleanerServer server) {
         mServer = server;
     }
@@ -398,14 +407,20 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
                 // 先终结子进程再广播：回收必须在服务退出路径上同步完成，
                 // 不能依赖另一个线程的 finally 时机（System.exit(0) 会抢先）。
                 stopLogcatProcess();
-                // 广播失败不得影响子进程回收：原实现把广播放在 destroy 之前，
-                // 广播抛异常会直接跳过回收。
-                try {
-                    mServer.noticeDispatcher.broadcastIntent(broadcastIntent ->
-                            broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)
-                    );
-                } catch (final Throwable t) {
-                    Log.w("ActivityManagerLogsObserver", "broadcast logcat shutdown failed", t);
+                // 仅在非主动停止时广播。主动停止（用户停止服务 / 服务退出）时，
+                // 该广播只是退出副产品；app 侧收到后因 server 已死而查不到
+                // serverException，会把"用户停止服务"误报为"日志猫已退出"。
+                // 意外死亡（logcat 读取异常）不走 onDestroy，标志为 false，仍会广播。
+                if (!mStopping) {
+                    // 广播失败不得影响子进程回收：原实现把广播放在 destroy 之前，
+                    // 广播抛异常会直接跳过回收。
+                    try {
+                        mServer.noticeDispatcher.broadcastIntent(broadcastIntent ->
+                                broadcastIntent.setAction(ServerConstants.ACTION_LOGCAT_SHUTDOWN)
+                        );
+                    } catch (final Throwable t) {
+                        Log.w("ActivityManagerLogsObserver", "broadcast logcat shutdown failed", t);
+                    }
                 }
                 mExecutor.shutdown();
             }
@@ -448,6 +463,9 @@ public class ActivityManagerLogsObserver extends BaseProcessObserver {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        // 主动停止标记：区分"观察器意外死亡"（需通知 app）与"服务正在停止"
+        // （广播只是退出副产品，不应让 app 侧弹"日志猫已退出"）。
+        mStopping = true;
         mExecutor.shutdownNow();
         // 同步终结采集子进程：必须在 onDestroy 返回前完成，
         // 因为调用方紧接着 System.exit(0) 终止 JVM，届时另一个线程的
