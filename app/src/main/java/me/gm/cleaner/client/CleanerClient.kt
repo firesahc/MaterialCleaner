@@ -1,5 +1,6 @@
 package me.gm.cleaner.client
 
+import android.content.Context
 import android.content.pm.PackageInfo
 import android.os.IBinder
 import android.util.Log
@@ -204,6 +205,23 @@ object CleanerClient {
             controlPlane = status.controlPlane.toRuntimeLayer(),
         )
     }
+
+    /**
+     * 已安装包的版本号；读不到时返回 0（按未知处理，不判 stale）。
+     *
+     * 版本对账的唯一版本来源：状态卡与后台版本过期检测共用，避免各处
+     * 重复 PackageManager 查询逻辑导致口径分叉。
+     */
+    fun installedVersionCode(context: Context): Long = runCatching {
+        val pm = context.packageManager
+        val name = context.packageName
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            pm.getPackageInfo(name, 0).longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(name, 0).versionCode.toLong()
+        }
+    }.getOrDefault(0L)
 
     fun exit() {
         runCatching {

@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.gm.cleaner.BuildConfig
+import me.gm.cleaner.client.ui.VersionFingerprint
+import me.gm.cleaner.client.ui.VersionStaleness
+import me.gm.cleaner.client.ui.evaluateVersionStaleness
+import me.gm.cleaner.client.ui.shouldNotifyStale
 import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.core.common.err.ErrorEvent
 import java.util.concurrent.atomic.AtomicLong
@@ -131,6 +135,55 @@ object ServerStateMachine {
         // Binder ping 成功不代表观察器存活，必须轮询 serverException；
         // 命中 2 复用同一 kill+recover 闭环，不另起恢复路径。
         pollLogcatShutdown()
+        // 版本过期（Hook 住在 Zygote，更新后需重启手机）同样只在 App 不在
+        // 主界面时才需要通知，故在此后台轮询中检测，不依赖 UI 生命周期。
+        pollStaleVersion()
+    }
+
+    /** 上次提示过的版本组合；null 表示当前不处于版本过期状态。 */
+    private var lastStaleFingerprint: VersionFingerprint? = null
+
+    /**
+     * 版本过期检测：运行中组件版本与已安装包不一致时提示"请重启手机"。
+     *
+     * 状态驱动而非事件驱动：包被替换那一刻的事件会因 App 进程被安装器杀死
+     * 而永久丢失（实测从未送达），且用户不打开主界面就看不到状态卡横幅。
+     * 按版本组合去重：同一次不一致只提示一次，组合变化（又更新了 APK）再提示；
+     * App 冷启动后记忆丢失会再次提示一次（既定行为）。
+     */
+    private fun pollStaleVersion() {
+        val ctx = appContext ?: return
+        val orchestrated = runCatching { CleanerClient.getOrchestratedStatus() }.getOrNull()
+        val nativeMetrics = orchestrated?.fuseNativeHook?.metrics.orEmpty()
+        val controlMetrics = orchestrated?.controlPlane?.metrics.orEmpty()
+        val fingerprint = VersionFingerprint(
+            appRunning = BuildConfig.VERSION_CODE.toLong(),
+            installed = CleanerClient.installedVersionCode(ctx),
+            serverRunning = controlMetrics["serverVersionCode"]?.toLongOrNull() ?: 0L,
+            hookRunning = nativeMetrics["hookVersionCode"]?.toLongOrNull() ?: 0L,
+        )
+        val staleness = evaluateVersionStaleness(
+            appRunning = fingerprint.appRunning,
+            installed = fingerprint.installed,
+            serverRunning = fingerprint.serverRunning,
+            hookRunning = fingerprint.hookRunning,
+            hookAvailable = nativeMetrics.isNotEmpty(),
+        )
+        if (staleness == VersionStaleness.OK) {
+            // 已恢复一致（如用户重启手机后 Hook 换到新版）：重置记忆。
+            lastStaleFingerprint = null
+            return
+        }
+        if (!shouldNotifyStale(lastStaleFingerprint, fingerprint)) return
+        lastStaleFingerprint = fingerprint
+        Log.w(
+            TAG,
+            "stale version detected ($staleness): " +
+                "app=${fingerprint.appRunning} server=${fingerprint.serverRunning} " +
+                "hook=${fingerprint.hookRunning} installed=${fingerprint.installed}"
+        )
+        runCatching { NotificationService.showSelfUpdatedNotification(ctx) }
+            .onFailure { Log.w(TAG, "show stale version notification failed", it) }
     }
 
     private fun pollLogcatShutdown() {

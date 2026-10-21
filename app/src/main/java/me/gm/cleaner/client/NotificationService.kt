@@ -154,7 +154,10 @@ class NotificationService : Service() {
                 }
             }
             ACTION_MY_PACKAGE_REPLACED -> {
-                buildSelfUpdatedNotification(context)
+                // 仅保留"包更新后写 source_dir"这一独立职责。
+                // "请重启手机"的通知改由 ServerStateMachine 的状态驱动检测发出：
+                // 本 action 是包被替换那一刻的一次性事件，App 进程可能正好
+                // 被安装器杀死，事件会永久丢失（实测从未送达）。
                 if (RootPreferences.isStartOnBoot) {
                     MainScope().launch(Dispatchers.IO) {
                         try {
@@ -280,34 +283,7 @@ class NotificationService : Service() {
         }
     }
 
-    private fun buildSelfUpdatedNotification(context: Context) {
-        val intent = Intent(context, NotificationService::class.java).apply {
-            putExtra(NAME, NOTIFICATION_CHANNEL_UPDATED)
-        }
-        val pendingIntent = PendingIntent.getService(
-            context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val notification = NotificationCompat
-            .Builder(context, NOTIFICATION_CHANNEL_UPDATED)
-            .setContentTitle(context.getString(R.string.service_need_reboot))
-            .setAutoCancel(true)
-            .setSmallIcon(R.drawable.ic_outline_update_24)
-            .setColor(context.getColor(R.color.color_primary))
-            .addAction(0, context.getString(R.string.confirm_exit_restart), pendingIntent)
-            .build()
-        NotificationManagerCompat.from(context).run {
-            val channel = NotificationChannelCompat
-                .Builder(NOTIFICATION_CHANNEL_UPDATED, NotificationManager.IMPORTANCE_MAX)
-                .setName(context.getString(R.string.service_need_reboot))
-                .setSound(null, null)
-                .build()
-            createNotificationChannel(channel)
-            notifySafe(context, NOTIFICATION_CHANNEL_UPDATED.hashCode(), notification)
-        }
-    }
-
-    private fun buildPackageAddedNotification(context: Context, packageInfo: PackageInfo) {
-        val undoIntent = Intent(context, NotificationService::class.java).apply {
+    private fun buildPackageAddedNotification(context: Context, packageInfo: PackageInfo) {        val undoIntent = Intent(context, NotificationService::class.java).apply {
             putExtra(NAME, NOTIFICATION_CHANNEL_ADDED_UNDO)
             putExtra(Intent.EXTRA_PACKAGE_NAME, packageInfo)
         }
@@ -401,6 +377,40 @@ class NotificationService : Service() {
         private const val NOTIFICATION_CHANNEL_ADDED_HIDE: String = "package_added_hide"
 
         private const val NAME: String = "action"
+
+        /**
+         * 发出"已安装更新，请重启手机"通知。
+         *
+         * 由 ServerStateMachine 的版本过期状态检测调用（**状态驱动**）：
+         * 包被替换那一刻的事件会因 App 进程被安装器杀死而永久丢失
+         * （实测该 action 从未送达），不能作为唯一提醒来源。
+         * 状态驱动路径按版本组合去重，同一次不一致只提示一次。
+         */
+        fun showSelfUpdatedNotification(context: Context) {
+            val intent = Intent(context, NotificationService::class.java).apply {
+                putExtra(NAME, NOTIFICATION_CHANNEL_UPDATED)
+            }
+            val pendingIntent = PendingIntent.getService(
+                context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat
+                .Builder(context, NOTIFICATION_CHANNEL_UPDATED)
+                .setContentTitle(context.getString(R.string.service_need_reboot))
+                .setAutoCancel(true)
+                .setSmallIcon(R.drawable.ic_outline_update_24)
+                .setColor(context.getColor(R.color.color_primary))
+                .addAction(0, context.getString(R.string.confirm_exit_restart), pendingIntent)
+                .build()
+            NotificationManagerCompat.from(context).run {
+                val channel = NotificationChannelCompat
+                    .Builder(NOTIFICATION_CHANNEL_UPDATED, NotificationManager.IMPORTANCE_MAX)
+                    .setName(context.getString(R.string.service_need_reboot))
+                    .setSound(null, null)
+                    .build()
+                createNotificationChannel(channel)
+                notifySafe(context, NOTIFICATION_CHANNEL_UPDATED.hashCode(), notification)
+            }
+        }
 
         /**
          * logcat 真死通知的上次弹出时刻（elapsedRealtime）。
