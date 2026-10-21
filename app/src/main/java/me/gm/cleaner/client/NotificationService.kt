@@ -1,6 +1,5 @@
 package me.gm.cleaner.client
 
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -12,7 +11,6 @@ import android.os.IBinder
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
-import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.topjohnwu.superuser.Shell
@@ -245,12 +243,10 @@ class NotificationService : Service() {
             .addAction(0, context.getString(R.string.no_prompt_for_this_app), pendingIntent)
             .build()
         NotificationManagerCompat.from(context).run {
-            val channel = NotificationChannelCompat
-                .Builder(NOTIFICATION_CHANNEL_SRPROMPT, NotificationManager.IMPORTANCE_MAX)
-                .setName(context.getString(R.string.storage_redirect_prompt))
-                .setSound(null, null)
-                .build()
-            createNotificationChannel(channel)
+            NotificationChannels.create(
+                context, NOTIFICATION_CHANNEL_SRPROMPT,
+                NotificationChannels.Kind.ACTION, R.string.storage_redirect_prompt,
+            )
             notifySafe(context, id, notification)
         }
     }
@@ -277,11 +273,10 @@ class NotificationService : Service() {
             .addAction(0, context.getString(R.string.confirm_restart_service), pendingIntent)
             .build()
         NotificationManagerCompat.from(context).run {
-            val channel = NotificationChannelCompat
-                .Builder(NOTIFICATION_CHANNEL_SHUTDOWN, NotificationManager.IMPORTANCE_DEFAULT)
-                .setName(context.getString(R.string.service_exception_logcat_shutdown))
-                .build()
-            createNotificationChannel(channel)
+            NotificationChannels.create(
+                context, NOTIFICATION_CHANNEL_SHUTDOWN,
+                NotificationChannels.Kind.FAULT, R.string.service_exception_logcat_shutdown,
+            )
             notifySafe(context, NOTIFICATION_CHANNEL_SHUTDOWN.hashCode(), notification)
         }
     }
@@ -317,13 +312,10 @@ class NotificationService : Service() {
             .addAction(0, context.getString(R.string.menu_add_to_hide_list), hidePendingIntent)
             .build()
         NotificationManagerCompat.from(context).run {
-            val channel = NotificationChannelCompat
-                .Builder(NOTIFICATION_CHANNEL_ADDED, NotificationManager.IMPORTANCE_NONE)
-                .setName(context.getString(R.string.apply_template_on_package_added_title))
-                .setSound(null, null)
-                .setShowBadge(false)
-                .build()
-            createNotificationChannel(channel)
+            NotificationChannels.create(
+                context, NOTIFICATION_CHANNEL_ADDED,
+                NotificationChannels.Kind.INFO, R.string.apply_template_on_package_added_title,
+            )
             notifySafe(
                 context,
                 computeHashCode(packageInfo.packageName, NOTIFICATION_CHANNEL_ADDED),
@@ -351,13 +343,12 @@ class NotificationService : Service() {
                 .setContentIntent(pendingIntent)
                 .build()
             NotificationManagerCompat.from(context).run {
-                val channel = NotificationChannelCompat
-                    .Builder(NOTIFICATION_CHANNEL, NotificationManager.IMPORTANCE_DEFAULT)
-                    .setName(context.getString(R.string.update_available_channel_name))
-                    .build()
-                createNotificationChannel(channel)
-                notifySafe(context, NOTIFICATION_CHANNEL.hashCode(), notification)
-            }
+            NotificationChannels.create(
+                context, NOTIFICATION_CHANNEL,
+                NotificationChannels.Kind.INFO, R.string.update_available_channel_name,
+            )
+            notifySafe(context, NOTIFICATION_CHANNEL.hashCode(), notification)
+        }
         }
 
         const val ACTION_MEDIA_NOT_FOUND: String =
@@ -402,12 +393,10 @@ class NotificationService : Service() {
                 .setColor(context.getColor(R.color.color_primary))
                 .build()
             NotificationManagerCompat.from(context).run {
-                val channel = NotificationChannelCompat
-                    .Builder(NOTIFICATION_CHANNEL_UPDATED, NotificationManager.IMPORTANCE_MAX)
-                    .setName(context.getString(R.string.service_need_reboot))
-                    .setSound(null, null)
-                    .build()
-                createNotificationChannel(channel)
+                NotificationChannels.create(
+                    context, NOTIFICATION_CHANNEL_UPDATED,
+                    NotificationChannels.Kind.ACTION, R.string.service_need_reboot,
+                )
                 notifySafe(context, NOTIFICATION_CHANNEL_UPDATED.hashCode(), notification)
             }
         }
