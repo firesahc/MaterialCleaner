@@ -141,8 +141,8 @@
     <string name="service_status_daemon">Daemon: PID %1$s | Root %2$s</string>
     <string name="service_status_mounted">Mounted: %1$d apps | %2$d rules</string>
     <string name="service_status_xposed">Xposed Hooks: %1$s</string>
-    <string name="btn_start_service">Start Service</string>
-    <string name="btn_stop_service">Stop Service</string>
+    <string name="btn_start_service">Start\nService</string>
+    <string name="btn_stop_service">Stop\nService</string>
     <string name="toast_starting">Starting</string>
     <string name="toast_stopped">Stopped</string>
     <string name="service_stopped_manually">Service stopped. Tap Start Service to resume.</string>

@@ -4,9 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:paddingLeft="16dp"
+    android:paddingStart="16dp"
     android:paddingTop="?actionBarSizeAddTabHeight"
-    android:paddingRight="16dp"
+    android:paddingEnd="16dp"
     android:paddingBottom="16dp">
 
     <com.google.android.material.card.MaterialCardView
@@ -16,205 +16,228 @@
         android:layout_marginTop="8dp"
         app:cardElevation="2dp">
 
+        <!-- 状态卡分上下两部分：上半区常驻（概览与结论），下半区整块可展开收起 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:padding="16dp">
 
-            <ImageView
-                android:id="@+id/status_dot"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_gravity="center_vertical"
-                android:importantForAccessibility="no"
-                android:src="@drawable/ic_baseline_check_circle_24" />
-
+            <!-- 上半区：图标 + 运行情况 + 概览与结论，右侧为展开箭头与启停按钮 -->
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="12dp"
-                android:layout_weight="1"
-                android:orientation="vertical">
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/status_title"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/storage_redirect_title"
-                    android:textAppearance="?attr/textAppearanceTitleMedium"
-                    android:visibility="visible" />
+                <ImageView
+                    android:id="@+id/status_dot"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center_vertical"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_baseline_check_circle_24" />
 
-                <TextView
-                    android:id="@+id/status_subtitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:textAppearance="?attr/textAppearanceBodySmall"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <!-- 五层状态详情 -->
                 <LinearLayout
-                    android:id="@+id/status_details"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:orientation="vertical"
-                    android:visibility="gone">
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
 
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginBottom="6dp"
-                        android:background="?android:attr/listDivider" />
-
-                    <!-- Level 1: VFS 主重定向 -->
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/status_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:text="@string/storage_redirect_title"
+                        android:textAppearance="?attr/textAppearanceTitleMedium"/>
 
-                        <ImageView
-                            android:id="@+id/l1_indicator"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_marginEnd="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/status_indicator_circle" />
-
-                        <TextView
-                            android:id="@+id/l1_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceBodySmall" />
-                    </LinearLayout>
-
-                    <!-- Level 2: MediaProvider Java Hook -->
-                    <LinearLayout
+                    <TextView
+                        android:id="@+id/status_subtitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:layout_marginTop="2dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?android:attr/textColorSecondary" />
 
-                        <ImageView
-                            android:id="@+id/l2_indicator"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_marginEnd="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/status_indicator_circle" />
-
-                        <TextView
-                            android:id="@+id/l2_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceBodySmall" />
-                    </LinearLayout>
-
-                    <!-- Level 3: FUSE Native Hook -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:id="@+id/l3_indicator"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_marginEnd="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/status_indicator_circle" />
-
-                        <TextView
-                            android:id="@+id/l3_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceBodySmall" />
-                    </LinearLayout>
-
-                    <!-- Level 4: DataBus 数据面 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:id="@+id/l4_indicator"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_marginEnd="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/status_indicator_circle" />
-
-                        <TextView
-                            android:id="@+id/l4_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceBodySmall" />
-                    </LinearLayout>
-
-                    <!-- Level 5: 控制面 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <ImageView
-                            android:id="@+id/l5_indicator"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:layout_marginEnd="6dp"
-                            android:importantForAccessibility="no"
-                            android:src="@drawable/status_indicator_circle" />
-
-                        <TextView
-                            android:id="@+id/l5_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textAppearance="?attr/textAppearanceBodySmall" />
-                    </LinearLayout>
-
+                    <!-- 结论：需要用户动作的提示（版本不一致等），常驻可见，不随明细折叠 -->
                     <TextView
                         android:id="@+id/status_cause"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
+                        android:layout_marginTop="2dp"
                         android:textAppearance="?attr/textAppearanceBodySmall"
                         android:textColor="?android:attr/textColorSecondary"
                         android:visibility="gone" />
 
                 </LinearLayout>
 
+                <!-- 展开箭头：保持在启停按钮旁，点击展开/收起下方明细 -->
+                <ImageView
+                    android:id="@+id/btn_toggle_status_details"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:importantForAccessibility="yes"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_outline_keyboard_arrow_down_24"
+                    android:visibility="invisible" />
+
+                <!-- 启停按钮：圆角矩形，「停止服务」等四字以 2×2 排版，固定尺寸不随文案变化 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_toggle_server"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="56dp"
+                    android:layout_height="52dp"
+                    android:layout_gravity="center_vertical"
+                    android:layout_marginStart="8dp"
+                    android:insetTop="0dp"
+                    android:insetBottom="0dp"
+                    android:lineSpacingMultiplier="0.85"
+                    android:maxLines="2"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp"
+                    android:textSize="13sp"
+                    app:cornerRadius="8dp" />
+
             </LinearLayout>
 
-            <ImageView
-                android:id="@+id/btn_toggle_status_details"
-                android:layout_width="wrap_content"
+            <!-- 下半区：五层状态明细，整块可展开/收起 -->
+            <LinearLayout
+                android:id="@+id/status_details"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
-                android:importantForAccessibility="yes"
-                android:padding="4dp"
-                android:src="@drawable/ic_outline_keyboard_arrow_down_24"
-                android:visibility="invisible" />
+                android:layout_marginTop="6dp"
+                android:orientation="vertical"
+                android:visibility="gone">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_toggle_server"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginBottom="6dp"
+                    android:background="?android:attr/listDivider" />
+
+                <!-- Level 1: VFS 主重定向 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/l1_indicator"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_indicator_circle" />
+
+                    <TextView
+                        android:id="@+id/l1_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                </LinearLayout>
+
+                <!-- Level 2: MediaProvider Java Hook -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/l2_indicator"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_indicator_circle" />
+
+                    <TextView
+                        android:id="@+id/l2_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                </LinearLayout>
+
+                <!-- Level 3: FUSE Native Hook -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/l3_indicator"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_indicator_circle" />
+
+                    <TextView
+                        android:id="@+id/l3_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                </LinearLayout>
+
+                <!-- Level 4: DataBus 数据面 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/l4_indicator"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_indicator_circle" />
+
+                    <TextView
+                        android:id="@+id/l4_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                </LinearLayout>
+
+                <!-- Level 5: 控制面 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:id="@+id/l5_indicator"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/status_indicator_circle" />
+
+                    <TextView
+                        android:id="@+id/l5_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+                </LinearLayout>
+
+            </LinearLayout>
 
         </LinearLayout>
 
@@ -251,5 +274,4 @@
             app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-
 </LinearLayout>

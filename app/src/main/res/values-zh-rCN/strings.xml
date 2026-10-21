@@ -114,8 +114,8 @@
     <string name="service_status_daemon">服务进程: PID %1$s | Root %2$s</string>
     <string name="service_status_mounted">已挂载: %1$d 个应用 | %2$d 条规则</string>
     <string name="service_status_xposed">Xposed Hooks: %1$s</string>
-    <string name="btn_start_service">启动服务</string>
-    <string name="btn_stop_service">停止服务</string>
+    <string name="btn_start_service">启动\n服务</string>
+    <string name="btn_stop_service">停止\n服务</string>
     <string name="toast_starting">正在启动</string>
     <string name="toast_stopped">已停止</string>
     <string name="service_stopped_manually">服务已停止，点击"启动服务"恢复</string>
