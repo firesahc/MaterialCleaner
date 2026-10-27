@@ -216,13 +216,14 @@ class NativeSyncPolicyTest {
     }
 
     @Test
-    fun `snapshotEpoch未知时退化为generation比较`() {
-        // 向后兼容旧版快照（无 epoch 字段）
+    fun `snapshotEpoch未知时不得以generation比较判SYNCED`() {
+        // snapshotEpoch 为空、appliedEpoch 为旧 epoch：身份无法证明，
+        // 不得仅凭 generation 比较判定当前配置已同步。
         val input = base().copy(
             snapshotEpoch = "", snapshotGen = 7L,
             appliedEpoch = "epoch-old", appliedGen = 12L, lastApplySuccess = true,
         )
-        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
     }
 
     @Test
