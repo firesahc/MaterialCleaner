@@ -239,4 +239,16 @@ class NativeSyncPolicyTest {
         val input = base().copy(appliedGen = 6L, applicationState = "APPLYING")
         assertEquals(NativeSyncPolicy.Verdict.CONVERGING, NativeSyncPolicy.evaluate(input))
     }
+
+    @Test
+    fun `双侧epoch均为空且旧成功记录generation更大时不得判SYNCED`() {
+        // 双侧 epoch 均为空时，身份无法证明，不能仅凭 generation 比较判定当前配置已同步。
+        // 即使 lastApplySuccess 为 true 且 appliedGen > snapshotGen，也必须返回 STALE。
+        val input = base().copy(
+            snapshotEpoch = "", snapshotGen = 7L,
+            appliedEpoch = "", appliedGen = 12L, lastApplySuccess = true,
+            applicationState = "APPLIED",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
 }
