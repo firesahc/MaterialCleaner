@@ -161,7 +161,8 @@ class Mounter {
                 result.stage,
                 result.namespaceDirty,
             )) {
-            // 目标在等待期间退出或身份门拒绝：不是挂载故障，不应重试或强停；
+            // 仅确认的目标退出(target_gone)或身份不匹配(target_identity)在干净
+            // namespace 下视为生命周期结果；读取/解析错误走下方常规分类。
             // 脏 namespace 不走此分支，必须保留下方 fail-closed 安全处置。
             // 且不留任何失败痕迹（失败集合残留会让 VFS 永久 DEGRADED）。
             gateRefusalCount.incrementAndGet()

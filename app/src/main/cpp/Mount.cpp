@@ -255,6 +255,24 @@ static ZygoteWaitResult classify_target_path_error(int pid, int error) {
                                        : ZygoteWaitResult::ERROR;
 }
 
+struct TargetIdentityFailure {
+    const char *stage;
+    int error;
+};
+
+/// 只有明确身份不匹配或 /proc/<pid> 确认消失才属于目标生命周期结果；
+/// stat/status 的读写、权限及解析故障必须保留为普通身份读取错误。
+static TargetIdentityFailure classify_target_identity_failure(pid_t pid, int error) {
+    if (error == ESTALE) {
+        return {"target_identity", ESTALE};
+    }
+    if (is_target_gone_errno(error) &&
+        classify_target_path_error(pid, error) == ZygoteWaitResult::GONE) {
+        return {"target_gone", error};
+    }
+    return {"target_identity_error", error != 0 ? error : EIO};
+}
+
 /// 等待目标离开 zygote context。失败原因通过 out_errno 返回。
 static ZygoteWaitResult wait_zygote(int pid, int *out_errno) {
     if (out_errno == nullptr) {
@@ -595,8 +613,10 @@ namespace Mount {
         // 事务登记目标身份：starttime 在 PID 复用后必然变化，是全流程防误伤的锚点。
         unsigned long long target_start_time = 0;
         if (!read_target_identity(pid, static_cast<uid_t>(uid), &target_start_time)) {
-            return make_mount_status(-1, "target_identity", errno == 0 ? ESRCH : errno,
-                                     -1, nullptr, nullptr, MountPhase::PREPARE);
+            const TargetIdentityFailure failure =
+                    classify_target_identity_failure(pid, errno);
+            return make_mount_status(-1, failure.stage, failure.error, -1, nullptr,
+                                     nullptr, MountPhase::PREPARE);
         }
         int sv[2];
         if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) != 0) {
@@ -672,10 +692,16 @@ namespace Mount {
         // setns 后二次确认身份：采集与进入之间目标若死亡且 PID 被复用，
         // 继续操作会把挂载打进无关进程的 namespace。
         unsigned long long confirmed_start_time = 0;
-        if (!read_target_identity(pid, static_cast<uid_t>(uid), &confirmed_start_time) ||
-            confirmed_start_time != target_start_time) {
-            fail_child(sock, "target_identity", errno == 0 ? ESRCH : errno, -1,
-                       nullptr, nullptr, MountPhase::NAMESPACE_ENTERED);
+        if (!read_target_identity(pid, static_cast<uid_t>(uid), &confirmed_start_time)) {
+            const TargetIdentityFailure failure =
+                    classify_target_identity_failure(pid, errno);
+            fail_child(sock, failure.stage, failure.error, -1, nullptr, nullptr,
+                       MountPhase::NAMESPACE_ENTERED);
+        }
+        if (confirmed_start_time != target_start_time) {
+            // 成功读取到的身份锚点不同，明确作为已确认的 PID 身份替换处理。
+            fail_child(sock, "target_identity", ESTALE, -1, nullptr, nullptr,
+                       MountPhase::NAMESPACE_ENTERED);
         }
 #ifdef REMOUNT_STORAGE
         write_mount_progress(sock, MountPhase::NAMESPACE_ENTERED);

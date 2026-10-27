@@ -12,7 +12,7 @@ internal data class MountFailureDisposition(
 )
 
 internal object MountFailureRetryPolicy {
-    /** 这些 stage 表示事务本身或环境已不可信，重试必然复现。 */
+    /** 这些 stage 不重试；目标门控阶段通常已由 Mounter 在记录挂载失败前处理。 */
     private val permanentStages = setOf(
         "invalid_args",
         "invalid_source",
@@ -24,6 +24,7 @@ internal object MountFailureRetryPolicy {
         "baseline_recovery_failed",
     )
 
+    /** target_identity 仅表示已确认身份不匹配；读取/解析错误用 target_identity_error。 */
     private val expectedTargetDisappearanceStages = setOf(
         "target_identity",
         "target_gone",

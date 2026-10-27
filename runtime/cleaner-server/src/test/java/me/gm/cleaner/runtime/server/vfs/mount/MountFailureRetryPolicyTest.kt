@@ -111,17 +111,52 @@ class MountFailureRetryPolicyTest {
     }
 
     @Test
-    fun `身份复核失败属于永久性失败`() {
-        // target_identity 意味着 PID 已被复用或目标消失，重试必然指向错误进程。
+    fun `确认身份不匹配在干净namespace下不重试`() {
+        // target_identity 只表示已确认身份不匹配，重试可能指向错误进程。
         val disposition = MountFailureRetryPolicy.classify(
             stage = "target_identity",
-            errno = 3, // ESRCH
+            errno = 116, // ESTALE
             namespaceDirty = false,
             targetTerminated = false,
         )
         assertFalse(disposition.retryable)
         assertFalse(disposition.forceStopTargetPackage)
         assertTrue(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_identity", false))
+    }
+
+    @Test
+    fun `身份读取错误按原errno走常规失败分类`() {
+        val transientReadError = MountFailureRetryPolicy.classify(
+            stage = "target_identity_error",
+            errno = 5, // EIO
+            namespaceDirty = false,
+            targetTerminated = false,
+        )
+        assertFalse(
+            MountFailureRetryPolicy.isExpectedTargetDisappearance("target_identity_error", false),
+        )
+        assertTrue(transientReadError.retryable)
+        assertFalse(transientReadError.forceStopTargetPackage)
+        assertEquals(ErrorCodes.MOUNT_INTERNAL_FAILED, mountErrorCodeForStage("target_identity_error"))
+
+        val permanentReadError = MountFailureRetryPolicy.classify(
+            stage = "target_identity_error",
+            errno = 13, // EACCES
+            namespaceDirty = false,
+            targetTerminated = false,
+        )
+        assertFalse(permanentReadError.retryable)
+        assertFalse(permanentReadError.forceStopTargetPackage)
+
+        assertFalse(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_identity_error", true))
+        val dirtyReadError = MountFailureRetryPolicy.classify(
+            stage = "target_identity_error",
+            errno = 5,
+            namespaceDirty = true,
+            targetTerminated = false,
+        )
+        assertFalse(dirtyReadError.retryable)
+        assertTrue(dirtyReadError.forceStopTargetPackage)
     }
 
     @Test
@@ -150,6 +185,16 @@ class MountFailureRetryPolicyTest {
 
         assertFalse(disposition.retryable)
         assertTrue(disposition.forceStopTargetPackage)
+
+        assertFalse(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_identity", true))
+        val identityDisposition = MountFailureRetryPolicy.classify(
+            stage = "target_identity",
+            errno = 116, // ESTALE
+            namespaceDirty = true,
+            targetTerminated = false,
+        )
+        assertFalse(identityDisposition.retryable)
+        assertTrue(identityDisposition.forceStopTargetPackage)
     }
 
     @Test
