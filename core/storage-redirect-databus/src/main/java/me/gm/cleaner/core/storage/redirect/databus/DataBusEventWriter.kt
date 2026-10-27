@@ -43,8 +43,18 @@ internal object DataBusEventWriter {
     private val eventSeqCounter = AtomicLong(0)
 
     @Synchronized
-    fun writeEventLocked(queue: String, eventDir: File, content: String): Long {
-        val counterDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_COUNTERS}")
+    fun writeEventLocked(
+        queue: String,
+        eventDir: File,
+        content: String,
+        busRoot: File = File(DataBus.BUS_ROOT),
+    ): Long {
+        // 游标不可读时必须在准备或打开计数器前失败，不能把它折算为空游标，
+        // 否则可能发出低于最后已提交消费位置的序号。
+        val cursor = readCursorSequenceForSequenceFloor(queue, busRoot)
+        if (cursor == CursorSequenceRead.Unreadable) return -1L
+
+        val counterDir = File(busRoot, DataBus.DIR_COUNTERS)
         if (!DataBus.prepareDirectory(counterDir)) return -1L
 
         val counterFile = File(counterDir, "$queue.seq")
@@ -66,14 +76,13 @@ internal object DataBusEventWriter {
                             return -1L
                         }
                         val storedSequence = readCounterValue(raf)
-                        val queueSequence = maxEventSequence(queue)
-                        val cursor = readCursorSequenceForSequenceFloor(queue)
+                        val queueSequence = maxEventSequence(queue, busRoot)
                         if (queueSequence == null) {
                             Log.e(TAG, "Cannot determine sequence floor for $queue")
                             return -1L
                         }
                         val cursorSequence = (cursor as? CursorSequenceRead.Value)?.sequence ?: 0L
-                        val queueHasEvents = hasEventFiles(queue)
+                        val queueHasEvents = hasEventFiles(queue, busRoot)
                         if (queueHasEvents == null) {
                             Log.e(TAG, "Cannot inspect event queue while assigning sequence: $queue")
                             return -1L
@@ -214,8 +223,8 @@ internal object DataBusEventWriter {
      * 读取游标只为拒绝发号回退。缺失计数器的恢复必须由队列事件本身证明；
      * 若游标高于现存事件，发号方会 fail-closed，不从该游标重建计数器。
      */
-    private fun readCursorSequenceForSequenceFloor(queue: String): CursorSequenceRead {
-        val cursorDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_CURSORS}").toPath()
+    private fun readCursorSequenceForSequenceFloor(queue: String, busRoot: File): CursorSequenceRead {
+        val cursorDir = File(busRoot, DataBus.DIR_CURSORS).toPath()
         val path = cursorDir.resolve("$queue.cursor")
         val file = path.toFile()
         return try {
@@ -292,8 +301,8 @@ internal object DataBusEventWriter {
         }
     }
 
-    private fun maxEventSequence(queue: String): Long? {
-        val eventDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_EVENTS}/$queue")
+    private fun maxEventSequence(queue: String, busRoot: File): Long? {
+        val eventDir = File(File(busRoot, DataBus.DIR_EVENTS), queue)
         return try {
             val attributes = try {
                 Files.readAttributes(eventDir.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
@@ -315,8 +324,8 @@ internal object DataBusEventWriter {
         }
     }
 
-    private fun hasEventFiles(queue: String): Boolean? {
-        val eventDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_EVENTS}/$queue")
+    private fun hasEventFiles(queue: String, busRoot: File): Boolean? {
+        val eventDir = File(File(busRoot, DataBus.DIR_EVENTS), queue)
         return try {
             val attributes = try {
                 Files.readAttributes(eventDir.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
