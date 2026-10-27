@@ -494,12 +494,14 @@ object NativeHookStatus {
         discoveredCount: Int,
         hookedMethods: List<String>,
         unknownMethods: List<String>,
+        uidSkippedMethods: List<String>,
         failedMethods: List<String>,
     ) {
         fuseJavaGateStatus = FuseJavaGateStatus(
             discoveredCount = discoveredCount,
             hookedMethods = hookedMethods,
             unknownMethods = unknownMethods,
+            uidSkippedMethods = uidSkippedMethods,
             failedMethods = failedMethods,
         )
         publishSnapshot()
@@ -625,8 +627,13 @@ object NativeHookStatus {
         runCatching {
             val json = toJson()
             if (HookDataBusBridge.writeSnapshot(DataBusProtocol.SNAPSHOT_NATIVE_HOOK_STATUS, json)) {
-                HookDataBusBridge.signal(DataBusProtocol.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)
+                if (!HookDataBusBridge.signal(DataBusProtocol.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)) {
+                    Log.w(TAG, "status snapshot signal was not confirmed")
+                }
+            } else {
+                Log.w(TAG, "status snapshot was not committed to DataBus")
             }
+            Unit
         }.onFailure {
             Log.w(TAG, "publishSnapshot failed", it)
         }
@@ -752,15 +759,19 @@ object NativeHookStatus {
         val discoveredCount: Int = 0,
         val hookedMethods: List<String> = emptyList(),
         val unknownMethods: List<String> = emptyList(),
+        val uidSkippedMethods: List<String> = emptyList(),
         val failedMethods: List<String> = emptyList(),
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("discoveredCount", discoveredCount)
             put("hookedCount", hookedMethods.size)
             put("unknownCount", unknownMethods.size)
+            put("uidSkippedCount", uidSkippedMethods.size)
             put("failedCount", failedMethods.size)
+            put("partialCoverage", hookedMethods.size < discoveredCount)
             put("hookedMethods", JSONArray(hookedMethods))
             put("unknownMethods", JSONArray(unknownMethods))
+            put("uidSkippedMethods", JSONArray(uidSkippedMethods))
             put("failedMethods", JSONArray(failedMethods))
         }
     }

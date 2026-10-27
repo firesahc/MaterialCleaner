@@ -2,6 +2,7 @@ package me.gm.cleaner.runtime.mediaprovider.hook.media;
 
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookDataBusBridge;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.HookPolicyCache;
+import me.gm.cleaner.runtime.mediaprovider.hook.policy.NativeHookStatus;
 
 import android.util.Log;
 
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-import me.gm.cleaner.core.storage.redirect.databus.DataBus;
+import me.gm.cleaner.core.common.err.ErrorCodes;
 
 import org.json.JSONObject;
 import me.gm.cleaner.core.storage.redirect.databus.DataBusProtocol;
@@ -45,6 +46,8 @@ public final class QuerySessionCache {
         final var now = System.currentTimeMillis();
         final var expiresAt = now + SESSION_TTL_MS;
         var shouldSignalLeases = false;
+        var leaseWriteFailed = false;
+        var noticeWriteFailed = false;
 
         synchronized (LOCK) {
             gcLocked(now);
@@ -63,9 +66,13 @@ public final class QuerySessionCache {
                     SESSIONS_BY_UID
                             .computeIfAbsent(uid, ignored -> new ArrayList<>())
                             .add(entry);
-                    shouldSignalLeases |= writeLease(entry);
+                    if (writeLease(entry)) {
+                        shouldSignalLeases = true;
+                    } else {
+                        leaseWriteFailed = true;
+                    }
                 } else if (HookPolicyCache.INSTANCE.getAggressivelyPromptForReadingMediaFiles()) {
-                    emitMediaNotFound(packageName, path, true);
+                    noticeWriteFailed = !emitMediaNotFound(packageName, path, true);
                     break;
                 } else {
                     break;
@@ -73,8 +80,17 @@ public final class QuerySessionCache {
             }
         }
 
-        if (shouldSignalLeases) {
-            HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_QUERY_SESSION_LEASES_CHANGED);
+        if (leaseWriteFailed) {
+            Log.w(TAG, "one or more query session leases were not committed to DataBus");
+            recordDataBusWriteFailure("query_session_lease_write", "not_committed");
+        }
+        if (noticeWriteFailed) {
+            recordDataBusWriteFailure("media_not_found_notice", "not_confirmed");
+        }
+        if (shouldSignalLeases &&
+                !HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_QUERY_SESSION_LEASES_CHANGED)) {
+            Log.w(TAG, "query session lease signal was not confirmed");
+            recordDataBusWriteFailure("query_session_lease_signal", "not_confirmed");
         }
     }
 
@@ -84,6 +100,8 @@ public final class QuerySessionCache {
         }
 
         final var now = System.currentTimeMillis();
+        var eventFailed = false;
+        var consumed = false;
         synchronized (LOCK) {
             gcLocked(now);
             final var entries = SESSIONS_BY_UID.get(uid);
@@ -100,15 +118,19 @@ public final class QuerySessionCache {
                 if (!shouldNotifyMediaNotFound(entry.packageName, entry.originalPath)) {
                     return false;
                 }
-                emitMediaNotFound(entry.packageName, entry.originalPath, false);
+                eventFailed = !emitMediaNotFound(entry.packageName, entry.originalPath, false);
                 iterator.remove();
                 if (entries.isEmpty()) {
                     SESSIONS_BY_UID.remove(uid);
                 }
-                return true;
+                consumed = true;
+                break;
             }
         }
-        return false;
+        if (eventFailed) {
+            recordDataBusWriteFailure("media_not_found_notice", "not_confirmed");
+        }
+        return consumed;
     }
 
     private static void gcLocked(long now) {
@@ -164,7 +186,7 @@ public final class QuerySessionCache {
         return matcher.matches() && packageName.equals(matcher.group(3));
     }
 
-    private static void emitMediaNotFound(String packageName, String originalPath, boolean aggressive) {
+    private static boolean emitMediaNotFound(String packageName, String originalPath, boolean aggressive) {
         try {
             final var event = new JSONObject();
             event.put("schemaVersion", 1);
@@ -176,12 +198,25 @@ public final class QuerySessionCache {
             event.put("reason", aggressive ? "MEDIA_NOT_FOUND_AGGRESSIVE" : "MEDIA_NOT_FOUND");
             final var seq = HookDataBusBridge.INSTANCE.writeEvent(
                     DataBusProtocol.EVENT_REDIRECT_NOTICE, event.toString());
-            if (seq >= 0) {
-                HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
+            if (seq < 0) {
+                Log.w(TAG, "media-not-found notice was not committed to DataBus");
+                return false;
             }
+            if (!HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED)) {
+                Log.w(TAG, "media-not-found notice signal was not confirmed");
+                return false;
+            }
+            return true;
         } catch (Exception e) {
             Log.e(TAG, "emitMediaNotFound failed", e);
+            return false;
         }
+    }
+
+    private static void recordDataBusWriteFailure(String stage, String reason) {
+        NativeHookStatus.INSTANCE.recordHookError(
+                ErrorCodes.HOOK_JAVA_BUS_WRITE_FAILED,
+                "stage=" + stage + ", reason=" + reason);
     }
 
     private static final class Entry {

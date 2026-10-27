@@ -1,8 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.fuse;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -19,7 +17,7 @@ class ParamRoles {
     final int pathIndex;
     /** 第二个路径参数索引（rename 场景），-1 表示不存在 */
     final int path2Index;
-    /** uid 参数索引，-1 表示需运行时推断 */
+    /** uid 参数索引，-1 表示完整签名未命中核验表 */
     final int uidIndex;
     /** open mode 参数索引，-1 表示未知/无需判定 */
     final int modeIndex;
@@ -52,20 +50,9 @@ enum ExtraParamRole {
 /**
  * ParameterAnalyzer — 静态参数角色推断。
  * <p>
- * 根据方法名的命名模式和参数类型序列，推断 pathIndex、uidIndex 等参数角色。
- * 三层推断策略：
- * <p>
- * Level 1 — 方法名模式识别：
- * - "isUid" 前缀 → 参数反转 (int uid, String path)
- * - "isDir"/"isDirectory" 前缀 → uid 固定在 index 1
- * <p>
- * Level 2 — 参数类型序列分析：
- * - (String, int) → path@0, uid@1
- * - (String, String, int) → rename 时 path@0, path2@1, uid@2；非 rename 时 path2 强制 -1
- * - (String, int, int) → path@0, uid@1, extra=ACCESS_TYPE_INT
- * - (String, int, boolean) → path@0, uid@1, extra=ACCESS_TYPE_BOOL
- * <p>
- * Level 3 — uidIndex = -1（运行时由 {@link FuseJavaGate#resolveUid} 值推断）
+ * 根据已核验的方法名与完整参数签名确定参数角色。
+ * 未命中已知 UID 签名时保留 uidIndex=-1，由安装门控跳过 UID 依赖的 Hook；
+ * 不按“唯一 int”或整数取值扫描猜测 UID。
  */
 class ParameterAnalyzer {
 
@@ -92,19 +79,6 @@ class ParameterAnalyzer {
     static ParamRoles analyze(final Method method, final boolean needPath2) {
         final String name = method.getName().toLowerCase(Locale.ROOT);
         final Class<?>[] types = method.getParameterTypes();
-
-        // ── Level 1: 方法名模式识别 ──
-
-        // isUid* 系列：参数反转 (int uid, String path)
-        if (name.startsWith("isuid") && types.length >= 2) {
-            return new ParamRoles(/*pathIndex=*/1, /*path2Index=*/-1,
-                    /*uidIndex=*/0, /*modeIndex=*/-1, ExtraParamRole.NONE);
-        }
-
-        // ── 路径参数发现 ──
-        // 语义约束：仅 rename 需要 path2；非 rename 强制保持 -1，避免把第二个
-        // String（如 displayName、volumeName）误标为第二路径。仅 rename 模板
-        // 消费 path2，其余 handler 只用 pathIndex，误标虽危害有限但必须求准。
         int pathIndex = -1;
         int path2Index = -1;
         for (int i = 0; i < types.length; i++) {
@@ -120,67 +94,76 @@ class ParameterAnalyzer {
             return null; // 没有 String 路径参数
         }
 
-        // ── Level 1 cont'd: isDir/isDirectory — uid 固定在 index 1 ──
-        if (name.startsWith("isdir") || name.startsWith("isdirectory")) {
-            int uidIdx = (types.length > 1 && types[1] == int.class) ? 1 : -1;
-            ExtraParamRole extra = ExtraParamRole.NONE;
-            if (types.length > 2) {
-                if (types[2] == boolean.class) {
-                    extra = ExtraParamRole.ACCESS_TYPE_BOOL;
-                } else if (types[2] == int.class) {
-                    extra = ExtraParamRole.ACCESS_TYPE_INT;
-                }
+        // 以下映射只接收经过核对的方法名和完整参数形状；额外 int 参数不能改变 UID 位置。
+        if (name.equals("isuidallowedaccesstodataorobbpathforfuse") &&
+                matches(types, int.class, String.class)) {
+            return roles(1, -1, 0, -1, ExtraParamRole.NONE);
+        }
+        if (name.equals("isdiraccessallowedforfuse") &&
+                matches(types, String.class, int.class, int.class)) {
+            return roles(0, -1, 1, -1, ExtraParamRole.ACCESS_TYPE_INT);
+        }
+        if (name.equals("isdirectorycreationordeletionallowedforfuse") &&
+                matches(types, String.class, int.class, boolean.class)) {
+            return roles(0, -1, 1, -1, ExtraParamRole.ACCESS_TYPE_BOOL);
+        }
+        if (name.equals("openwithfuse") &&
+                matches(types, String.class, int.class, int.class, int.class,
+                        boolean.class, boolean.class, int.class)) {
+            return roles(0, -1, 1, 3, ExtraParamRole.NONE);
+        }
+        if (name.equals("renameforfuse") &&
+                matches(types, String.class, String.class, int.class)) {
+            return roles(0, 1, 2, -1, ExtraParamRole.NONE);
+        }
+        if (name.equals("insertfileifnecessaryforfuse") &&
+                matches(types, String.class, int.class)) {
+            return roles(0, -1, 1, -1, ExtraParamRole.NONE);
+        }
+        if (name.equals("deletefileforfuse")) {
+            if (matches(types, String.class, int.class)) {
+                return roles(0, -1, 1, -1, ExtraParamRole.NONE);
             }
-            return new ParamRoles(pathIndex, path2Index, uidIdx, /*modeIndex=*/-1, extra);
-        }
-
-        // ── 已知 openWithFuse 精确签名：mode 是独立位置角色，不做泛化推断 ──
-        // (String path, int uid, int mediaCapabilitiesUid, int modeBits, boolean, boolean, int)
-        if (name.equals("openwithfuse") && types.length == 7
-                && types[0] == String.class
-                && types[1] == int.class
-                && types[2] == int.class
-                && types[3] == int.class
-                && types[4] == boolean.class
-                && types[5] == boolean.class
-                && types[6] == int.class) {
-            return new ParamRoles(pathIndex, /*path2Index=*/-1,
-                    /*uidIndex=*/1, /*modeIndex=*/3, ExtraParamRole.NONE);
-        }
-
-        // ── Level 2: 参数类型序列分析 ──
-        int uidIndex = -1;
-        ExtraParamRole extra = ExtraParamRole.NONE;
-
-        // 收集所有 int 参数索引
-        final List<Integer> intIndices = new ArrayList<>();
-        for (int i = 0; i < types.length; i++) {
-            if (types[i] == int.class) {
-                intIndices.add(i);
+            if (matches(types, String.class, int.class, int.class)) {
+                return roles(0, -1, 1, -1, ExtraParamRole.IGNORE);
             }
         }
-
-        if (intIndices.isEmpty()) {
-            // 无 int 参数 → 运行时推断 uid
-            return new ParamRoles(pathIndex, path2Index, -1, /*modeIndex=*/-1, ExtraParamRole.NONE);
+        if (name.equals("onfilelookupforfuse")) {
+            if (matches(types, String.class, int.class) ||
+                    matches(types, String.class, int.class, String.class)) {
+                return roles(0, -1, 1, -1, ExtraParamRole.NONE);
+            }
+            if (matches(types, String.class, String.class, int.class)) {
+                return roles(0, -1, 2, -1, ExtraParamRole.NONE);
+            }
+        }
+        if (name.equals("onfileopenforfuse")) {
+            if (matches(types, String.class, int.class)) {
+                return roles(0, -1, 1, -1, ExtraParamRole.NONE);
+            }
+            if (matches(types, String.class, String.class, int.class)) {
+                return roles(0, -1, 2, -1, ExtraParamRole.NONE);
+            }
         }
 
-        // 单 int 参数 → 一定是 uid
-        if (intIndices.size() == 1) {
-            uidIndex = intIndices.get(0);
-            return new ParamRoles(pathIndex, path2Index, uidIndex, /*modeIndex=*/-1, ExtraParamRole.NONE);
+        // 不在核验表中的变体保留 UID unknown；由 FuseUidGate 阻止安装 UID 依赖 Hook。
+        return roles(pathIndex, path2Index, -1, -1, ExtraParamRole.NONE);
+    }
+
+    private static ParamRoles roles(
+            int pathIndex,
+            int path2Index,
+            int uidIndex,
+            int modeIndex,
+            ExtraParamRole extraRole) {
+        return new ParamRoles(pathIndex, path2Index, uidIndex, modeIndex, extraRole);
+    }
+
+    private static boolean matches(Class<?>[] actual, Class<?>... expected) {
+        if (actual.length != expected.length) return false;
+        for (int i = 0; i < actual.length; i++) {
+            if (actual[i] != expected[i]) return false;
         }
-
-        // 多 int 参数 —— 根据方法名判断
-        uidIndex = intIndices.get(0); // 默认第一个 int 是 uid
-
-        if (name.contains("delete")) {
-            // deleteFileForFuse(String, int, int) → 第三个 int 忽略
-            extra = ExtraParamRole.IGNORE;
-        }
-        // 其他情况（如 openWithFuse 多重建载）：第一个 int 是 uid，多余的静默忽略；
-        // mode 仅对已知精确签名标定，未知一律 -1 走 fail-open。
-
-        return new ParamRoles(pathIndex, path2Index, uidIndex, /*modeIndex=*/-1, extra);
+        return true;
     }
 }

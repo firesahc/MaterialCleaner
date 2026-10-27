@@ -17,6 +17,8 @@ import me.gm.cleaner.core.storage.redirect.databus.DataBusProtocol
  */
 object MediaProviderHookGateway {
 
+    private const val TAG = "MediaProviderHookGateway"
+
     /** configured_mount_points snapshot generation 缓存（避免每 2s 健康检查读 DataBus） */
     @Volatile
     private var cachedMountPointsGeneration: Long = 0L
@@ -55,19 +57,19 @@ object MediaProviderHookGateway {
 
     fun registerCleanerServerBinder(server: CleanerServer) {
         whileAlive { service ->
-            service.setCleanerServerBinder(server.mCleanerServerCallback)
+            try {
+                service.setCleanerServerBinder(server.mCleanerServerCallback)
+            } catch (e: RemoteException) {
+                android.util.Log.w(TAG, "registerCleanerServerBinder failed", e)
+            } catch (e: RuntimeException) {
+                android.util.Log.w(TAG, "registerCleanerServerBinder failed", e)
+            }
         }
     }
 
-    fun registerAndRefreshFromDataBus(server: CleanerServer) {
-        whileAlive { service ->
-            try {
-                service.setCleanerServerBinder(server.mCleanerServerCallback)
-                service.refreshPolicyFromDataBus()
-            } catch (e: RemoteException) {
-                throw RuntimeException(e)
-            }
-        }
+    /** 连接回调由 CleanerHooksClient 建连时注入；此处只刷新策略快照。 */
+    fun registerAndRefreshFromDataBus(@Suppress("UNUSED_PARAMETER") server: CleanerServer) {
+        refreshPolicyFromDataBus()
     }
 
     @JvmStatic
@@ -76,7 +78,9 @@ object MediaProviderHookGateway {
             try {
                 service.refreshPolicyFromDataBus()
             } catch (e: RemoteException) {
-                throw RuntimeException(e)
+                android.util.Log.w(TAG, "refreshPolicyFromDataBus Binder transaction failed", e)
+            } catch (e: RuntimeException) {
+                android.util.Log.w(TAG, "refreshPolicyFromDataBus failed", e)
             }
         }
     }

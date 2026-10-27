@@ -24,15 +24,8 @@ import me.gm.cleaner.server.IMediaProviderHooksService;
 
 public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     private volatile ICleanerServerCallback mCleanerServerBinder = null;
+    private volatile IBinder.DeathRecipient mCleanerServerDeathRecipient = null;
     private final AtomicBoolean mPolicyCacheInitialized = new AtomicBoolean(false);
-    private final IBinder.DeathRecipient mCleanerServerDeathRecipient = () -> {
-        mCleanerServerBinder = null;
-        HookDataBusBridge.INSTANCE.setCallback(null);
-        NativeHookStatus.INSTANCE.recordHookError(
-                ErrorCodes.HOOK_JAVA_BINDER_DEAD,
-                "stage=server_callback_death, binder=cleaner_server_callback");
-        requestReRegister("server callback died");
-    };
 
     /** 当 Server 回调丢失时由 XposedInit 注入的重新注册回调 */
     public static volatile Runnable sReRegisterCallback;
@@ -70,12 +63,14 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
         callback.run();
     }
 
-    private void unlinkCleanerServerDeathRecipient(ICleanerServerCallback callback) {
-        if (callback == null) {
+    private void unlinkCleanerServerDeathRecipient(
+            ICleanerServerCallback callback,
+            IBinder.DeathRecipient deathRecipient) {
+        if (callback == null || deathRecipient == null) {
             return;
         }
         try {
-            callback.asBinder().unlinkToDeath(mCleanerServerDeathRecipient, 0);
+            callback.asBinder().unlinkToDeath(deathRecipient, 0);
         } catch (RuntimeException e) {
             Log.w("MC_REDIRECT", "[MediaProviderHooksService] unlinkToDeath failed", e);
         }
@@ -87,42 +82,63 @@ public class MediaProviderHooksService extends IMediaProviderHooksService.Stub {
     }
 
     @Override
-    public void setCleanerServerBinder(ICleanerServerCallback iinterface) {
+    public synchronized void setCleanerServerBinder(ICleanerServerCallback iinterface) throws RemoteException {
         Log.i("MC_REDIRECT", "[MediaProviderHooksService] setCleanerServerBinder called, binder=" + (iinterface != null));
-        // 先取消已有 DeathRecipient，防止多次 link 导致重复触发
-        unlinkCleanerServerDeathRecipient(mCleanerServerBinder);
-        mCleanerServerBinder = iinterface;
-        HookDataBusBridge.INSTANCE.setCallback(iinterface);
         if (iinterface == null) {
+            final var oldBinder = mCleanerServerBinder;
+            final var oldDeathRecipient = mCleanerServerDeathRecipient;
+            mCleanerServerBinder = null;
+            mCleanerServerDeathRecipient = null;
+            HookDataBusBridge.INSTANCE.setCallback(null);
+            unlinkCleanerServerDeathRecipient(oldBinder, oldDeathRecipient);
             NativeHookStatus.INSTANCE.recordHookError(
                     ErrorCodes.HOOK_JAVA_REG_SERVICE_NULL,
                     "stage=set_cleaner_server_binder, binder=null, registration=skipped");
             HookPolicyCache.INSTANCE.tryRefreshNativeMountPoints(false);
             return;
         }
+
+        final var newDeathRecipient = (IBinder.DeathRecipient) () -> {
+            synchronized (MediaProviderHooksService.this) {
+                if (mCleanerServerBinder != iinterface) {
+                    return;
+                }
+                mCleanerServerBinder = null;
+                mCleanerServerDeathRecipient = null;
+                HookDataBusBridge.INSTANCE.setCallback(null);
+            }
+            NativeHookStatus.INSTANCE.recordHookError(
+                    ErrorCodes.HOOK_JAVA_BINDER_DEAD,
+                    "stage=server_callback_death, binder=cleaner_server_callback");
+            requestReRegister("server callback died");
+        };
         try {
-            iinterface.asBinder().linkToDeath(mCleanerServerDeathRecipient, 0);
+            iinterface.asBinder().linkToDeath(newDeathRecipient, 0);
         } catch (final RemoteException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
-            mCleanerServerBinder = null;
-            HookDataBusBridge.INSTANCE.setCallback(null);
             NativeHookStatus.INSTANCE.recordHookError(
                     ErrorCodes.HOOK_JAVA_BINDER_DEAD,
                     "stage=link_to_death, binder=cleaner_server_callback"
                             + ", failureType=RemoteException");
             requestReRegister("server callback linkToDeath failed");
-            return;
+            throw e;
         } catch (final RuntimeException e) {
             Log.e("MC_REDIRECT", "[MediaProviderHooksService] linkToDeath failed", e);
-            mCleanerServerBinder = null;
-            HookDataBusBridge.INSTANCE.setCallback(null);
             NativeHookStatus.INSTANCE.recordHookError(
                     ErrorCodes.HOOK_JAVA_BINDER_DEAD,
                     "stage=link_to_death, binder=cleaner_server_callback"
                             + ", failureType=" + e.getClass().getSimpleName());
             requestReRegister("server callback linkToDeath failed");
-            return;
+            throw new RemoteException("Cleaner server callback linkToDeath failed: "
+                    + e.getClass().getSimpleName());
         }
+
+        final var oldBinder = mCleanerServerBinder;
+        final var oldDeathRecipient = mCleanerServerDeathRecipient;
+        mCleanerServerBinder = iinterface;
+        mCleanerServerDeathRecipient = newDeathRecipient;
+        HookDataBusBridge.INSTANCE.setCallback(iinterface);
+        unlinkCleanerServerDeathRecipient(oldBinder, oldDeathRecipient);
         // 尝试从 DataBus 刷新 native 挂载点（独立于 Binder 同步）
         HookPolicyCache.INSTANCE.refreshFromDataBus();
         // 辅助补强：server 来访即注册表可能已换新，经门控重发布一次（幂等）。

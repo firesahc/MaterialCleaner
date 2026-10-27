@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import me.gm.cleaner.runtime.server.CleanerServer
 import me.gm.cleaner.server.ICleanerHooksService
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.Consumer
 
 object CleanerHooksClient {
@@ -36,16 +37,20 @@ object CleanerHooksClient {
             Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: FAILED to get binder")
             return false
         }
-
-        unlinkCurrentDeathRecipient()
-
         val newService = ICleanerHooksService.Stub.asInterface(newBinder)
+        if (newService == null) {
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: binder did not expose hooks service")
+            return false
+        }
+        val newBinderDied = AtomicBoolean(false)
         val newDeathRecipient = object : SystemServiceDeathRecipient(newBinder) {
             override fun binderDied() {
+                newBinderDied.set(true)
                 super.binderDied()
                 Log.w("MC_REDIRECT", "[CleanerHooksClient] binderDied ($reason session), notifying LayerOrchestrator")
-                clearDeadConnection()
-                server?.layerOrchestrator?.onHooksBinderDied()
+                if (clearDeadConnection(newBinder, this)) {
+                    server?.layerOrchestrator?.onHooksBinderDied()
+                }
             }
         }
 
@@ -53,24 +58,60 @@ object CleanerHooksClient {
             newBinder.linkToDeath(newDeathRecipient, 0)
         } catch (e: RemoteException) {
             Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: linkToDeath failed", e)
-            clearDeadConnection()
             return false
         } catch (e: RuntimeException) {
             Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: linkToDeath failed", e)
-            clearDeadConnection()
             return false
         }
 
-        binder = newBinder
-        service = newService
-        deathRecipient = newDeathRecipient
+        try {
+            callbackRegisteredBeforePublish(
+                registerCallback = {
+                    newService.setCleanerServerBinder(ctx.mCleanerServerCallback)
+                    if (newBinderDied.get() || !newBinder.isBinderAlive) {
+                        throw RemoteException("hooks service died during callback registration")
+                    }
+                },
+                publish = {
+                    val oldBinder = binder
+                    val oldService = service
+                    val oldDeathRecipient = deathRecipient
+                    // Recheck inside the synchronized publish step. The death callback can set the
+                    // flag before waiting to clear global state, so a Binder that died during
+                    // registration cannot replace the previously working connection.
+                    if (newBinderDied.get() || !newBinder.isBinderAlive) {
+                        throw RemoteException("hooks service died before connection publish")
+                    }
+                    binder = newBinder
+                    service = newService
+                    deathRecipient = newDeathRecipient
+                    if (newBinderDied.get() || !newBinder.isBinderAlive) {
+                        binder = oldBinder
+                        service = oldService
+                        deathRecipient = oldDeathRecipient
+                        throw RemoteException("hooks service died while publishing connection")
+                    }
+                    unlinkDeathRecipient(oldBinder, oldDeathRecipient)
+                },
+            )
+        } catch (e: RemoteException) {
+            unlinkDeathRecipient(newBinder, newDeathRecipient)
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: callback registration failed", e)
+            return false
+        } catch (e: RuntimeException) {
+            unlinkDeathRecipient(newBinder, newDeathRecipient)
+            Log.e("MC_REDIRECT", "[CleanerHooksClient] $reason: callback registration failed", e)
+            return false
+        }
         Log.i("MC_REDIRECT", "[CleanerHooksClient] $reason: connected")
         return true
     }
 
     private fun unlinkCurrentDeathRecipient() {
-        val oldBinder = binder
-        val oldDeathRecipient = deathRecipient
+        unlinkDeathRecipient(binder, deathRecipient)
+    }
+
+    private fun unlinkDeathRecipient(oldBinder: IBinder?, oldDeathRecipient: IBinder.DeathRecipient?) {
         if (oldBinder == null || oldDeathRecipient == null) {
             return
         }
@@ -88,10 +129,20 @@ object CleanerHooksClient {
      * 清除已死亡连接的所有引用。
      * 在 binderDied 回调中调用，确保后续重连从干净状态开始。
      */
-    fun clearDeadConnection() {
+    @Synchronized
+    fun clearDeadConnection(
+        expectedBinder: IBinder? = null,
+        expectedDeathRecipient: IBinder.DeathRecipient? = null,
+    ): Boolean {
+        if (expectedBinder != null &&
+            (binder !== expectedBinder || deathRecipient !== expectedDeathRecipient)
+        ) {
+            return false
+        }
         binder = null
         service = null
         deathRecipient = null
+        return true
     }
 
     /**
@@ -128,13 +179,6 @@ object CleanerHooksClient {
                 Log.e("MC_REDIRECT", "[CleanerHooksClient] whileAlive: reconnect failed")
                 return
             }
-            try {
-                service?.setCleanerServerBinder(ctx.mCleanerServerCallback)
-            } catch (e: RemoteException) {
-                Log.e("MC_REDIRECT", "[CleanerHooksClient] Failed to re-register callback", e)
-                clearDeadConnection()
-                return
-            }
         }
         val s = service ?: return
         if (pingBinder()) {
@@ -146,5 +190,14 @@ object CleanerHooksClient {
         unlinkCurrentDeathRecipient()
         clearDeadConnection()
     }
+}
+
+/** 回调注册是连接发布的前置条件；注册抛错时不得运行发布步骤。 */
+internal inline fun <T> callbackRegisteredBeforePublish(
+    registerCallback: () -> Unit,
+    publish: () -> T,
+): T {
+    registerCallback()
+    return publish()
 }
 

@@ -1,5 +1,6 @@
 package me.gm.cleaner.runtime.mediaprovider.hook.policy
 
+import me.gm.cleaner.runtime.mediaprovider.hook.bridge.DataBusBridgeResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -14,7 +15,7 @@ class SnapshotSignalCursorPolicyTest {
             currentAcknowledgedTimestamp = 0L,
             captureSignalTimestamp = {
                 order += "signal"
-                1L
+                DataBusBridgeResult.Available(1L)
             },
             consumeSnapshot = {
                 order += "snapshot"
@@ -31,7 +32,7 @@ class SnapshotSignalCursorPolicyTest {
 
         val result = consumeAfterSignalCapture(
             currentAcknowledgedTimestamp = 8L,
-            captureSignalTimestamp = { signal },
+            captureSignalTimestamp = { DataBusBridgeResult.Available(signal) },
             consumeSnapshot = {
                 signal = 11L
                 SnapshotConsumeOutcome(succeeded = true)
@@ -44,7 +45,7 @@ class SnapshotSignalCursorPolicyTest {
 
     @Test
     fun `消费失败不推进游标`() {
-        val result = consumeAfterSignalCapture(8L, { 10L }) {
+        val result = consumeAfterSignalCapture(8L, { DataBusBridgeResult.Available(10L) }) {
             SnapshotConsumeOutcome(succeeded = false)
         }
 
@@ -53,7 +54,7 @@ class SnapshotSignalCursorPolicyTest {
 
     @Test
     fun `成功消费推进到捕获水位`() {
-        val result = consumeAfterSignalCapture(8L, { 10L }) {
+        val result = consumeAfterSignalCapture(8L, { DataBusBridgeResult.Available(10L) }) {
             SnapshotConsumeOutcome(succeeded = true)
         }
 
@@ -62,7 +63,7 @@ class SnapshotSignalCursorPolicyTest {
 
     @Test
     fun `signal回退不能使游标倒退`() {
-        val result = consumeAfterSignalCapture(12L, { 10L }) {
+        val result = consumeAfterSignalCapture(12L, { DataBusBridgeResult.Available(10L) }) {
             SnapshotConsumeOutcome(succeeded = true)
         }
 
@@ -71,7 +72,7 @@ class SnapshotSignalCursorPolicyTest {
 
     @Test
     fun `同版本未改变仍确认signal`() {
-        val result = consumeAfterSignalCapture(8L, { 10L }) {
+        val result = consumeAfterSignalCapture(8L, { DataBusBridgeResult.Available(10L) }) {
             SnapshotConsumeOutcome(succeeded = true, changed = false)
         }
 
@@ -81,7 +82,7 @@ class SnapshotSignalCursorPolicyTest {
 
     @Test
     fun `策略改变同时推进游标并传播changed`() {
-        val result = consumeAfterSignalCapture(8L, { 10L }) {
+        val result = consumeAfterSignalCapture(8L, { DataBusBridgeResult.Available(10L) }) {
             SnapshotConsumeOutcome(succeeded = true, changed = true)
         }
 
@@ -94,11 +95,31 @@ class SnapshotSignalCursorPolicyTest {
         var acknowledged = 8L
 
         assertThrows(IllegalStateException::class.java) {
-            acknowledged = consumeAfterSignalCapture(acknowledged, { 10L }) {
+            acknowledged = consumeAfterSignalCapture(acknowledged, { DataBusBridgeResult.Available(10L) }) {
                 throw IllegalStateException("snapshot failed")
             }.acknowledgedTimestamp
         }
 
         assertEquals(8L, acknowledged)
+    }
+
+    @Test
+    fun `signal不可用时不读快照也不推进游标`() {
+        var snapshotRead = false
+        val result = consumeAfterSignalCapture(
+            currentAcknowledgedTimestamp = 8L,
+            captureSignalTimestamp = {
+                DataBusBridgeResult.Unavailable("getSignalTimestamp:policy", "callback_missing")
+            },
+            consumeSnapshot = {
+                snapshotRead = true
+                SnapshotConsumeOutcome(succeeded = true, changed = true)
+            },
+        )
+
+        assertEquals(false, snapshotRead)
+        assertEquals(8L, result.acknowledgedTimestamp)
+        assertEquals(false, result.changed)
+        assertEquals("getSignalTimestamp:policy:callback_missing", result.unavailableReason)
     }
 }
