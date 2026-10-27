@@ -87,6 +87,128 @@ class CursorReadTest {
     }
 
     @Test
+    fun `清理回退当前队列队首后由持久化计数器保留游标上界`() {
+        val cursor = "00000000000000008292-1791549618189-12963-a72c.json"
+        val counter = DataBusEventWriter.SequenceCounterRead.Value(8292L)
+
+        assertTrue(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = counter,
+            ),
+        )
+    }
+
+    @Test
+    fun `游标序号超过计数器和现存队列时不可信`() {
+        val cursor = "00000000000000008293-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Value(8292L),
+            ),
+        )
+    }
+
+    @Test
+    fun `缺失或损坏计数器时只有现存队列覆盖游标才可信`() {
+        val cursor = "00000000000000008292-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Absent,
+            ),
+        )
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Unreadable,
+            ),
+        )
+        assertTrue(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Unreadable,
+            ),
+        )
+    }
+
+    @Test
+    fun `缺失计数器且队列为空时不信任现存游标`() {
+        val cursor = "00000000000000000000-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 0L,
+                queueHasEvents = false,
+                counter = DataBusEventWriter.SequenceCounterRead.Absent,
+            ),
+        )
+    }
+
+    @Test
+    fun `计数器损坏内容不会折算为零`() {
+        assertEquals(8292L, DataBusEventWriter.parseSequenceCounterContent("8292"))
+        assertEquals(0L, DataBusEventWriter.parseSequenceCounterContent("0"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent(""))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("broken"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("-1"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("9223372036854775808"))
+    }
+
+    @Test
+    fun `损坏或缺失计数器只从能覆盖游标的现存队列恢复`() {
+        assertTrue(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertTrue(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Absent,
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 0L,
+                queueHasEvents = false,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Unreadable,
+            ),
+        )
+    }
+
+    @Test
     fun `越顶游标下存量队首都满足删除游标门禁_故越顶必须判不可信`() {
         // 安全 rationale：shouldPruneEvent 的游标门禁是 `name <= cursor`；
         // 一旦游标越顶，存量文件全部满足门禁（仅剩时间门禁），

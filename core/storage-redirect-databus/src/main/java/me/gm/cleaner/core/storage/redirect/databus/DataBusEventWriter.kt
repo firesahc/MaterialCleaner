@@ -7,6 +7,8 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -15,10 +17,8 @@ import java.util.concurrent.atomic.AtomicLong
  * 职责边界：本对象拥有**事件序号计数器与文件落盘**；
  * 队列名校验、目录准备等基础原语复用 [DataBus] 的模块内可见成员。
  *
- * 序号单调性来源（取四者最大值）：
- * 持久化序号、游标序号、队列现有最大序号、进程内序号。
- * 删除已消费事件会降低其中“队列现有最大”一项，但游标序号托底，
- * 因此清理不破坏序号单调递增。
+ * 序号单调性来源：持久化序号计数器为主，队列现存最大序号用于迁移/复核，
+ * 进程内序号用于兜底。计数器会保留已清理事件的序号上界。
  *
  * 自 [DataBus] 抽离以控制单文件粒度（G2 门禁）。[DataBus.writeEvent]
  * 保留公开委托，跨模块调用方无需改动。
@@ -26,6 +26,18 @@ import java.util.concurrent.atomic.AtomicLong
 internal object DataBusEventWriter {
 
     private const val TAG = "DataBusEventWriter"
+
+    internal sealed interface SequenceCounterRead {
+        data object Absent : SequenceCounterRead
+        data object Unreadable : SequenceCounterRead
+        data class Value(val sequence: Long) : SequenceCounterRead
+    }
+
+    internal sealed interface CursorSequenceRead {
+        data object Absent : CursorSequenceRead
+        data object Unreadable : CursorSequenceRead
+        data class Value(val sequence: Long) : CursorSequenceRead
+    }
 
     // 进程内序号下界；真实事件序号会通过 counters/ 持久化分配。
     private val eventSeqCounter = AtomicLong(0)
@@ -38,17 +50,65 @@ internal object DataBusEventWriter {
         val counterFile = File(counterDir, "$queue.seq")
         val counterPath = counterFile.toPath()
         return try {
-            if (Files.exists(counterPath, LinkOption.NOFOLLOW_LINKS) &&
-                (Files.isSymbolicLink(counterPath) ||
-                        !Files.isRegularFile(counterPath, LinkOption.NOFOLLOW_LINKS))
-            ) {
-                Files.delete(counterPath)
+            val counterExisted = Files.exists(counterPath, LinkOption.NOFOLLOW_LINKS)
+            if (counterExisted && !isRegularCounterFile(counterPath)) {
+                Log.e(TAG, "Refusing to replace invalid sequence counter: $queue")
+                return -1L
             }
 
             RandomAccessFile(counterFile, "rw").use { raf ->
                 raf.channel.use { channel ->
                     channel.lock().use {
-                        val next = nextEventSequence(queue, raf)
+                        // 锁住稳定的计数器文件 inode。若在持锁时原子替换文件，
+                        // 其他进程可能锁到新 inode，从而绕过当前锁。
+                        if (!isRegularCounterFile(counterPath)) {
+                            Log.e(TAG, "Sequence counter changed while opening: $queue")
+                            return -1L
+                        }
+                        val storedSequence = readCounterValue(raf)
+                        val queueSequence = maxEventSequence(queue)
+                        val cursor = readCursorSequenceForSequenceFloor(queue)
+                        if (queueSequence == null) {
+                            Log.e(TAG, "Cannot determine sequence floor for $queue")
+                            return -1L
+                        }
+                        val cursorSequence = (cursor as? CursorSequenceRead.Value)?.sequence ?: 0L
+                        val queueHasEvents = hasEventFiles(queue)
+                        if (queueHasEvents == null) {
+                            Log.e(TAG, "Cannot inspect event queue while assigning sequence: $queue")
+                            return -1L
+                        }
+                        val baseSequence = when {
+                            storedSequence != null -> storedSequence
+                            !counterExisted && raf.length() == 0L &&
+                                    cursor == CursorSequenceRead.Absent && !queueHasEvents -> 0L
+                            canRecoverSequenceCounterFromQueue(
+                                queueSequence,
+                                queueHasEvents,
+                                cursor,
+                            ) -> {
+                                if (counterExisted) {
+                                    Log.w(TAG, "Recovering invalid sequence counter from current queue: $queue")
+                                }
+                                queueSequence
+                            }
+                            else -> {
+                                // Missing counters may be initialized from visible event history
+                                // only. A cursor beyond that history is ambiguous and must not be
+                                // promoted into a new trusted upper bound.
+                                Log.e(TAG, "Sequence counter is corrupt or its history is unknown: $queue")
+                                return -1L
+                            }
+                        }
+                        if (cursorSequence > maxOf(baseSequence, queueSequence)) {
+                            Log.e(TAG, "Refusing to issue sequence below persisted cursor: $queue")
+                            return -1L
+                        }
+                        val next = nextEventSequence(baseSequence, queueSequence)
+                        if (next <= 0L) {
+                            Log.e(TAG, "Sequence counter overflow for $queue")
+                            return -1L
+                        }
                         writeCounterValue(raf, next)
                         DataBus.makeWorldAccessible(counterFile, executable = false, writable = true)
                         if (writeEventFile(queue, eventDir, content, next)) {
@@ -66,20 +126,128 @@ internal object DataBusEventWriter {
         }
     }
 
-    private fun nextEventSequence(queue: String, raf: RandomAccessFile): Long {
-        val storedSeq = readCounterValue(raf)
-        val cursorSeq = parseEventSequence(DataBus.readCursor(queue)) ?: 0L
-        val queuedSeq = maxEventSequence(queue)
+    private fun nextEventSequence(
+        storedSeq: Long,
+        queuedSeq: Long,
+    ): Long {
         val processSeq = eventSeqCounter.incrementAndGet()
-        return maxOf(storedSeq + 1, cursorSeq + 1, queuedSeq + 1, processSeq)
+        val floor = maxOf(storedSeq, queuedSeq)
+        if (floor == Long.MAX_VALUE) return -1L
+        return maxOf(floor + 1L, processSeq)
     }
 
-    private fun readCounterValue(raf: RandomAccessFile): Long {
+    /**
+     * 读取计数器时区分“文件缺失”和“文件存在但不可读/损坏”。
+     *
+     * 共享文件锁与写端对同一稳定 inode 的独占锁配对，避免读到 truncate/write
+     * 中间态；@Synchronized 同时避免同一 JVM 内出现重叠 FileLock。
+     */
+    @Synchronized
+    fun readSequenceCounterDetailed(queue: String): SequenceCounterRead {
+        if (!DataBus.isValidEventQueue(queue)) return SequenceCounterRead.Unreadable
+        val counterDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_COUNTERS}").toPath()
+        val path = counterDir.resolve("$queue.seq")
+        val file = path.toFile()
+        return try {
+            val directoryAttributes = try {
+                Files.readAttributes(counterDir, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return SequenceCounterRead.Absent
+            }
+            if (!directoryAttributes.isDirectory) return SequenceCounterRead.Unreadable
+            val counterAttributes = try {
+                Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return SequenceCounterRead.Absent
+            }
+            if (!counterAttributes.isRegularFile) return SequenceCounterRead.Unreadable
+            RandomAccessFile(file, "r").use { raf ->
+                raf.channel.use { channel ->
+                    channel.lock(0L, Long.MAX_VALUE, true).use {
+                        if (!isRegularCounterFile(path)) {
+                            SequenceCounterRead.Unreadable
+                        } else {
+                            readCounterValue(raf)?.let(SequenceCounterRead::Value)
+                                ?: SequenceCounterRead.Unreadable
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read sequence counter: $queue", e)
+            SequenceCounterRead.Unreadable
+        }
+    }
+
+    /** 纯解析函数：损坏、空白、负数及溢出都不折算为 0。 */
+    internal fun parseSequenceCounterContent(content: String): Long? {
+        val normalized = content.trim()
+        if (normalized.isEmpty() || normalized.any { !it.isDigit() }) return null
+        return normalized.toLongOrNull()?.takeIf { it >= 0L }
+    }
+
+    /**
+     * 当前队列只能在确实覆盖已提交游标时作为损坏/缺失计数器的恢复依据。
+     * 游标缺失表示尚无提交状态；存在但不可读或高于队列顶部时均不能恢复。
+     */
+    internal fun canRecoverSequenceCounterFromQueue(
+        queueMaxSequence: Long?,
+        queueHasEvents: Boolean,
+        cursor: CursorSequenceRead,
+    ): Boolean {
+        if (!queueHasEvents || queueMaxSequence == null) return false
+        return when (cursor) {
+            CursorSequenceRead.Absent -> true
+            CursorSequenceRead.Unreadable -> false
+            is CursorSequenceRead.Value -> cursor.sequence <= queueMaxSequence
+        }
+    }
+
+    /** 游标文件名首段为定宽十进制序号；仅此序号用于水位比较。 */
+    internal fun parseEventSequence(name: String): Long? =
+        DataBusProtocol.EVENT_FILE_NAME_PATTERN.matchEntire(name)
+            ?.groupValues
+            ?.get(1)
+            ?.toLongOrNull()
+
+    /**
+     * 读取游标只为拒绝发号回退。缺失计数器的恢复必须由队列事件本身证明；
+     * 若游标高于现存事件，发号方会 fail-closed，不从该游标重建计数器。
+     */
+    private fun readCursorSequenceForSequenceFloor(queue: String): CursorSequenceRead {
+        val cursorDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_CURSORS}").toPath()
+        val path = cursorDir.resolve("$queue.cursor")
+        val file = path.toFile()
+        return try {
+            val directoryAttributes = try {
+                Files.readAttributes(cursorDir, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return CursorSequenceRead.Absent
+            }
+            if (!directoryAttributes.isDirectory) return CursorSequenceRead.Unreadable
+            val cursorAttributes = try {
+                Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return CursorSequenceRead.Absent
+            }
+            if (!cursorAttributes.isRegularFile) {
+                return CursorSequenceRead.Unreadable
+            }
+            val content = file.readText(Charsets.UTF_8).trim()
+            if (!DataBusPrune.isCredibleCursorContent(content)) return CursorSequenceRead.Unreadable
+            parseEventSequence(content)?.let(CursorSequenceRead::Value) ?: CursorSequenceRead.Unreadable
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read cursor for sequence floor: $queue", e)
+            CursorSequenceRead.Unreadable
+        }
+    }
+
+    private fun readCounterValue(raf: RandomAccessFile): Long? {
+        if (raf.length() <= 0L || raf.length() > 64L) return null
         raf.seek(0)
-        val content = ByteArray(raf.length().coerceAtMost(64L).toInt())
-        if (content.isEmpty()) return 0L
+        val content = ByteArray(raf.length().toInt())
         raf.readFully(content)
-        return content.toString(Charsets.UTF_8).trim().toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+        return parseSequenceCounterContent(content.toString(Charsets.UTF_8))
     }
 
     private fun writeCounterValue(raf: RandomAccessFile, value: Long) {
@@ -124,20 +292,46 @@ internal object DataBusEventWriter {
         }
     }
 
-    private fun maxEventSequence(queue: String): Long {
+    private fun maxEventSequence(queue: String): Long? {
         val eventDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_EVENTS}/$queue")
-        if (!eventDir.exists()) return 0L
-        return eventDir.listFiles()
-            ?.asSequence()
-            ?.filter { DataBus.isRegularFileNoFollow(it) && it.name.endsWith(".json") }
-            ?.mapNotNull { parseEventSequence(it.name) }
-            ?.maxOrNull()
-            ?: 0L
+        return try {
+            val attributes = try {
+                Files.readAttributes(eventDir.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return 0L
+            }
+            if (!attributes.isDirectory) return null
+            val entries = eventDir.listFiles() ?: return null
+            var maxSequence = 0L
+            for (entry in entries) {
+                if (!DataBusPrune.isEventFile(entry)) continue
+                val sequence = parseEventSequence(entry.name) ?: return null
+                maxSequence = maxOf(maxSequence, sequence)
+            }
+            maxSequence
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to inspect event sequence floor for $queue", e)
+            null
+        }
     }
 
-    private fun parseEventSequence(name: String): Long? =
-        DataBusProtocol.EVENT_FILE_NAME_PATTERN.matchEntire(name)
-            ?.groupValues
-            ?.get(1)
-            ?.toLongOrNull()
+    private fun hasEventFiles(queue: String): Boolean? {
+        val eventDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_EVENTS}/$queue")
+        return try {
+            val attributes = try {
+                Files.readAttributes(eventDir.toPath(), BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
+                return false
+            }
+            if (!attributes.isDirectory) return null
+            val entries = eventDir.listFiles() ?: return null
+            entries.any(DataBusPrune::isEventFile)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to inspect event queue for $queue", e)
+            null
+        }
+    }
+
+    private fun isRegularCounterFile(path: java.nio.file.Path): Boolean =
+        !Files.isSymbolicLink(path) && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
 }
