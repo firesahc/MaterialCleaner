@@ -18,10 +18,23 @@ internal object MountFailureRetryPolicy {
         "invalid_source",
         "invalid_target",
         "target_identity",
+        "target_gone",
         "namespace_transaction_timeout",
         "namespace_rollback_failed",
         "baseline_recovery_failed",
     )
+
+    private val expectedTargetDisappearanceStages = setOf(
+        "target_identity",
+        "target_gone",
+    )
+
+    /**
+     * 目标已消失或身份不再匹配是进程生命周期结果，不应记作挂载失败。
+     * 若 namespace 已脏则不能跳过安全处置，仍按污染路径 fail-closed。
+     */
+    fun isExpectedTargetDisappearance(stage: String, namespaceDirty: Boolean): Boolean =
+        !namespaceDirty && stage in expectedTargetDisappearanceStages
 
     /** 权限/不支持类 errno：重试无法改变结果。 */
     private val permanentErrnos = setOf(

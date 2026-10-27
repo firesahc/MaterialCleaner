@@ -1,5 +1,7 @@
 package me.gm.cleaner.runtime.server.vfs.mount
 
+import me.gm.cleaner.core.common.err.ErrorCodes
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -119,6 +121,47 @@ class MountFailureRetryPolicyTest {
         )
         assertFalse(disposition.retryable)
         assertFalse(disposition.forceStopTargetPackage)
+        assertTrue(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_identity", false))
+    }
+
+    @Test
+    fun `目标在等待zygote期间消失不计作挂载失败`() {
+        val disposition = MountFailureRetryPolicy.classify(
+            stage = "target_gone",
+            errno = 2, // ENOENT
+            namespaceDirty = false,
+            targetTerminated = false,
+        )
+
+        assertTrue(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_gone", false))
+        assertFalse(disposition.retryable)
+        assertFalse(disposition.forceStopTargetPackage)
+    }
+
+    @Test
+    fun `目标消失但namespace已脏仍执行安全处置`() {
+        assertFalse(MountFailureRetryPolicy.isExpectedTargetDisappearance("target_gone", true))
+        val disposition = MountFailureRetryPolicy.classify(
+            stage = "target_gone",
+            errno = 2,
+            namespaceDirty = true,
+            targetTerminated = false,
+        )
+
+        assertFalse(disposition.retryable)
+        assertTrue(disposition.forceStopTargetPackage)
+    }
+
+    @Test
+    fun `zygote等待超时和读取错误映射到不同错误码`() {
+        assertEquals(ErrorCodes.MOUNT_ZYGOTE_WAIT_TIMEOUT, mountErrorCodeForStage("wait_zygote"))
+        assertEquals(ErrorCodes.MOUNT_INTERNAL_FAILED, mountErrorCodeForStage("wait_zygote_error"))
+        assertTrue(
+            MountFailureRetryPolicy.classify("wait_zygote_error", 5, false, false).retryable,
+        )
+        assertFalse(
+            MountFailureRetryPolicy.classify("wait_zygote_error", 13, false, false).retryable,
+        )
     }
 
     @Test

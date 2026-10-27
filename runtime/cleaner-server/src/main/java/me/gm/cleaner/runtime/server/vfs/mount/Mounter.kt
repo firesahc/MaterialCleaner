@@ -41,7 +41,7 @@ class Mounter {
     /** mount 失败总次数（含重试耗尽），用于 collectStatus metrics */
     val failureCount: AtomicInteger = AtomicInteger(0)
     /**
-     * 身份门拒绝对次数：目标 pid 已死/被复用，fail-closed 拒绝挂载。
+     * 目标门拒绝次数：目标 pid 已消失/被复用，或身份已变化，拒绝挂载。
      * 门拒是安全机制正常工作，不是失败，单独计数，不进 failureCount、
      * mountFailedPids 与 lastMountFailure。
      */
@@ -157,17 +157,20 @@ class Mounter {
             mountRetryCount.remove(pid)
             return true
         }
-        if (result.stage == "target_identity") {
-            // 身份门拒绝：pid 已死或被复用，fail-closed 是正确行为；
-            // 已在重试策略端判定永久不可重试，此处只计数不告警，
+        if (MountFailureRetryPolicy.isExpectedTargetDisappearance(
+                result.stage,
+                result.namespaceDirty,
+            )) {
+            // 目标在等待期间退出或身份门拒绝：不是挂载故障，不应重试或强停；
+            // 脏 namespace 不走此分支，必须保留下方 fail-closed 安全处置。
             // 且不留任何失败痕迹（失败集合残留会让 VFS 永久 DEGRADED）。
             gateRefusalCount.incrementAndGet()
             mountFailedPids.remove(pid)
             mountRetryCount.remove(pid)
             Log.i(
                 "MC_REDIRECT",
-                "[Mounter] identity gate refused pkg=$packageName pid=$pid uid=$uid " +
-                    "detail=${result.reason}",
+                "[Mounter] target gate refused pkg=$packageName pid=$pid uid=$uid " +
+                    "stage=${result.stage} detail=${result.reason}",
             )
             return false
         }
@@ -255,7 +258,7 @@ class Mounter {
                 ErrorCodes.MOUNT_SAFETY_STOP
             result.namespaceDirty -> ErrorCodes.MOUNT_ROLLBACK_FAILED
             result.stage == "target_identity" -> ErrorCodes.MOUNT_IDENTITY_MISMATCH
-            else -> errorCodeForStage(result.stage)
+            else -> mountErrorCodeForStage(result.stage)
         }
         val event = ErrorEvent(
             code = code,
@@ -311,28 +314,6 @@ class Mounter {
             Log.w("MC_REDIRECT", "[Mounter] bypass skipped pkg=$packageName ${event.toCompactString()}")
         }
         ServerErrorJournal.record(event)
-    }
-
-    /** native 失败阶段到统一错误码的映射。 */
-    private fun errorCodeForStage(stage: String): String = when (stage) {
-        "invalid_args", "invalid_source", "invalid_target" -> ErrorCodes.MOUNT_ARGS_INVALID
-        "wait_zygote" -> ErrorCodes.MOUNT_ZYGOTE_WAIT_TIMEOUT
-        "setns" -> ErrorCodes.MOUNT_SETNS_FAILED
-        "target_identity" -> ErrorCodes.MOUNT_IDENTITY_MISMATCH
-        "unmount_storage", "baseline_recovery_failed" ->
-            ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
-        "remount_storage", "remount_storage_slave", "mount_storage_self",
-        "fuse_bypass_data_source", "fuse_bypass_obb_source",
-        "fuse_bypass_data_target", "fuse_bypass_obb_target",
-        -> ErrorCodes.MOUNT_BASELINE_REMOUNT_FAILED
-        "unmount_data_restriction_fuse", "unmount_data_restriction_storage" ->
-            ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
-        "mount_rule" -> ErrorCodes.MOUNT_RULE_FAILED
-        "conflicting_process_rules" -> ErrorCodes.MOUNT_SHARED_PROCESS_CONFLICT
-        "child_result_timeout", "namespace_transaction_timeout" ->
-            ErrorCodes.MOUNT_PROC_TIMEOUT
-        "namespace_rollback_failed" -> ErrorCodes.MOUNT_ROLLBACK_FAILED
-        else -> ErrorCodes.MOUNT_INTERNAL_FAILED
     }
 
     /**
@@ -713,7 +694,7 @@ class Mounter {
 
     /** 最近一次挂载失败对应的统一错误码；无失败时返回空串。 */
     fun getLastMountErrorCode(): String = synchronized(lock) {
-        lastMountFailure?.let { errorCodeForStage(it.stage) } ?: ""
+        lastMountFailure?.let { mountErrorCodeForStage(it.stage) } ?: ""
     }
 
     /**
@@ -792,4 +773,26 @@ class Mounter {
         /** 安全停止是否成功。 */
         val forceStopSucceeded: Boolean = false,
     )
+}
+
+/** native 失败阶段到统一错误码的映射。 */
+internal fun mountErrorCodeForStage(stage: String): String = when (stage) {
+    "invalid_args", "invalid_source", "invalid_target" -> ErrorCodes.MOUNT_ARGS_INVALID
+    "wait_zygote" -> ErrorCodes.MOUNT_ZYGOTE_WAIT_TIMEOUT
+    "setns" -> ErrorCodes.MOUNT_SETNS_FAILED
+    "target_identity" -> ErrorCodes.MOUNT_IDENTITY_MISMATCH
+    "unmount_storage", "baseline_recovery_failed" ->
+        ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
+    "remount_storage", "remount_storage_slave", "mount_storage_self",
+    "fuse_bypass_data_source", "fuse_bypass_obb_source",
+    "fuse_bypass_data_target", "fuse_bypass_obb_target",
+    -> ErrorCodes.MOUNT_BASELINE_REMOUNT_FAILED
+    "unmount_data_restriction_fuse", "unmount_data_restriction_storage" ->
+        ErrorCodes.MOUNT_BASELINE_UMOUNT_FAILED
+    "mount_rule" -> ErrorCodes.MOUNT_RULE_FAILED
+    "conflicting_process_rules" -> ErrorCodes.MOUNT_SHARED_PROCESS_CONFLICT
+    "child_result_timeout", "namespace_transaction_timeout" ->
+        ErrorCodes.MOUNT_PROC_TIMEOUT
+    "namespace_rollback_failed" -> ErrorCodes.MOUNT_ROLLBACK_FAILED
+    else -> ErrorCodes.MOUNT_INTERNAL_FAILED
 }

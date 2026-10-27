@@ -230,31 +230,87 @@ static void fail_child(int sock, const char *stage, int err, int index = -1,
     sys__exit(1);
 }
 
-/// wait for system mount
-static bool wait_zygote(int pid) {
-    const int sleep_time = 5 * 1000;
-    int slept_time = 0;
-    std::string path = StringPrintf("/proc/%d/attr/current"_iobfs.c_str(), pid);
-    if (access(path.c_str(), F_OK)) {
-        return false;
+/// zygote 等待结果：目标消失、真正超时和读取故障必须分别处理。
+enum class ZygoteWaitResult {
+    OK,
+    GONE,
+    TIMEOUT,
+    ERROR,
+};
+
+static bool is_target_gone_errno(int error) {
+    return error == ENOENT || error == ESRCH;
+}
+
+/// attr/current 的 ENOENT 可能只是该 proc 属性不可用；只有 PID 目录也消失才算目标退出。
+static ZygoteWaitResult classify_target_path_error(int pid, int error) {
+    if (!is_target_gone_errno(error)) {
+        return ZygoteWaitResult::ERROR;
     }
+    const std::string proc_path = StringPrintf("/proc/%d"_iobfs.c_str(), pid);
+    if (access(proc_path.c_str(), F_OK) == 0) {
+        return ZygoteWaitResult::ERROR;
+    }
+    return is_target_gone_errno(errno) ? ZygoteWaitResult::GONE
+                                       : ZygoteWaitResult::ERROR;
+}
+
+/// 等待目标离开 zygote context。失败原因通过 out_errno 返回。
+static ZygoteWaitResult wait_zygote(int pid, int *out_errno) {
+    if (out_errno == nullptr) {
+        return ZygoteWaitResult::ERROR;
+    }
+    *out_errno = 0;
+    if (pid <= 0) {
+        *out_errno = EINVAL;
+        return ZygoteWaitResult::ERROR;
+    }
+
+    const int sleep_time_us = 5 * 1000;
+    int slept_time_us = 0;
+    const std::string path = StringPrintf("/proc/%d/attr/current"_iobfs.c_str(), pid);
+    if (access(path.c_str(), F_OK) != 0) {
+        const int error = errno;
+        *out_errno = error;
+        return classify_target_path_error(pid, error);
+    }
+
     char nice_name[PATH_MAX];
     while (true) {
-        int fd = sys_open(path.c_str(), O_RDONLY, 0);
-        nice_name[sys_read(fd, nice_name, sizeof(nice_name) - 1)] = 0;
+        const int fd = TEMP_FAILURE_RETRY(sys_open(path.c_str(), O_RDONLY | O_CLOEXEC, 0));
+        if (fd < 0) {
+            const int error = errno;
+            *out_errno = error;
+            return classify_target_path_error(pid, error);
+        }
+
+        const ssize_t read_bytes = TEMP_FAILURE_RETRY(
+                sys_read(fd, nice_name, sizeof(nice_name) - 1));
+        const int read_errno = errno;
         sys_close(fd);
+
+        if (read_bytes < 0) {
+            *out_errno = read_errno;
+            return classify_target_path_error(pid, read_errno);
+        }
+        if (read_bytes == 0 || static_cast<size_t>(read_bytes) >= sizeof(nice_name)) {
+            *out_errno = EIO;
+            return ZygoteWaitResult::ERROR;
+        }
+        nice_name[read_bytes] = '\0';
+
         if (!strcmp("u:r:zygote:s0"_iobfs.c_str(), nice_name)) {
-            usleep(sleep_time);
-            slept_time += sleep_time;
-            if (slept_time > 5 * 1000 * 1000) {
-                // Waited more than 5s.
-                return false;
+            TEMP_FAILURE_RETRY(usleep(sleep_time_us));
+            slept_time_us += sleep_time_us;
+            if (slept_time_us > 5 * 1000 * 1000) {
+                *out_errno = ETIMEDOUT;
+                return ZygoteWaitResult::TIMEOUT;
             }
         } else {
 #ifdef DEBUG
-            // LOGE("wait %d for %dms"_iobfs.c_str(), pid, slept_time / 1000);
+            // LOGE("wait %d for %dms"_iobfs.c_str(), pid, slept_time_us / 1000);
 #endif
-            return true;
+            return ZygoteWaitResult::OK;
         }
     }
 }
@@ -523,9 +579,18 @@ namespace Mount {
             return make_mount_status(-1, "invalid_args", EINVAL, -1, nullptr, nullptr,
                                      MountPhase::PREPARE);
         }
-        if (!wait_zygote(pid)) {
-            return make_mount_status(-1, "wait_zygote", errno == 0 ? ETIMEDOUT : errno,
-                                     -1, nullptr, nullptr, MountPhase::PREPARE);
+        int wait_errno = 0;
+        const ZygoteWaitResult wait_result = wait_zygote(pid, &wait_errno);
+        if (wait_result != ZygoteWaitResult::OK) {
+            const char *stage = "wait_zygote_error";
+            if (wait_result == ZygoteWaitResult::GONE) {
+                stage = "target_gone";
+            } else if (wait_result == ZygoteWaitResult::TIMEOUT) {
+                stage = "wait_zygote";
+            }
+            const int error = wait_errno != 0 ? wait_errno : EIO;
+            return make_mount_status(-1, stage, error, -1, nullptr, nullptr,
+                                     MountPhase::PREPARE);
         }
         // 事务登记目标身份：starttime 在 PID 复用后必然变化，是全流程防误伤的锚点。
         unsigned long long target_start_time = 0;
