@@ -122,18 +122,34 @@ object HookPolicyCache {
         )
     }
 
-    private fun markBridgeUnavailable(
+    private fun markDataBusStateUnavailable(
         scope: String,
         reason: String,
         generation: Long,
-        markDomainFailure: (String) -> Unit = {},
     ) {
-        val detail = "DataBus callback unavailable for $scope: $reason"
-        markDomainFailure(detail)
+        val detail = "DataBus state unavailable for $scope: $reason"
+        val domain = when {
+            scope.startsWith("redirect_policy") -> NativeHookStatus.POLICY_DOMAIN_REDIRECT
+            scope.startsWith("read_only") -> NativeHookStatus.POLICY_DOMAIN_READ_ONLY
+            scope.startsWith("platform_capabilities") -> NativeHookStatus.POLICY_DOMAIN_CAPABILITIES
+            scope.startsWith("configured_mount_points") -> NativeHookStatus.POLICY_DOMAIN_MOUNT_READ
+            else -> "bridge"
+        }
+        when (domain) {
+            NativeHookStatus.POLICY_DOMAIN_REDIRECT ->
+                NativeHookStatus.markRedirectPolicyFailed("", detail)
+            NativeHookStatus.POLICY_DOMAIN_READ_ONLY ->
+                NativeHookStatus.markReadOnlyPolicyFailed("", detail)
+            NativeHookStatus.POLICY_DOMAIN_CAPABILITIES ->
+                NativeHookStatus.markCapabilitiesReadUnavailable(IllegalStateException(detail))
+            NativeHookStatus.POLICY_DOMAIN_MOUNT_READ ->
+                NativeHookStatus.markMountPointsReadUnavailable(IllegalStateException(detail))
+        }
         NativeHookStatus.markPolicyCacheFailed(
             ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
             detail,
             generation,
+            domain,
         )
     }
 
@@ -187,14 +203,14 @@ object HookPolicyCache {
                         )
                         NativeHookStatus.markPolicyCacheFailed(
                             ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                            "redirect_policy snapshot missing at init", 0L
+                            "redirect_policy snapshot missing at init", 0L,
+                            NativeHookStatus.POLICY_DOMAIN_REDIRECT,
                         )
                         SnapshotConsumeOutcome(succeeded = true, changed = false)
                     },
                     onPresent = { policyJson ->
                         try {
                             parseRedirectPolicy(policyJson)
-                            NativeHookStatus.markPolicyCacheHealthy(rule.generation)
                             Log.i(TAG, "initFromDataBus: loaded redirect_policy, generation=${rule.generation}, " +
                                     "packages=${rule.data.size}, users=${rule.data.values.sumOf { it.size }}")
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
@@ -208,6 +224,7 @@ object HookPolicyCache {
                                 ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
                                 describeThrowable(e),
                                 rule.generation,
+                                NativeHookStatus.POLICY_DOMAIN_REDIRECT,
                             )
                             SnapshotConsumeOutcome(succeeded = false)
                         }
@@ -216,9 +233,7 @@ object HookPolicyCache {
             },
         )
         policyOutcome.unavailableReason?.let { reason ->
-            markBridgeUnavailable("redirect_policy init", reason, rule.generation) {
-                NativeHookStatus.markRedirectPolicyFailed("", it)
-            }
+            markDataBusStateUnavailable("redirect_policy init", reason, rule.generation)
         }
         lastPolicySignalTimestamp = policyOutcome.acknowledgedTimestamp
 
@@ -238,14 +253,14 @@ object HookPolicyCache {
                         )
                         NativeHookStatus.markPolicyCacheFailed(
                             ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                            "read_only snapshot missing at init", 0L
+                            "read_only snapshot missing at init", 0L,
+                            NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
                         )
                         SnapshotConsumeOutcome(succeeded = true, changed = false)
                     },
                     onPresent = { roJson ->
                         try {
                             parseReadOnly(roJson)
-                            NativeHookStatus.markPolicyCacheHealthy(readOnly.generation)
                             Log.i(TAG, "initFromDataBus: loaded read_only, generation=${readOnly.generation}, " +
                                     "packages=${readOnly.data.size}")
                             SnapshotConsumeOutcome(succeeded = true, changed = true)
@@ -259,6 +274,7 @@ object HookPolicyCache {
                                 ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
                                 describeThrowable(e),
                                 readOnly.generation,
+                                NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
                             )
                             SnapshotConsumeOutcome(succeeded = false)
                         }
@@ -267,9 +283,7 @@ object HookPolicyCache {
             },
         )
         roOutcome.unavailableReason?.let { reason ->
-            markBridgeUnavailable("read_only init", reason, readOnly.generation) {
-                NativeHookStatus.markReadOnlyPolicyFailed("", it)
-            }
+            markDataBusStateUnavailable("read_only init", reason, readOnly.generation)
         }
         lastReadOnlySignalTimestamp = roOutcome.acknowledgedTimestamp
 
@@ -284,7 +298,7 @@ object HookPolicyCache {
             },
         )
         capsOutcome.unavailableReason?.let { reason ->
-            markBridgeUnavailable("platform_capabilities init", reason, capabilities.generation)
+            markDataBusStateUnavailable("platform_capabilities init", reason, capabilities.generation)
         }
         lastCapabilitiesSignalTimestamp = capsOutcome.acknowledgedTimestamp
 
@@ -299,7 +313,7 @@ object HookPolicyCache {
             },
         )
         mountOutcome.unavailableReason?.let { reason ->
-            markBridgeUnavailable("configured_mount_points init", reason, mountPoints.generation)
+            markDataBusStateUnavailable("configured_mount_points init", reason, mountPoints.generation)
         }
         lastMountSignalTimestamp = mountOutcome.acknowledgedTimestamp
     }
@@ -310,6 +324,11 @@ object HookPolicyCache {
      * 两者独立追踪，不混用。
      */
     fun isStale(): Boolean {
+        if (!NativeHookStatus.isRedirectPolicyFresh() ||
+            !NativeHookStatus.isReadOnlyPolicyFresh() ||
+            !NativeHookStatus.isCapabilitiesFresh() ||
+            !NativeHookStatus.isMountPointsFresh()
+        ) return true
         val signals = listOf(
             HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_READ_ONLY_CHANGED),
             HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_REDIRECT_POLICY_CHANGED),
@@ -341,7 +360,16 @@ object HookPolicyCache {
             val json = read.value
             if (json == null) {
                 Log.d(TAG, "loadPlatformCapabilities: no snapshot available")
-                SnapshotConsumeOutcome(succeeded = true, changed = false)
+                NativeHookStatus.markCapabilitiesReadUnavailable(
+                    IllegalStateException("platform_capabilities snapshot missing"),
+                )
+                NativeHookStatus.markPolicyCacheFailed(
+                    ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
+                    "platform_capabilities snapshot missing",
+                    capabilities.generation,
+                    NativeHookStatus.POLICY_DOMAIN_CAPABILITIES,
+                )
+                SnapshotConsumeOutcome(succeeded = false)
             } else try {
                 val root = JSONObject(json)
                 val generation = root.optLong("generation", 0L)
@@ -353,6 +381,9 @@ object HookPolicyCache {
                         current.publisherEpoch,
                         current.generation
                     )) {
+                    if (generation == current.generation && publisherEpoch == current.publisherEpoch) {
+                        NativeHookStatus.markCapabilitiesFresh(publisherEpoch, generation)
+                    }
                     SnapshotConsumeOutcome(succeeded = true, changed = false)
                 } else {
                     val next = CapabilitiesHolder(
@@ -365,7 +396,7 @@ object HookPolicyCache {
                         publisherEpoch = publisherEpoch,
                     )
                     capabilities = next
-                    NativeHookStatus.markPolicyCacheHealthy(next.generation)
+                    NativeHookStatus.markCapabilitiesFresh(next.publisherEpoch, next.generation)
                     Log.i(TAG, "loadPlatformCapabilities: sdk=${next.sdkVersionInt}, " +
                             "fuseBpf=${next.isFuseBpfEnabled}, fuse=${next.fuseAvailable}, " +
                             "fuseJniLoadMode=${next.fuseJniLoadMode}, " +
@@ -375,9 +406,11 @@ object HookPolicyCache {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "loadPlatformCapabilities: failed", e)
+                NativeHookStatus.markCapabilitiesReadUnavailable(e)
                 NativeHookStatus.markPolicyCacheFailed(
                     ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
-                    describeThrowable(e), capabilities.generation
+                    describeThrowable(e), capabilities.generation,
+                    NativeHookStatus.POLICY_DOMAIN_CAPABILITIES,
                 )
                 SnapshotConsumeOutcome(succeeded = false)
             }
@@ -403,13 +436,13 @@ object HookPolicyCache {
         // 吸收粗判与读取之间新到的 signal，防止新一代被误标已处理。
         val policyObserved = HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_REDIRECT_POLICY_CHANGED)
         when (policyObserved) {
-            is DataBusBridgeResult.Unavailable -> markBridgeUnavailable(
+            is DataBusBridgeResult.Unavailable -> markDataBusStateUnavailable(
                 "redirect_policy signal refresh", "${policyObserved.operation}:${policyObserved.reason}", rule.generation,
-            ) {
-                NativeHookStatus.markRedirectPolicyFailed("", it)
-            }
+            )
             is DataBusBridgeResult.Available -> {
-                if (policyObserved.value > lastPolicySignalTimestamp) {
+                if (policyObserved.value > lastPolicySignalTimestamp ||
+                    !NativeHookStatus.isRedirectPolicyFresh()
+                ) {
                     val policyResult = consumeAfterSignalCapture(
                         currentAcknowledgedTimestamp = lastPolicySignalTimestamp,
                         captureSignalTimestamp = {
@@ -429,7 +462,6 @@ object HookPolicyCache {
                                 onPresent = { policyJson ->
                                     try {
                                         parseRedirectPolicy(policyJson)
-                                        NativeHookStatus.markPolicyCacheHealthy(rule.generation)
                                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                                     } catch (e: Exception) {
                                         Log.e(TAG, "refreshChangedSnapshots: failed to parse redirect_policy", e)
@@ -441,6 +473,7 @@ object HookPolicyCache {
                                             ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
                                             describeThrowable(e),
                                             rule.generation,
+                                            NativeHookStatus.POLICY_DOMAIN_REDIRECT,
                                         )
                                         SnapshotConsumeOutcome(succeeded = false)
                                     }
@@ -449,9 +482,7 @@ object HookPolicyCache {
                         },
                     )
                     policyResult.unavailableReason?.let { reason ->
-                        markBridgeUnavailable("redirect_policy refresh", reason, rule.generation) {
-                            NativeHookStatus.markRedirectPolicyFailed("", it)
-                        }
+                        markDataBusStateUnavailable("redirect_policy refresh", reason, rule.generation)
                     }
                     lastPolicySignalTimestamp = policyResult.acknowledgedTimestamp
                 }
@@ -460,13 +491,13 @@ object HookPolicyCache {
 
         val roObserved = HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_READ_ONLY_CHANGED)
         when (roObserved) {
-            is DataBusBridgeResult.Unavailable -> markBridgeUnavailable(
+            is DataBusBridgeResult.Unavailable -> markDataBusStateUnavailable(
                 "read_only signal refresh", "${roObserved.operation}:${roObserved.reason}", readOnly.generation,
-            ) {
-                NativeHookStatus.markReadOnlyPolicyFailed("", it)
-            }
+            )
             is DataBusBridgeResult.Available -> {
-                if (roObserved.value > lastReadOnlySignalTimestamp) {
+                if (roObserved.value > lastReadOnlySignalTimestamp ||
+                    !NativeHookStatus.isReadOnlyPolicyFresh()
+                ) {
                     val roResult = consumeAfterSignalCapture(
                         currentAcknowledgedTimestamp = lastReadOnlySignalTimestamp,
                         captureSignalTimestamp = {
@@ -484,7 +515,6 @@ object HookPolicyCache {
                                 onPresent = { roJson ->
                                     try {
                                         parseReadOnly(roJson)
-                                        NativeHookStatus.markPolicyCacheHealthy(readOnly.generation)
                                         SnapshotConsumeOutcome(succeeded = true, changed = true)
                                     } catch (e: Exception) {
                                         Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
@@ -496,6 +526,7 @@ object HookPolicyCache {
                                             ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
                                             describeThrowable(e),
                                             readOnly.generation,
+                                            NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
                                         )
                                         SnapshotConsumeOutcome(succeeded = false)
                                     }
@@ -504,9 +535,7 @@ object HookPolicyCache {
                         },
                     )
                     roResult.unavailableReason?.let { reason ->
-                        markBridgeUnavailable("read_only refresh", reason, readOnly.generation) {
-                            NativeHookStatus.markReadOnlyPolicyFailed("", it)
-                        }
+                        markDataBusStateUnavailable("read_only refresh", reason, readOnly.generation)
                     }
                     lastReadOnlySignalTimestamp = roResult.acknowledgedTimestamp
                 }
@@ -517,13 +546,15 @@ object HookPolicyCache {
         val capsObserved = HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
         var forceMountRefresh = false
         when (capsObserved) {
-            is DataBusBridgeResult.Unavailable -> markBridgeUnavailable(
+            is DataBusBridgeResult.Unavailable -> markDataBusStateUnavailable(
                 "platform_capabilities signal refresh",
                 "${capsObserved.operation}:${capsObserved.reason}",
                 capabilities.generation,
             )
             is DataBusBridgeResult.Available -> {
-                if (capsObserved.value > lastCapabilitiesSignalTimestamp) {
+                if (capsObserved.value > lastCapabilitiesSignalTimestamp ||
+                    !NativeHookStatus.isCapabilitiesFresh()
+                ) {
                     val capsResult = consumeAfterSignalCapture(
                         currentAcknowledgedTimestamp = lastCapabilitiesSignalTimestamp,
                         captureSignalTimestamp = {
@@ -536,7 +567,7 @@ object HookPolicyCache {
                         },
                     )
                     capsResult.unavailableReason?.let { reason ->
-                        markBridgeUnavailable("platform_capabilities refresh", reason, capabilities.generation)
+                        markDataBusStateUnavailable("platform_capabilities refresh", reason, capabilities.generation)
                     }
                     lastCapabilitiesSignalTimestamp = capsResult.acknowledgedTimestamp
                     forceMountRefresh = capsResult.changed
@@ -558,21 +589,16 @@ object HookPolicyCache {
         )
         when (mountSignalTime) {
             is DataBusBridgeResult.Unavailable -> {
-                markBridgeUnavailable(
+                markDataBusStateUnavailable(
                     "configured_mount_points signal refresh",
                     "${mountSignalTime.operation}:${mountSignalTime.reason}",
                     mountPoints.generation,
                 )
-                NativeHookStatus.markMountPointsApplyFailed(
-                    mountPoints.generation,
-                    0,
-                    mountPoints.revision,
-                    IllegalStateException("DataBus callback unavailable for mount signal"),
-                )
                 return
             }
             is DataBusBridgeResult.Available -> if (
-                !force && mountSignalTime.value <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0
+                !force && NativeHookStatus.isMountPointsFresh() &&
+                        mountSignalTime.value <= lastMountSignalTimestamp && lastMountSignalTimestamp > 0
             ) {
                 return  // signal 未变更
             }
@@ -587,13 +613,7 @@ object HookPolicyCache {
             },
         )
         mountResult.unavailableReason?.let { reason ->
-            markBridgeUnavailable("configured_mount_points refresh", reason, mountPoints.generation)
-            NativeHookStatus.markMountPointsApplyFailed(
-                mountPoints.generation,
-                0,
-                mountPoints.revision,
-                IllegalStateException("DataBus callback unavailable for mount snapshot"),
-            )
+            markDataBusStateUnavailable("configured_mount_points refresh", reason, mountPoints.generation)
         }
         lastMountSignalTimestamp = mountResult.acknowledgedTimestamp
     }
@@ -617,16 +637,28 @@ object HookPolicyCache {
             )
             is DataBusBridgeResult.Available -> read.value ?: run {
                 Log.d(TAG, "loadConfiguredMountPoints: no snapshot available")
-                return SnapshotConsumeOutcome(succeeded = false)
+                return SnapshotConsumeOutcome(
+                    succeeded = false,
+                    unavailableReason = "configured_mount_points_snapshot_missing",
+                )
             }
         }
 
+        var nativeApplyAttempted = false
         try {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0L)
             val publisherEpoch = root.optString("publisherEpoch", "")
+            val revision = root.optString("redirectRevision", "")
             val current = mountPoints
-            if (!force && !shouldAcceptSnapshot(
+            val sameIdentity = publisherEpoch == current.publisherEpoch &&
+                    generation == current.generation && revision == current.revision
+            if (!force && sameIdentity && NativeHookStatus.markMountPointsFreshIfApplied(
+                    publisherEpoch, generation, revision,
+                )) {
+                return SnapshotConsumeOutcome(succeeded = true, changed = false)
+            }
+            if (!force && !sameIdentity && !shouldAcceptSnapshot(
                     publisherEpoch,
                     generation,
                     current.publisherEpoch,
@@ -638,24 +670,26 @@ object HookPolicyCache {
                         "currentGeneration=${current.generation})")
                 return SnapshotConsumeOutcome(succeeded = true, changed = false)
             }
-
             val pointsArr = root.optJSONArray("points")
-            if (pointsArr == null || pointsArr.length() == 0) {
+                ?: throw IllegalArgumentException("configured_mount_points.points is missing or invalid")
+            val points = Array(pointsArr.length()) { pointsArr.getString(it) }
+
+            // 只有完整解析出 points 后才确认 snapshot freshness；非法正文不能被解释成空策略。
+            NativeHookStatus.markMountPointsSnapshotFresh(publisherEpoch, generation, revision)
+            if (points.isEmpty()) {
                 Log.i(TAG, "loadConfiguredMountPoints: empty points, clearing native mountPoint, generation=$generation")
                 // 空数组必须显式推送到 native，用于清除残留 mountPoint。
-                val revision = root.optString("redirectRevision", "")
+                nativeApplyAttempted = true
                 FuseNativePolicyAdapter.applyConfiguredMountPoints(emptyArray(), generation, revision, publisherEpoch)
                 mountPoints = MountPointsHolder(
                     generation = generation,
                     publisherEpoch = publisherEpoch,
                     revision = revision,
                 )
-                NativeHookStatus.markPolicyCacheHealthy(mountPoints.generation)
                 return SnapshotConsumeOutcome(succeeded = true, changed = true)
             }
 
-            val points = Array(pointsArr.length()) { pointsArr.getString(it) }
-            val revision = root.optString("redirectRevision", "")
+            nativeApplyAttempted = true
             FuseNativePolicyAdapter.applyConfiguredMountPoints(points, generation, revision, publisherEpoch)
             mountPoints = MountPointsHolder(
                 generation = generation,
@@ -665,19 +699,17 @@ object HookPolicyCache {
 
             Log.i(TAG, "loadConfiguredMountPoints: pushed ${points.size} points to native, " +
                     "epoch=$publisherEpoch, generation=$generation")
-            NativeHookStatus.markPolicyCacheHealthy(mountPoints.generation)
             return SnapshotConsumeOutcome(succeeded = true, changed = true)
         } catch (e: Throwable) {
             Log.e(TAG, "loadConfiguredMountPoints: failed", e)
-            NativeHookStatus.markMountPointsApplyFailed(
-                extractSnapshotGeneration(json),
-                0,
-                extractSnapshotRevision(json, "redirectRevision"),
-                e,
-            )
+            if (!nativeApplyAttempted) NativeHookStatus.markMountPointsReadUnavailable(e)
             NativeHookStatus.markPolicyCacheFailed(
-                ErrorCodes.HOOK_JAVA_CACHE_COMMIT_NATIVE_FAILED,
-                describeThrowable(e), mountPoints.generation
+                if (nativeApplyAttempted) ErrorCodes.HOOK_JAVA_CACHE_COMMIT_NATIVE_FAILED
+                else ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
+                describeThrowable(e),
+                extractSnapshotGeneration(json),
+                if (nativeApplyAttempted) NativeHookStatus.POLICY_DOMAIN_MOUNT_APPLY
+                else NativeHookStatus.POLICY_DOMAIN_MOUNT_READ,
             )
             return SnapshotConsumeOutcome(succeeded = false)
         }
@@ -750,7 +782,16 @@ object HookPolicyCache {
         val publisherEpoch = root.optString("publisherEpoch", "")
         val revision = root.optString("redirectRevision", "")
         val current = rule
-        if (!shouldAcceptSnapshot(publisherEpoch, generation, current.publisherEpoch, current.generation)) {
+        val sameIdentity = publisherEpoch == current.publisherEpoch &&
+                generation == current.generation && revision == current.revision
+        if (sameIdentity && NativeHookStatus.markRedirectPolicyFreshIfApplied(
+                publisherEpoch, generation, revision,
+            )) {
+            return
+        }
+        if (!sameIdentity && !shouldAcceptSnapshot(
+                publisherEpoch, generation, current.publisherEpoch, current.generation,
+            )) {
             Log.d(TAG, "parseRedirectPolicy: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
                     "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
@@ -813,7 +854,9 @@ object HookPolicyCache {
             publisherEpoch = publisherEpoch,
             revision = revision,
         )
-        NativeHookStatus.markRedirectPolicyApplied(revision, generation, newCache.isNotEmpty())
+        NativeHookStatus.markRedirectPolicyApplied(
+            revision, generation, newCache.isNotEmpty(), publisherEpoch,
+        )
 
         // 解析偏好标记；native 侧应用由挂载点全量刷新（commitPolicy）统一原子完成。
         // 偏好独立 holder 发布，与 rule 域同代演进；解析见 PolicyPreferencesParser。
@@ -826,7 +869,16 @@ object HookPolicyCache {
         val publisherEpoch = root.optString("publisherEpoch", "")
         val revision = root.optString("readOnlyRevision", "")
         val current = readOnly
-        if (!shouldAcceptSnapshot(publisherEpoch, generation, current.publisherEpoch, current.generation)) {
+        val sameIdentity = publisherEpoch == current.publisherEpoch &&
+                generation == current.generation && revision == current.revision
+        if (sameIdentity && NativeHookStatus.markReadOnlyPolicyFreshIfApplied(
+                publisherEpoch, generation, revision,
+            )) {
+            return
+        }
+        if (!sameIdentity && !shouldAcceptSnapshot(
+                publisherEpoch, generation, current.publisherEpoch, current.generation,
+            )) {
             Log.d(TAG, "parseReadOnly: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
                     "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
@@ -854,7 +906,9 @@ object HookPolicyCache {
             publisherEpoch = publisherEpoch,
             revision = revision,
         )
-        NativeHookStatus.markReadOnlyPolicyApplied(revision, generation, newCache.isNotEmpty())
+        NativeHookStatus.markReadOnlyPolicyApplied(
+            revision, generation, newCache.isNotEmpty(), publisherEpoch,
+        )
     }
 
     /** 供 markPolicyCacheFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */

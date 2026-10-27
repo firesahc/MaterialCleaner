@@ -35,6 +35,18 @@ class NativeSyncPolicyTest {
     }
 
     @Test
+    fun `Bridge读取故障时即使保留旧成功应用也不得判SYNCED`() {
+        val input = base().copy(snapshotFreshnessState = "STALE")
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `旧状态缺少freshness证据时不得判SYNCED`() {
+        val input = base().copy(snapshotFreshnessState = "UNKNOWN")
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
     fun `旧epoch generation更大也不得判SYNCED`() {
         // 最初的事故：旧 epoch 下 nativeGen=12 > 新 snapshotGen=7，但 Native 持有旧配置。
         // 关键断言是“不得 SYNCED”；此处存在针对当前配置的执行中 attempt，故判收敛中。

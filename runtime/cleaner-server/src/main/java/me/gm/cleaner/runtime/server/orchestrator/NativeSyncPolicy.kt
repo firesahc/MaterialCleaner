@@ -47,6 +47,8 @@ internal object NativeSyncPolicy {
         /** hook 侧 applicationState：APPLYING / APPLIED / STALE / UNSUPPORTED / PENDING / NO_RULE。 */
         val applicationState: String,
         val now: Long,
+        /** configured_mount_points 快照读取 freshness；未知或过期时不能判 SYNCED。 */
+        val snapshotFreshnessState: String = "CURRENT",
     )
 
     fun evaluate(i: Input): Verdict {
@@ -55,6 +57,9 @@ internal object NativeSyncPolicy {
         // 因此该组合本不可达；此处仍按终态优先排序，使策略对任意输入总计。
         if (i.applicationState == "UNSUPPORTED") {
             return Verdict.UNSUPPORTED
+        }
+        if (i.snapshotFreshnessState != "CURRENT") {
+            return Verdict.STALE
         }
         val epochConsistent = i.snapshotEpoch.isBlank() ||
                 i.appliedEpoch == i.snapshotEpoch
