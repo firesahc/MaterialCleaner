@@ -32,20 +32,23 @@ internal data class FuseJavaGateCoverageSummary(
     val unknownMethods: List<String> = emptyList(),
     val uidSkippedMethods: List<String> = emptyList(),
     val failedMethods: List<String> = emptyList(),
+    val applicableCriticalMethods: Set<String> = emptySet(),
 ) {
     val hookedMethodNames: Set<String> get() = hookedMethods.methodNames()
+
     val coverageState: LayerState
         get() = when {
             !scanComplete -> LayerState.RECOVERING
             criticalUncoveredMethods.isNotEmpty() -> LayerState.DEGRADED
             else -> LayerState.HEALTHY
         }
+    /** 仅判定“设备上实际适用但未 hooked”的关键方法为缺口。 */
     val criticalMissingMethods: List<String>
-        get() = CRITICAL_METHODS.filterNot(hookedMethodNames::contains)
+        get() = applicableCriticalMethods.filter { m -> m !in hookedMethodNames }
     val criticalUidSkippedMethods: List<String>
-        get() = uidSkippedMethods.filter { it.methodName() in CRITICAL_METHODS }
+        get() = uidSkippedMethods.filter { it.methodName() in applicableCriticalMethods }
     val criticalFailedMethods: List<String>
-        get() = failedMethods.filter { it.methodName() in CRITICAL_METHODS }
+        get() = failedMethods.filter { it.methodName() in applicableCriticalMethods }
     val criticalUncoveredMethods: List<String>
         get() = (criticalMissingMethods +
                 criticalUidSkippedMethods.map { it.methodName() } +
@@ -56,7 +59,7 @@ internal data class FuseJavaGateCoverageSummary(
         get() = (hookedMethods + unknownMethods + uidSkippedMethods + failedMethods)
             .map { it.methodName() }
             .filter { method ->
-                method !in CRITICAL_METHODS &&
+                method !in applicableCriticalMethods &&
                         (method.contains("lookup", ignoreCase = true) ||
                                 method.contains("open", ignoreCase = true))
             }
@@ -67,15 +70,6 @@ internal data class FuseJavaGateCoverageSummary(
         get() = auxiliaryLookupOpenMethods.filterNot(hookedMethodNames::contains)
 
     companion object {
-        val CRITICAL_METHODS = listOf(
-            "openWithFuse",
-            "renameForFuse",
-            "isDirAccessAllowedForFuse",
-            "isDirectoryCreationOrDeletionAllowedForFuse",
-            "insertFileIfNecessaryForFuse",
-            "deleteFileForFuse",
-        )
-
         val UNKNOWN = FuseJavaGateCoverageSummary()
     }
 }
@@ -361,6 +355,11 @@ object NativeHookLayerReporter {
                 unknownMethods = fuseJavaGate?.optJSONArray("unknownMethods").toStringList(),
                 uidSkippedMethods = fuseJavaGate?.optJSONArray("uidSkippedMethods").toStringList(),
                 failedMethods = fuseJavaGate?.optJSONArray("failedMethods").toStringList(),
+                applicableCriticalMethods = fuseJavaGate
+                    ?.optJSONArray("applicableCriticalMethods")
+                    ?.toStringList()
+                    ?.toSet()
+                    ?: emptySet(),
             )
             NativeHookRuntimeStatus(
                 createdAt = root.optLong("createdAt", 0L),

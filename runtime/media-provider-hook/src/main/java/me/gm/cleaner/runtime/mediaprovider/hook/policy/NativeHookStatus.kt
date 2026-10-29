@@ -58,6 +58,35 @@ object NativeHookStatus {
     private const val READ_ONLY_EXECUTOR = "MEDIA_PROVIDER_JAVA_HOOK"
     private const val MOUNT_POINTS_EXECUTOR = "FUSE_NATIVE_HOOK"
 
+    /**
+     * 可能的关键 FUSE Java 方法候选清单。并非所有设备都必备，
+     * 最终适用集合由运行时扫描结果与本清单取交集决定。
+     */
+    internal val CANDIDATE_CRITICAL_METHODS: Set<String> = setOf(
+        "openWithFuse",
+        "renameForFuse",
+        "isDirAccessAllowedForFuse",
+        "isDirectoryCreationOrDeletionAllowedForFuse",
+        "insertFileIfNecessaryForFuse",
+        "deleteFileForFuse",
+    )
+
+    /**
+     * 基于 FuseJavaGate 运行时扫描结果，计算当前设备实际适用的关键方法集合。
+     * 仅当方法出现在设备扫描到的四类方法（hooked/unknown/uidSkipped/failed）中时，
+     * 才认为该方法在当前设备上存在并应参与覆盖判定；设备上根本不存在的方法不列入。
+     */
+    internal fun applicableCriticalMethods(
+        hookedMethods: List<String>,
+        unknownMethods: List<String>,
+        uidSkippedMethods: List<String>,
+        failedMethods: List<String>,
+    ): Set<String> {
+        val discovered = (hookedMethods + unknownMethods + uidSkippedMethods + failedMethods)
+            .map { it.trim().substringBefore(' ').substringBefore('(') }.toSet()
+        return CANDIDATE_CRITICAL_METHODS.intersect(discovered)
+    }
+
     @Volatile
     private var mediaProviderHookLoaded = false
     @Volatile
@@ -729,6 +758,9 @@ object NativeHookStatus {
             uidSkippedMethods = uidSkippedMethods,
             failedMethods = failedMethods,
             scanComplete = scanComplete,
+            applicableCriticalMethods = applicableCriticalMethods(
+                hookedMethods, unknownMethods, uidSkippedMethods, failedMethods,
+            ),
         )
         publishSnapshot()
     }
@@ -1043,6 +1075,7 @@ object NativeHookStatus {
         val uidSkippedMethods: List<String> = emptyList(),
         val failedMethods: List<String> = emptyList(),
         val scanComplete: Boolean = false,
+        val applicableCriticalMethods: Set<String> = emptySet(),
     ) {
         fun toJson(): JSONObject = JSONObject().apply {
             put("scanComplete", scanComplete)
@@ -1056,6 +1089,7 @@ object NativeHookStatus {
             put("unknownMethods", JSONArray(unknownMethods))
             put("uidSkippedMethods", JSONArray(uidSkippedMethods))
             put("failedMethods", JSONArray(failedMethods))
+            put("applicableCriticalMethods", JSONArray(applicableCriticalMethods.toList()))
         }
     }
 }

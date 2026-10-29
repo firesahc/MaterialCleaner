@@ -1,6 +1,7 @@
 package me.gm.cleaner.runtime.server.orchestrator
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +27,7 @@ class MediaProviderHookHealthPolicyTest {
         scanComplete = true,
         discoveredCount = criticalMethods.size,
         hookedMethods = criticalMethods.map { "$it [java.lang.String]" },
+        applicableCriticalMethods = criticalMethods.toSet(),
     )
 
     @Test
@@ -143,6 +145,35 @@ class MediaProviderHookHealthPolicyTest {
                 recoveryInProgress = false,
                 coverage = completeCoverage(),
                 freshness = unknownCapabilities,
+            ),
+        )
+    }
+
+    @Test
+    fun `设备未发现的关键方法不判缺口`() {
+        // 模拟设备 MediaProvider 类中不存在 isDirectoryCreationOrDeletionAllowedForFuse：
+        // 它不在适用关键方法集合中，因此不应被判为覆盖缺口。
+        val applicable = criticalMethods
+            .filter { it != "isDirectoryCreationOrDeletionAllowedForFuse" }
+            .toSet()
+        val coverage = completeCoverage().copy(
+            hookedMethods = applicable.map { "$it [java.lang.String]" },
+            applicableCriticalMethods = applicable,
+        )
+
+        assertFalse(
+            coverage.applicableCriticalMethods.contains("isDirectoryCreationOrDeletionAllowedForFuse"),
+        )
+        assertFalse(
+            coverage.criticalMissingMethods.contains("isDirectoryCreationOrDeletionAllowedForFuse"),
+        )
+        assertEquals(
+            LayerState.HEALTHY,
+            MediaProviderHookHealthPolicy.evaluate(
+                mediaProviderHookConnected = true,
+                recoveryInProgress = false,
+                coverage = coverage,
+                freshness = currentFreshness,
             ),
         )
     }
