@@ -36,13 +36,14 @@ object HookPolicyCache {
     private const val TAG = "HookPolicyCache"
 
     // ── 按域分组的 copy-on-write holder：每个域独立演进 generation/epoch ──
-    private data class ReadOnlyHolder(
-        val data: Map<String, Set<String>> = emptyMap(),
-        val generation: Long = 0L,
-        val publisherEpoch: String = "",
-        val revision: String = "",
-    )
+    // PlatformCapabilities 域已委托给 CapabilitiesCache
 
+    // ── ReadOnly 域（委托给 ReadOnlyPolicyCache，水位由本类维护） ──
+    private val readOnlyPolicyCache = ReadOnlyPolicyCache()
+    @Volatile
+    private var lastReadOnlySignalTimestamp: Long = 0L
+
+    // ── Rule 域（含 denylist） ──
     private data class RuleHolder(
         val data: Map<String, Map<Int, List<RedirectRule>>> = emptyMap(),
         val denylist: Set<String> = emptySet(),
@@ -51,64 +52,43 @@ object HookPolicyCache {
         val revision: String = "",
     )
 
+    @Volatile
+    private var rule: RuleHolder = RuleHolder()
+    @Volatile
+    private var lastPolicySignalTimestamp: Long = 0L
+
+    // ── ConfiguredMountPoints 域（数据体在 native，本地只保留版本水位） ──
     private data class MountPointsHolder(
         val generation: Long = 0L,
         val publisherEpoch: String = "",
         val revision: String = "",
     )
 
-    private data class CapabilitiesHolder(
-        val sdkVersionInt: Int = 0,
-        val isFuseBpfEnabled: Boolean = false,
-        val fuseAvailable: Boolean = false,
-        val fuseJniLoadMode: String = "UNKNOWN",
-        val supportedNativeHookMode: String = "NONE",
-        val generation: Long = 0L,
-        val publisherEpoch: String = "",
-    )
-
-    // ── ReadOnly 域 ──
-    @Volatile
-    private var readOnly: ReadOnlyHolder = ReadOnlyHolder()
-    @Volatile
-    private var lastReadOnlySignalTimestamp: Long = 0L
-
-    // ── Rule 域（含 denylist） ──
-    @Volatile
-    private var rule: RuleHolder = RuleHolder()
-    @Volatile
-    private var lastPolicySignalTimestamp: Long = 0L
-
-    // ── Configured Mount Points 域（数据体在 native，本地只保留版本水位） ──
     @Volatile
     private var mountPoints: MountPointsHolder = MountPointsHolder()
     @Volatile
     private var lastMountSignalTimestamp: Long = 0L
-
-    /** 已推送到 native 的 configured_mount_points generation（用于诊断） */
-    val nativeMountPointsGeneration: Long get() = mountPoints.generation
 
     val redirectPolicyGeneration: Long get() = rule.generation
 
     fun getNativeHookStatusJson(): String =
         NativeHookStatus.toJson()
 
-    // ── PlatformCapabilities 域 ──
-    @Volatile
-    private var capabilities: CapabilitiesHolder = CapabilitiesHolder()
+    // ── PlatformCapabilities 域（委托给 CapabilitiesCache） ──
+    internal val capabilitiesCache = CapabilitiesCache()
     @Volatile
     private var lastCapabilitiesSignalTimestamp: Long = 0L
 
     /** 缓存的 FUSE BPF 状态，供 MediaProvider Hook 使用 */
-    val isFuseBpfEnabledFromCache: Boolean get() = capabilities.isFuseBpfEnabled
+    val isFuseBpfEnabledFromCache: Boolean get() = capabilitiesCache.isFuseBpfEnabled
     /** 缓存的 FUSE 可用性，供 MediaProvider Hook 使用 */
-    val fuseAvailableFromCache: Boolean get() = capabilities.fuseAvailable
+    val fuseAvailableFromCache: Boolean get() = capabilitiesCache.fuseAvailable
     /** 是否已经成功加载 platform_capabilities 快照 */
-    val platformCapabilitiesLoaded: Boolean get() = capabilities.generation > 0
+    val platformCapabilitiesLoaded: Boolean get() = capabilitiesCache.platformCapabilitiesLoaded
     /** 缓存的 SDK 版本，仅用于诊断日志 */
-    val sdkVersionIntFromCache: Int get() = capabilities.sdkVersionInt
-    val fuseJniLoadModeFromCache: String get() = capabilities.fuseJniLoadMode
-    val supportedNativeHookModeFromCache: String get() = capabilities.supportedNativeHookMode
+    val sdkVersionIntFromCache: Int get() = capabilitiesCache.sdkVersionInt
+    val fuseJniLoadModeFromCache: String get() = capabilitiesCache.fuseJniLoadMode
+    val supportedNativeHookModeFromCache: String get() = capabilitiesCache.supportedNativeHookMode
 
     private inline fun consumeSnapshot(
         name: String,
@@ -237,53 +217,11 @@ object HookPolicyCache {
         }
         lastPolicySignalTimestamp = policyOutcome.acknowledgedTimestamp
 
-        // 读取 read_only.json
-        val roOutcome = consumeAfterSignalCapture(
-            currentAcknowledgedTimestamp = lastReadOnlySignalTimestamp,
-            captureSignalTimestamp = {
-                HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_READ_ONLY_CHANGED)
-            },
-            consumeSnapshot = {
-                consumeSnapshot(
-                    DataBusProtocol.SNAPSHOT_READ_ONLY,
-                    onMissing = {
-                        Log.w(TAG, "initFromDataBus: no read_only snapshot available")
-                        NativeHookStatus.markReadOnlyPolicyFailed(
-                            "", "read_only snapshot missing at init"
-                        )
-                        NativeHookStatus.markPolicyCacheFailed(
-                            ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                            "read_only snapshot missing at init", 0L,
-                            NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
-                        )
-                        SnapshotConsumeOutcome(succeeded = true, changed = false)
-                    },
-                    onPresent = { roJson ->
-                        try {
-                            parseReadOnly(roJson)
-                            Log.i(TAG, "initFromDataBus: loaded read_only, generation=${readOnly.generation}, " +
-                                    "packages=${readOnly.data.size}")
-                            SnapshotConsumeOutcome(succeeded = true, changed = true)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "initFromDataBus: failed to parse read_only", e)
-                            NativeHookStatus.markReadOnlyPolicyFailed(
-                                extractSnapshotRevision(roJson, "readOnlyRevision"),
-                                describeThrowable(e),
-                            )
-                            NativeHookStatus.markPolicyCacheFailed(
-                                ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
-                                describeThrowable(e),
-                                readOnly.generation,
-                                NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
-                            )
-                            SnapshotConsumeOutcome(succeeded = false)
-                        }
-                    },
-                )
-            },
-        )
+        // 读取 read_only.json：游标协议在域内（读取前捕获水位，成功才推进），
+        // 水位由本类自持，域仅回传消费结果。
+        val roOutcome = readOnlyPolicyCache.consumeFromDataBus(lastReadOnlySignalTimestamp)
         roOutcome.unavailableReason?.let { reason ->
-            markDataBusStateUnavailable("read_only init", reason, readOnly.generation)
+            markDataBusStateUnavailable("read_only init", reason, readOnlyPolicyCache.generation)
         }
         lastReadOnlySignalTimestamp = roOutcome.acknowledgedTimestamp
 
@@ -294,11 +232,11 @@ object HookPolicyCache {
                 HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_PLATFORM_CAPABILITIES_CHANGED)
             },
             consumeSnapshot = {
-                loadPlatformCapabilities()
+                capabilitiesCache.loadPlatformCapabilities()
             },
         )
         capsOutcome.unavailableReason?.let { reason ->
-            markDataBusStateUnavailable("platform_capabilities init", reason, capabilities.generation)
+            markDataBusStateUnavailable("platform_capabilities init", reason, capabilitiesCache.generation)
         }
         lastCapabilitiesSignalTimestamp = capsOutcome.acknowledgedTimestamp
 
@@ -346,76 +284,6 @@ object HookPolicyCache {
 
     // ═══════════════════════════════════════════════════════════
     // PlatformCapabilities
-    // ═══════════════════════════════════════════════════════════
-
-    /** 从 DataBus 加载 platform_capabilities.json 并缓存关键能力字段。 */
-    private fun loadPlatformCapabilities(): SnapshotConsumeOutcome = when (
-        val read = HookDataBusBridge.readSnapshot(DataBusProtocol.SNAPSHOT_PLATFORM_CAPABILITIES)
-    ) {
-        is DataBusBridgeResult.Unavailable -> SnapshotConsumeOutcome(
-            succeeded = false,
-            unavailableReason = "${read.operation}:${read.reason}",
-        )
-        is DataBusBridgeResult.Available -> {
-            val json = read.value
-            if (json == null) {
-                Log.d(TAG, "loadPlatformCapabilities: no snapshot available")
-                NativeHookStatus.markCapabilitiesReadUnavailable(
-                    IllegalStateException("platform_capabilities snapshot missing"),
-                )
-                NativeHookStatus.markPolicyCacheFailed(
-                    ErrorCodes.HOOK_JAVA_CACHE_SNAPSHOT_MISSING,
-                    "platform_capabilities snapshot missing",
-                    capabilities.generation,
-                    NativeHookStatus.POLICY_DOMAIN_CAPABILITIES,
-                )
-                SnapshotConsumeOutcome(succeeded = false)
-            } else try {
-                val root = JSONObject(json)
-                val generation = root.optLong("generation", 0L)
-                val publisherEpoch = root.optString("publisherEpoch", "")
-                val current = capabilities
-                if (!shouldAcceptSnapshot(
-                        publisherEpoch,
-                        generation,
-                        current.publisherEpoch,
-                        current.generation
-                    )) {
-                    if (generation == current.generation && publisherEpoch == current.publisherEpoch) {
-                        NativeHookStatus.markCapabilitiesFresh(publisherEpoch, generation)
-                    }
-                    SnapshotConsumeOutcome(succeeded = true, changed = false)
-                } else {
-                    val next = CapabilitiesHolder(
-                        sdkVersionInt = root.optInt("sdkVersionInt", 0),
-                        isFuseBpfEnabled = root.optBoolean("isFuseBpfEnabled", false),
-                        fuseAvailable = root.optBoolean("fuseAvailable", false),
-                        fuseJniLoadMode = root.optString("fuseJniLoadMode", "UNKNOWN"),
-                        supportedNativeHookMode = root.optString("supportedNativeHookMode", "NONE"),
-                        generation = generation,
-                        publisherEpoch = publisherEpoch,
-                    )
-                    capabilities = next
-                    NativeHookStatus.markCapabilitiesFresh(next.publisherEpoch, next.generation)
-                    Log.i(TAG, "loadPlatformCapabilities: sdk=${next.sdkVersionInt}, " +
-                            "fuseBpf=${next.isFuseBpfEnabled}, fuse=${next.fuseAvailable}, " +
-                            "fuseJniLoadMode=${next.fuseJniLoadMode}, " +
-                            "nativeHookMode=${next.supportedNativeHookMode}, " +
-                            "epoch=${next.publisherEpoch}, generation=${next.generation}")
-                    SnapshotConsumeOutcome(succeeded = true, changed = true)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "loadPlatformCapabilities: failed", e)
-                NativeHookStatus.markCapabilitiesReadUnavailable(e)
-                NativeHookStatus.markPolicyCacheFailed(
-                    ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
-                    describeThrowable(e), capabilities.generation,
-                    NativeHookStatus.POLICY_DOMAIN_CAPABILITIES,
-                )
-                SnapshotConsumeOutcome(succeeded = false)
-            }
-        }
-    }
 
     /**
      * 从 DataBus 刷新全部缓存并同步 native 挂载点。
@@ -492,50 +360,15 @@ object HookPolicyCache {
         val roObserved = HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_READ_ONLY_CHANGED)
         when (roObserved) {
             is DataBusBridgeResult.Unavailable -> markDataBusStateUnavailable(
-                "read_only signal refresh", "${roObserved.operation}:${roObserved.reason}", readOnly.generation,
+                "read_only signal refresh", "${roObserved.operation}:${roObserved.reason}", readOnlyPolicyCache.generation,
             )
             is DataBusBridgeResult.Available -> {
                 if (roObserved.value > lastReadOnlySignalTimestamp ||
                     !NativeHookStatus.isReadOnlyPolicyFresh()
                 ) {
-                    val roResult = consumeAfterSignalCapture(
-                        currentAcknowledgedTimestamp = lastReadOnlySignalTimestamp,
-                        captureSignalTimestamp = {
-                            HookDataBusBridge.getSignalTimestamp(DataBusProtocol.SIGNAL_READ_ONLY_CHANGED)
-                        },
-                        consumeSnapshot = {
-                            consumeSnapshot(
-                                DataBusProtocol.SNAPSHOT_READ_ONLY,
-                                onMissing = {
-                                    NativeHookStatus.markReadOnlyPolicyFailed(
-                                        "", "read_only snapshot missing during refresh",
-                                    )
-                                    SnapshotConsumeOutcome(succeeded = true, changed = false)
-                                },
-                                onPresent = { roJson ->
-                                    try {
-                                        parseReadOnly(roJson)
-                                        SnapshotConsumeOutcome(succeeded = true, changed = true)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "refreshChangedSnapshots: failed to parse read_only", e)
-                                        NativeHookStatus.markReadOnlyPolicyFailed(
-                                            extractSnapshotRevision(roJson, "readOnlyRevision"),
-                                            describeThrowable(e),
-                                        )
-                                        NativeHookStatus.markPolicyCacheFailed(
-                                            ErrorCodes.HOOK_JAVA_CACHE_PARSE_FAILED,
-                                            describeThrowable(e),
-                                            readOnly.generation,
-                                            NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
-                                        )
-                                        SnapshotConsumeOutcome(succeeded = false)
-                                    }
-                                },
-                            )
-                        },
-                    )
+                    val roResult = readOnlyPolicyCache.consumeFromDataBus(lastReadOnlySignalTimestamp)
                     roResult.unavailableReason?.let { reason ->
-                        markDataBusStateUnavailable("read_only refresh", reason, readOnly.generation)
+                        markDataBusStateUnavailable("read_only refresh", reason, readOnlyPolicyCache.generation)
                     }
                     lastReadOnlySignalTimestamp = roResult.acknowledgedTimestamp
                 }
@@ -549,7 +382,7 @@ object HookPolicyCache {
             is DataBusBridgeResult.Unavailable -> markDataBusStateUnavailable(
                 "platform_capabilities signal refresh",
                 "${capsObserved.operation}:${capsObserved.reason}",
-                capabilities.generation,
+                capabilitiesCache.generation,
             )
             is DataBusBridgeResult.Available -> {
                 if (capsObserved.value > lastCapabilitiesSignalTimestamp ||
@@ -563,11 +396,11 @@ object HookPolicyCache {
                             )
                         },
                         consumeSnapshot = {
-                            loadPlatformCapabilities()
+                            capabilitiesCache.loadPlatformCapabilities()
                         },
                     )
                     capsResult.unavailableReason?.let { reason ->
-                        markDataBusStateUnavailable("platform_capabilities refresh", reason, capabilities.generation)
+                        markDataBusStateUnavailable("platform_capabilities refresh", reason, capabilitiesCache.generation)
                     }
                     lastCapabilitiesSignalTimestamp = capsResult.acknowledgedTimestamp
                     forceMountRefresh = capsResult.changed
@@ -728,15 +561,14 @@ object HookPolicyCache {
      * @return true 如果路径命中只读规则
      */
     fun isReadOnly(packageName: String, pathAsUser: String): Boolean {
-        val readOnlyPaths = readOnly.data[packageName] ?: return false
-        return ReadOnlyPathMatcher.matchesAny(readOnlyPaths, pathAsUser)
+        return readOnlyPolicyCache.isReadOnly(packageName, pathAsUser)
     }
 
     /**
      * 获取只读规则的 generation，用于判断缓存是否存在。
      * 返回 0 表示未加载任何快照。
      */
-    fun getReadOnlyGeneration(): Long = readOnly.generation
+    fun getReadOnlyGeneration(): Long = readOnlyPolicyCache.generation
 
     // ═══════════════════════════════════════════════════════════
     // Rule 查询（路径重定向）
@@ -762,19 +594,33 @@ object HookPolicyCache {
     }
 
     /** 检查指定包是否在 denylist 中。 */
-    fun isDenied(packageName: String): Boolean =
-        rule.denylist.contains(packageName)
+    fun isDenied(packageName: String): Boolean = rule.denylist.contains(packageName)
 
     /**
      * 调用方无 uid 时的策略存在性快判，供 Query 等热路径在重型分析前旁路。
      * 只查本地不可变缓存，不做 IO/Binder/JSON。
      */
-    fun hasRedirectRules(packageName: String): Boolean =
-        rule.data.containsKey(packageName)
+    fun hasRedirectRules(packageName: String): Boolean = rule.data.containsKey(packageName)
 
     // ═══════════════════════════════════════════════════════════
     // JSON 解析
     // ═══════════════════════════════════════════════════════════
+
+    /** 供 markPolicyCacheFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */
+    internal fun describeThrowable(e: Throwable): String {
+        val message = e.message?.takeIf { it.isNotBlank() }
+        return if (message == null) e.javaClass.name else "${e.javaClass.name}: $message"
+    }
+
+    internal fun extractSnapshotRevision(json: String, key: String): String = runCatching {
+        JSONObject(json).optString(key, "")
+    }.getOrDefault("")
+
+    private fun extractSnapshotGeneration(json: String): Long = runCatching {
+        JSONObject(json).optLong("generation", 0L)
+    }.getOrDefault(0L)
+
+    fun getNativeMountPointsGeneration(): Long = mountPoints.generation
 
     private fun parseRedirectPolicy(json: String) {
         val root = JSONObject(json)
@@ -792,12 +638,11 @@ object HookPolicyCache {
         if (!sameIdentity && !shouldAcceptSnapshot(
                 publisherEpoch, generation, current.publisherEpoch, current.generation,
             )) {
-            Log.d(TAG, "parseRedirectPolicy: snapshot not newer " +
+            Log.d(TAG, "loadRedirectPolicy: snapshot not newer " +
                     "(epoch=$publisherEpoch generation=$generation, " +
                     "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
             return
         }
-
         val newCache = mutableMapOf<String, Map<Int, List<RedirectRule>>>()
         val rulesObj = root.optJSONObject("storageRedirectRules")
         if (rulesObj != null) {
@@ -817,9 +662,8 @@ object HookPolicyCache {
                         val source = ruleObj.optString("source", "")
                         val target = ruleObj.optString("target", "")
                         if (source.isNotEmpty() && target.isNotEmpty()) {
-                            // 解析期过滤非规范路径：热路径解释器永不抛异常。
                             if (!isCanonicalAbsolutePath(source) || !isCanonicalAbsolutePath(target)) {
-                                Log.w(TAG, "parseRedirectPolicy: drop non-canonical rule pkg=$pkg")
+                                Log.w(TAG, "loadRedirectPolicy: drop non-canonical rule pkg=$pkg")
                                 continue
                             }
                             zipped.add(RedirectRule(source, target))
@@ -859,92 +703,40 @@ object HookPolicyCache {
         )
 
         // 解析偏好标记；native 侧应用由挂载点全量刷新（commitPolicy）统一原子完成。
-        // 偏好独立 holder 发布，与 rule 域同代演进；解析见 PolicyPreferencesParser。
-        preferences = PolicyPreferencesParser.parse(root.toString())
+        preferences = PolicyPreferencesParser.parse(json)
+
+        Log.i(TAG, "loadRedirectPolicy: loaded redirect_policy, generation=$generation, " +
+                "packages=${rule.data.size}, users=${rule.data.values.sumOf { it.size }}")
     }
-
-    private fun parseReadOnly(json: String) {
-        val root = JSONObject(json)
-        val generation = root.optLong("generation", 0L)
-        val publisherEpoch = root.optString("publisherEpoch", "")
-        val revision = root.optString("readOnlyRevision", "")
-        val current = readOnly
-        val sameIdentity = publisherEpoch == current.publisherEpoch &&
-                generation == current.generation && revision == current.revision
-        if (sameIdentity && NativeHookStatus.markReadOnlyPolicyFreshIfApplied(
-                publisherEpoch, generation, revision,
-            )) {
-            return
-        }
-        if (!sameIdentity && !shouldAcceptSnapshot(
-                publisherEpoch, generation, current.publisherEpoch, current.generation,
-            )) {
-            Log.d(TAG, "parseReadOnly: snapshot not newer " +
-                    "(epoch=$publisherEpoch generation=$generation, " +
-                    "currentEpoch=${current.publisherEpoch} currentGeneration=${current.generation})")
-            return
-        }
-
-        val newCache = mutableMapOf<String, Set<String>>()
-        val roObj = root.optJSONObject("readOnlyRules")
-        if (roObj != null) {
-            for (pkg in roObj.keys()) {
-                val arr = roObj.optJSONArray(pkg) ?: continue
-                val paths = mutableSetOf<String>()
-                for (i in 0 until arr.length()) {
-                    paths.add(arr.getString(i))
-                }
-                if (paths.isNotEmpty()) {
-                    newCache[pkg] = paths.toSet()
-                }
-            }
-        }
-
-        readOnly = ReadOnlyHolder(
-            data = newCache.toMap(),
-            generation = generation,
-            publisherEpoch = publisherEpoch,
-            revision = revision,
-        )
-        NativeHookStatus.markReadOnlyPolicyApplied(
-            revision, generation, newCache.isNotEmpty(), publisherEpoch,
-        )
-    }
-
-    /** 供 markPolicyCacheFailed 使用的受控异常描述；截断由 NativeHookStatus 统一处理。 */
-    private fun describeThrowable(e: Throwable): String {
-        val message = e.message?.takeIf { it.isNotBlank() }
-        return if (message == null) e.javaClass.name else "${e.javaClass.name}: $message"
-    }
-
-    private fun extractSnapshotRevision(json: String, key: String): String = runCatching {
-        JSONObject(json).optString(key, "")
-    }.getOrDefault("")
-
-    private fun extractSnapshotGeneration(json: String): Long = runCatching {
-        JSONObject(json).optLong("generation", 0L)
-    }.getOrDefault(0L)
-
 }
 
-private val PATHS_HAVE_USER_ID: Pattern =
-    Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
-
-private const val EMULATED_PREFIX = "/storage/emulated/"
-
 /**
- * 从路径推断所属 userId（纯函数，可 JVM 单测）。
+ * 快照验收规则（纯函数，可 JVM 单测）。
  *
- * 优先快检 /storage/emulated/ 前缀，命中失败回退通用正则。
- * 现由 [HookPolicyCache.getMountedPath] 热路径调用。
+ * 首载（currentGeneration<=0）接受；epoch 变化接受；同 epoch 要求 generation 严格递增。
  */
+internal fun shouldAcceptSnapshot(
+    newEpoch: String,
+    newGeneration: Long,
+    currentEpoch: String,
+    currentGeneration: Long,
+): Boolean {
+    if (currentGeneration <= 0) return true
+    if (newEpoch.isNotBlank() && currentEpoch.isNotBlank() && newEpoch != currentEpoch) {
+        return true
+    }
+    if (newEpoch.isNotBlank() && currentEpoch.isBlank()) {
+        return true
+    }
+    return newGeneration > currentGeneration
+}
+
+/** 从路径推断所属 userId（纯函数，可 JVM 单测）。 */
 internal fun extractUserIdFromPath(path: String): Int {
-    // 热路径快检：/storage/emulated/<userId>(/...)，避免 regex 回溯开销。
     val fast = extractEmulatedUserIdFast(path)
     if (fast != null) {
         return fast
     }
-    // 回退：通用 /<a>/<b>/<userId>(/...)，覆盖 /mnt/user/... 等其他卷。
     val matcher = PATHS_HAVE_USER_ID.matcher(path)
     if (!matcher.matches()) {
         return 0
@@ -952,12 +744,7 @@ internal fun extractUserIdFromPath(path: String): Int {
     return matcher.group(2)?.toIntOrNull() ?: 0
 }
 
-/**
- * 快检 /storage/emulated/ 前缀的用户 ID（纯函数，可 JVM 单测）。
- *
- * @return 非 null 表示前缀命中（解析失败时返回 0，与 regex 未命中语义一致）；
- * null 表示非该前缀，调用方回退到通用正则。
- */
+/** 快检 /storage/emulated/ 前缀的用户 ID（纯函数，可 JVM 单测）。 */
 internal fun extractEmulatedUserIdFast(path: String): Int? {
     if (path.length < EMULATED_PREFIX.length) {
         return null
@@ -981,23 +768,8 @@ internal fun extractEmulatedUserIdFast(path: String): Int? {
     return path.substring(EMULATED_PREFIX.length, end).toIntOrNull() ?: 0
 }
 
-/**
- * 快照验收规则（纯函数，可 JVM 单测）。
- *
- * 首载（currentGeneration<=0）接受；epoch 变化接受；同 epoch 要求 generation 严格递增。
- */
-internal fun shouldAcceptSnapshot(
-    newEpoch: String,
-    newGeneration: Long,
-    currentEpoch: String,
-    currentGeneration: Long,
-): Boolean {
-    if (currentGeneration <= 0) return true
-    if (newEpoch.isNotBlank() && currentEpoch.isNotBlank() && newEpoch != currentEpoch) {
-        return true
-    }
-    if (newEpoch.isNotBlank() && currentEpoch.isBlank()) {
-        return true
-    }
-    return newGeneration > currentGeneration
-}
+private val PATHS_HAVE_USER_ID: Pattern =
+    Pattern.compile("(?i)(^/[^/]+/[^/]+/)([0-9]+)(/.*)?")
+
+private const val EMULATED_PREFIX = "/storage/emulated/"
+

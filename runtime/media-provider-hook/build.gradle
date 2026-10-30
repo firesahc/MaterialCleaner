@@ -22,6 +22,7 @@ dependencies {
     // main.jar 随行模块清单由根项目 xposedRuntimeModules 统一声明
     rootProject.xposedRuntimeModules.each { implementation project(it) }
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20231013'
     compileOnly files('../../app/libs/api-82.jar')
     implementation "androidx.annotation:annotation:$rootProject.annotationVersion"
 }
