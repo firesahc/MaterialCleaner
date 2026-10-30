@@ -1,5 +1,9 @@
 package me.gm.cleaner.client.ui
 
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.TextAppearanceSpan
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -25,6 +29,8 @@ import me.gm.cleaner.core.config.removeReadOnlyRules
 import me.gm.cleaner.core.config.removeRedirectRules
 import me.gm.cleaner.databinding.ApplistItemBinding
 import me.gm.cleaner.util.buildStyledTitle
+import me.gm.cleaner.util.colorPrimary
+import me.gm.cleaner.util.getResourceIdByAttr
 
 class AppListAdapter(
     private val fragment: Fragment,
@@ -44,24 +50,44 @@ class AppListAdapter(
             Log.i("MC/Test", "onBindViewHolder: position=$position, package=${model.packageInfo.packageName}")
         }
         binding.icon.setImageDrawable(model.packageInfo.applicationInfo.loadIcon(fragment.requireContext().packageManager))
-        binding.title.text = model.label
+        binding.title.text = run {
+            val label = model.label
+            if (model.mountRulesCount > 0 || model.readOnlyCount > 0) {
+                val enabledLabel = fragment.getString(R.string.enabled_suffix) // "(已启用)"
+                val spannable = SpannableStringBuilder(label).append("  ").append(enabledLabel)
+                val start = label.length
+                val end = spannable.length
+                // 与下方摘要保持一致：较小字号（Body2）+ 次要棕色
+                val body2ResId = activity.getResourceIdByAttr(
+                    com.google.android.material.R.attr.textAppearanceBody2
+                )
+                spannable.setSpan(
+                    TextAppearanceSpan(activity, body2ResId),
+                    start, end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannable.setSpan(
+                    ForegroundColorSpan(activity.colorPrimary),
+                    start, end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                spannable
+            } else {
+                label
+            }
+        }
         binding.summary.text = run {
-            val summary = mutableListOf<CharSequence>()
+            val parts = mutableListOf<CharSequence>()
             if (model.mountRulesCount > 0) {
-                summary += fragment.getString(
+                parts += fragment.getString(
                     R.string.enabled_mount_rules_count, model.mountRulesCount
                 )
             }
             if (model.readOnlyCount > 0) {
-                summary += fragment.getString(R.string.enabled_read_only_count, model.readOnlyCount)
+                parts += fragment.getString(R.string.enabled_read_only_count, model.readOnlyCount)
             }
-            if (summary.isNotEmpty()) {
-                activity.buildStyledTitle(
-                    fragment.getString(
-                        R.string.enabled,
-                        summary.joinToString(fragment.getString(R.string.delimiter))
-                    )
-                )
+            if (parts.isNotEmpty()) {
+                activity.buildStyledTitle(parts.joinToString(fragment.getString(R.string.delimiter)))
             } else {
                 model.packageInfo.packageName
             }

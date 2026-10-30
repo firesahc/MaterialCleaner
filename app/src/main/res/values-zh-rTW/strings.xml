@@ -226,8 +226,9 @@
     <string name="file_picker_hint">路徑</string>
     <string name="file_picker_error_starts_with">非 %s 中的路徑</string>
     <string name="enabled">已啟用 %s</string>
+    <string name="enabled_suffix">(已啟用)</string>
     <string name="enabled_mount_rules_count">%d 條掛載規則</string>
-    <string name="enabled_read_only_count">%d 條只讀</string>
+    <string name="enabled_read_only_count">%d 條只讀規則</string>
     <string name="storage_redirect_title">存儲重定向</string>
     <string name="storage_redirect_unsupported">免費版暫不支持安卓 %s</string>
     <string name="storage_redirect_list_mounted">已掛載</string>

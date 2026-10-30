@@ -226,8 +226,9 @@
     <string name="file_picker_hint">路径</string>
     <string name="file_picker_error_starts_with">非 %s 中的路径</string>
     <string name="enabled">已启用 %s</string>
+    <string name="enabled_suffix">(已启用)</string>
     <string name="enabled_mount_rules_count">%d 条挂载规则</string>
-    <string name="enabled_read_only_count">%d 条只读</string>
+    <string name="enabled_read_only_count">%d 条只读规则</string>
     <string name="storage_redirect_title">存储重定向</string>
     <string name="storage_redirect_unsupported">免费版暂不支持安卓 %s</string>
     <string name="storage_redirect_list_mounted">已挂载</string>

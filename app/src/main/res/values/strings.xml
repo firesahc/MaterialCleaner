@@ -252,8 +252,9 @@
     <string name="file_picker_hint">Path</string>
     <string name="file_picker_error_starts_with">Not a dir in %s</string>
     <string name="enabled">%s enabled</string>
+    <string name="enabled_suffix">(Enabled)</string>
     <string name="enabled_mount_rules_count">%d mount rules</string>
-    <string name="enabled_read_only_count">%d read only</string>
+    <string name="enabled_read_only_count">%d read only rules</string>
     <string name="storage_redirect_title">STORAGE REDIRECT</string>
     <string name="storage_redirect_unsupported">The free version currently does not support Android %s</string>
     <string name="storage_redirect_list_mounted">Mounted</string>
