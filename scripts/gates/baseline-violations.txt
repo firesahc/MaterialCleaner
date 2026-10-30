@@ -1,5 +1,5 @@
 app/src/main/java/me/gm/cleaner/client/ui/storageredirect/MountWizard.kt	1320
-runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/NativeHookStatus.kt	1029
+runtime/media-provider-hook/src/main/java/me/gm/cleaner/runtime/mediaprovider/hook/policy/NativeHookStatus.kt	1035
 word:app/src/main/java/me/gm/cleaner/client/BasePromptActivity.kt|denylist	9
 word:app/src/main/java/me/gm/cleaner/client/NotificationService.kt|denylist	8
 word:app/src/main/java/me/gm/cleaner/client/ui/AppListViewModelBase.kt|denylist	1

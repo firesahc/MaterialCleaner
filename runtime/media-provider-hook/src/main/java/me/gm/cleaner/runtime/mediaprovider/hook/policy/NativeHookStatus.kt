@@ -356,7 +356,13 @@ object NativeHookStatus {
         inlineDisabledByPlatform = false
         lastInlineError = ""
         nativeStatus = NativeStatusSnapshot()
+        // 平台支持状态变更导致 Native 挂载点既有应用证据不再有效：
+        // 历史 applied identity（generation/epoch/revision）仅保留为诊断信息，
+        // 不再作为当前有效应用的证明；lastApplySuccess 必须失效化，
+        // freshness 不能保留 CURRENT，否则 NativeSyncPolicy 可能误判 SYNCED。
+        lastMountPointsApplySuccess = false
         mountPointsState = POLICY_STATE_PENDING
+        mountPointsFreshnessState = FRESHNESS_UNKNOWN
         publishSnapshot()
     }
 

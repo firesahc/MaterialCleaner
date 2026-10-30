@@ -87,7 +87,10 @@ internal class ReadOnlyPolicyCache {
                         "read_only snapshot missing at init", 0L,
                         NativeHookStatus.POLICY_DOMAIN_READ_ONLY,
                     )
-                    return SnapshotConsumeOutcome(succeeded = true, changed = false)
+                    // 快照缺失是消费失败，不能返回 succeeded = true，
+                    // 否则 consumeAfterSignalCapture 会错误推进信号水位，
+                    // 导致后续快照恢复但无新 signal 时不再被主动读取。
+                    return SnapshotConsumeOutcome(succeeded = false, changed = false)
                 }
                 return try {
                     val root = JSONObject(read.value)
