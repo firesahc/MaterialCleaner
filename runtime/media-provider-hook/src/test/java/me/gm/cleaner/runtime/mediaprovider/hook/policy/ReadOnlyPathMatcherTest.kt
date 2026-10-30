@@ -25,7 +25,12 @@ class ReadOnlyPathMatcherTest {
     }
 
     @Test
-    fun `保留已有的不区分大小写行为`() {
-        assertTrue(ReadOnlyPathMatcher.matches("/storage/emulated/0/Pictures", "/STORAGE/EMULATED/0/pictures/a.jpg"))
+    fun `区分大小写匹配不同大小写路径不命中`() {
+        assertFalse(ReadOnlyPathMatcher.matches("/storage/emulated/0/Pictures", "/STORAGE/EMULATED/0/pictures/a.jpg"))
+    }
+
+    @Test
+    fun `相同大小写路径命中`() {
+        assertTrue(ReadOnlyPathMatcher.matches("/storage/emulated/0/Pictures", "/storage/emulated/0/Pictures/a.jpg"))
     }
 }

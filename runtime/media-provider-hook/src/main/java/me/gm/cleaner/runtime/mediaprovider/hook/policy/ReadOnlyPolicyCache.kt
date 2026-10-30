@@ -8,11 +8,15 @@ import org.json.JSONObject
 import me.gm.cleaner.core.storage.redirect.databus.DataBusProtocol
 
 /**
- * 只读策略缓存域。
+ * 只读策略域消费组件。
  *
  * 消费 [DataBus] 发布的 read_only.json 快照，缓存 packageName → 路径集合的映射。
  * 消费走 [consumeFromDataBus]：读取前捕获信号水位，成功才推进，失败与 bridge
  * 不可用不推进；信号水位由 [HookPolicyCache] 自持，域仅回传 [SignalConsumeResult]。
+ * 解析过程中会根据结果调用 [NativeHookStatus.markReadOnlyPolicyApplied] /
+ * [NativeHookStatus.markReadOnlyPolicyFailed] / [NativeHookStatus.markPolicyCacheFailed]
+ * 记录状态反馈，不属于被动缓存。状态快照的发布仍由 [NativeHookStatus]
+ * 统一负责。
  *
  * ## 降级行为
  * - bridge 不可用 → 失败结果携带 op:reason，由调用方统一做状态诊断；

@@ -16,9 +16,9 @@ internal object ReadOnlyPathMatcher {
         val rule = normalize(rulePath)
         val target = normalize(path)
         if (rule.isEmpty() || target.isEmpty()) return false
-        if (target.equals(rule, ignoreCase = true)) return true
+        if (target.equals(rule)) return true
         val prefix = if (rule.endsWith('/')) rule else "$rule/"
-        return target.length > prefix.length && target.startsWith(prefix, ignoreCase = true)
+        return target.length > prefix.length && target.startsWith(prefix)
     }
 
     internal fun matchesAny(rulePaths: Collection<String>, path: String): Boolean =

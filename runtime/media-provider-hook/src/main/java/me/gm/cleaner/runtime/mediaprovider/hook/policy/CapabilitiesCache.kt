@@ -8,10 +8,13 @@ import me.gm.cleaner.runtime.mediaprovider.hook.bridge.DataBusBridgeResult
 import org.json.JSONObject
 
 /**
- * platform_capabilities 策略域缓存（被动数据持有者，不负责状态发布）。
+ * platform_capabilities 策略域消费组件。
  *
- * 仅负责缓存平台能力字段（sdkVersionInt / fuseBpf / fuseAvailable 等），
- * 不负责状态发布。状态发布由 [NativeHookStatus] 统一负责。
+ * 负责读取并解析 platform_capabilities.json 快照，缓存 sdkVersionInt /
+ * fuseBpf / fuseAvailable 等关键能力字段。消费过程中会根据解析结果
+ * 调用 [NativeHookStatus.markCapabilitiesFresh] / [NativeHookStatus.markCapabilitiesReadUnavailable]
+ * / [NativeHookStatus.markPolicyCacheFailed] 记录状态反馈，不属于被动缓存。
+ * 状态快照的发布仍由 [NativeHookStatus] 统一负责。
  */
 internal class CapabilitiesCache {
     private val TAG = "CapabilitiesCache"
