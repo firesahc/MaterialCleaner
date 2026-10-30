@@ -47,6 +47,8 @@ internal object NativeSyncPolicy {
         /** hook 侧 applicationState：APPLYING / APPLIED / STALE / UNSUPPORTED / PENDING / NO_RULE。 */
         val applicationState: String,
         val now: Long,
+        /** mount points 快照读取 freshness；未知或过期时不能判 SYNCED。 */
+        val snapshotFreshnessState: String = "CURRENT",
     )
 
     fun evaluate(i: Input): Verdict {
@@ -56,10 +58,17 @@ internal object NativeSyncPolicy {
         if (i.applicationState == "UNSUPPORTED") {
             return Verdict.UNSUPPORTED
         }
-        val epochConsistent = i.snapshotEpoch.isBlank() ||
+        if (i.snapshotFreshnessState != "CURRENT") {
+            return Verdict.STALE
+        }
+        // epoch 身份必须可验证才能比较 generation：snapshot 与 applied 均有值且相等时，
+        // 才属于同一身份域，允许继续比较 generation。snapshotEpoch 为空时不再放行，
+        // 避免旧 epoch 的高 generation 被误判为当前配置已同步。
+        val epochConsistent = i.snapshotEpoch.isNotBlank() &&
                 i.appliedEpoch == i.snapshotEpoch
         val genSatisfied = i.snapshotGen <= 0L || i.appliedGen >= i.snapshotGen
-        if (i.lastApplySuccess && epochConsistent && genSatisfied) {
+        if (i.lastApplySuccess && epochConsistent && genSatisfied &&
+            (i.applicationState == "APPLIED" || i.applicationState == "NO_RULE")) {
             return Verdict.SYNCED
         }
         // CONVERGING 必须证明“当前仍在执行”。仅有 attempt 历史不足以证明进展：

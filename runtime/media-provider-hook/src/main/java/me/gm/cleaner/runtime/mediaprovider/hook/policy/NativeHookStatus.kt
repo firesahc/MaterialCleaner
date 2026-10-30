@@ -24,31 +24,34 @@ object NativeHookStatus {
     internal const val SWALLOWED_PUBLISH_INTERVAL_MILLIS =
         GuardedHookCircuitState.SWALLOWED_PUBLISH_INTERVAL_MILLIS
 
-    private const val STATE_NOT_LOADED = "NOT_LOADED"
-    private const val STATE_INLINE_LOADED = "INLINE_LOADED"
-    private const val STATE_FUSE_WAITING = "FUSE_WAITING"
-    private const val STATE_HOOK_READY_FULL = "HOOK_READY_FULL"
-    private const val STATE_HOOK_READY_CORE = "HOOK_READY_CORE"
-    private const val STATE_HOOK_DEGRADED = "HOOK_DEGRADED"
-    private const val STATE_HOOK_UNAVAILABLE = "HOOK_UNAVAILABLE"
-    private const val STATE_DISABLED = "DISABLED"
-
-    private const val BRIDGE_STATE_IDLE = "IDLE"
-    private const val BRIDGE_STATE_REGISTERING = "REGISTERING"
-    private const val BRIDGE_STATE_REGISTERED = "REGISTERED"
-    private const val BRIDGE_STATE_RETRYING = "RETRYING"
-    private const val BRIDGE_STATE_FAILED = "FAILED"
-
     // 策略状态只描述“配置到执行器”的进度，不代表底层行为已经被探针证明。
-    private const val POLICY_STATE_NO_RULE = "NO_RULE"
-    private const val POLICY_STATE_PENDING = "PENDING"
-    private const val POLICY_STATE_APPLYING = "APPLYING"
-    private const val POLICY_STATE_APPLIED = "APPLIED"
-    private const val POLICY_STATE_STALE = "STALE"
-    private const val POLICY_STATE_UNSUPPORTED = "UNSUPPORTED"
+    internal const val POLICY_STATE_NO_RULE = "NO_RULE"
+    internal const val POLICY_STATE_PENDING = "PENDING"
+    internal const val POLICY_STATE_APPLYING = "APPLYING"
+    internal const val POLICY_STATE_APPLIED = "APPLIED"
+    internal const val POLICY_STATE_STALE = "STALE"
+    internal const val POLICY_STATE_UNSUPPORTED = "UNSUPPORTED"
+    internal const val FRESHNESS_UNKNOWN = "UNKNOWN"
+    internal const val FRESHNESS_CURRENT = "CURRENT"
+    internal const val FRESHNESS_STALE = "STALE"
+    internal const val POLICY_DOMAIN_REDIRECT = "redirect_policy"
+    internal const val POLICY_DOMAIN_READ_ONLY = "read_only_policy"
+    internal const val POLICY_DOMAIN_CAPABILITIES = "platform_capabilities"
+    internal const val POLICY_DOMAIN_MOUNT_READ = "configured_mount_points_read"
+    internal const val POLICY_DOMAIN_MOUNT_APPLY = "configured_mount_points_apply"
     private const val REDIRECT_EXECUTOR = "MEDIA_PROVIDER_JAVA_HOOK"
     private const val READ_ONLY_EXECUTOR = "MEDIA_PROVIDER_JAVA_HOOK"
-    private const val MOUNT_POINTS_EXECUTOR = "FUSE_NATIVE_HOOK"
+    internal const val MOUNT_POINTS_EXECUTOR = "FUSE_NATIVE_HOOK"
+
+    // ── inline hook 生命周期状态常量（从 InlinePolicyStatus 合并） ──
+    private const val INLINE_STATE_NOT_LOADED = "NOT_LOADED"
+    private const val INLINE_STATE_INLINE_LOADED = "INLINE_LOADED"
+    private const val INLINE_STATE_FUSE_WAITING = "FUSE_WAITING"
+    private const val INLINE_STATE_HOOK_READY_FULL = "HOOK_READY_FULL"
+    private const val INLINE_STATE_HOOK_READY_CORE = "HOOK_READY_CORE"
+    private const val INLINE_STATE_HOOK_DEGRADED = "HOOK_DEGRADED"
+    private const val INLINE_STATE_HOOK_UNAVAILABLE = "HOOK_UNAVAILABLE"
+    private const val INLINE_STATE_DISABLED = "DISABLED"
 
     @Volatile
     private var mediaProviderHookLoaded = false
@@ -60,27 +63,9 @@ object NativeHookStatus {
     private var policyCacheInitializedAt = 0L
 
     @Volatile
-    private var inlineState = STATE_NOT_LOADED
-    @Volatile
-    private var inlineLibraryLoaded = false
-    @Volatile
-    private var inlineHookInitialized = false
-    @Volatile
-    private var inlineRetryCount = 0
-    @Volatile
-    private var inlineNextRetryAt = 0L
-    @Volatile
-    private var inlineRetryExhausted = false
-    @Volatile
-    private var inlineDisabledByPlatform = false
-    @Volatile
-    private var lastInlineError = ""
-    @Volatile
-    private var inlineLastFailureCode = ""
-
-    @Volatile
     private var nativeStatus = NativeStatusSnapshot()
 
+    /** mount 域应用证据（applied 身份三元组与快照读取证据，状态已内联至 NativeHookStatus 字段） */
     @Volatile
     private var lastMountPointsApplySuccess = false
     @Volatile
@@ -98,6 +83,8 @@ object NativeHookStatus {
     @Volatile
     private var mountPointsAppliedRevision = ""
     @Volatile
+    private var mountPointsAppliedCount = 0
+    @Volatile
     private var mountPointsLastAttemptRevision = ""
     @Volatile
     private var mountPointsState = POLICY_STATE_PENDING
@@ -107,32 +94,41 @@ object NativeHookStatus {
     private var mountPointsPublishedRevision = ""
     @Volatile
     private var mountPointsObservedAt = 0L
-
-    /**
-     * 最近一次 mountPoints 应用**尝试开始**时间（P2-1）。
-     * 与 lastMountPointsApplyAt（尝试完成时间）分离：epoch 变更后，
-     * "上一次成功应用" 反映的是旧 epoch 的活动，不能当作新 epoch 的进展证据；
-     * 而"尝试开始时间"能证明同步机制正在处理当前配置，无论成败。
-     */
+    @Volatile
+    private var mountPointsFreshnessState = FRESHNESS_UNKNOWN
+    @Volatile
+    private var mountPointsFreshnessError = ""
+    @Volatile
+    private var mountPointsSnapshotRead = false
+    @Volatile
+    private var mountPointsSnapshotPublisherEpoch = ""
+    @Volatile
+    private var mountPointsSnapshotGeneration = 0L
+    @Volatile
+    private var mountPointsSnapshotRevision = ""
+    @Volatile
+    private var mountPointsHasAppliedSnapshot = false
     @Volatile
     private var lastMountPointsAttemptAt = 0L
-
-    /**
-     * 最近一次 attempt 的目标身份（P2，与 attemptAt 配套）。
-     * 仅记录时间无法区分该次尝试服务的是旧 epoch 还是当前配置，
-     * 必须连同 generation 一起记录，消费侧才能判断"正在处理当前配置"。
-     */
     @Volatile
     private var lastMountPointsAttemptEpoch = ""
     @Volatile
     private var lastMountPointsAttemptGeneration = 0L
 
+    /** inline hook 生命周期状态（状态已内联至 NativeHookStatus 字段） */
+
     @Volatile
     private var redirectAppliedRevision = ""
     @Volatile
+    private var redirectAppliedPublisherEpoch = ""
+    @Volatile
     private var redirectAppliedGeneration = 0L
     @Volatile
+    private var redirectHasAppliedSnapshot = false
+    @Volatile
     private var redirectPolicyState = POLICY_STATE_PENDING
+    @Volatile
+    private var redirectFreshnessState = FRESHNESS_UNKNOWN
     @Volatile
     private var redirectConfiguredRevision = ""
     @Volatile
@@ -144,9 +140,15 @@ object NativeHookStatus {
     @Volatile
     private var readOnlyAppliedRevision = ""
     @Volatile
+    private var readOnlyAppliedPublisherEpoch = ""
+    @Volatile
     private var readOnlyAppliedGeneration = 0L
     @Volatile
+    private var readOnlyHasAppliedSnapshot = false
+    @Volatile
     private var readOnlyPolicyState = POLICY_STATE_PENDING
+    @Volatile
+    private var readOnlyFreshnessState = FRESHNESS_UNKNOWN
     @Volatile
     private var readOnlyConfiguredRevision = ""
     @Volatile
@@ -155,11 +157,51 @@ object NativeHookStatus {
     private var readOnlyLastError = ""
     @Volatile
     private var readOnlyObservedAt = 0L
+    @Volatile
+    private var capabilitiesFreshnessState = FRESHNESS_UNKNOWN
+    @Volatile
+    private var capabilitiesFreshnessError = ""
+    @Volatile
+    private var capabilitiesPublisherEpoch = ""
+    @Volatile
+    private var capabilitiesGeneration = 0L
+    @Volatile
+    private var capabilitiesHasSnapshot = false
 
     @Volatile
     private var fuseJavaGateStatus = FuseJavaGateStatus()
 
-    // ── policyCache 失败语义（错误码引用 ErrorCodes.HOOK_JAVA_CACHE_*） ──
+    // ── binder 桥注册状态（从 BridgePolicyStatus 合并，状态所有权归 NativeHookStatus） ──
+    @Volatile
+    private var bridgeState = "IDLE"
+    @Volatile
+    private var bridgeLastError = ""
+    @Volatile
+    private var bridgeAttemptCount = 0
+    @Volatile
+    private var bridgeLastAttemptAt = 0L
+
+    // ── inline hook 生命周期状态（从 InlinePolicyStatus 合并） ──
+    @Volatile
+    private var inlineState = INLINE_STATE_NOT_LOADED
+    @Volatile
+    private var inlineLibraryLoaded = false
+    @Volatile
+    private var inlineHookInitialized = false
+    @Volatile
+    private var inlineRetryCount = 0
+    @Volatile
+    private var inlineNextRetryAt = 0L
+    @Volatile
+    private var inlineRetryExhausted = false
+    @Volatile
+    private var inlineDisabledByPlatform = false
+    @Volatile
+    private var lastInlineError = ""
+    @Volatile
+    private var inlineLastFailureCode = ""
+
+    /** 策略缓存失败语义（状态已内联至 NativeHookStatus 字段） */
     @Volatile
     private var policyCacheLastFailureCode = ""
     @Volatile
@@ -168,16 +210,17 @@ object NativeHookStatus {
     private var policyCacheLastError = ""
     @Volatile
     private var policyCacheLastGoodGeneration = 0L
+    @Volatile
+    private var policyCacheLastFailureDomain = ""
+    private val policyCacheFailureLock = Any()
+    private val policyCacheFailures = linkedMapOf<String, PolicyCacheFailure>()
 
-    // ── hooks callback binder 桥注册状态机 ──
-    @Volatile
-    private var bridgeState = BRIDGE_STATE_IDLE
-    @Volatile
-    private var bridgeLastError = ""
-    @Volatile
-    private var bridgeAttemptCount = 0
-    @Volatile
-    private var bridgeLastAttemptAt = 0L
+    private data class PolicyCacheFailure(
+        val code: String,
+        val detail: String,
+        val generation: Long,
+        val at: Long,
+    )
 
     // ── 受防护 hook（AbstractGuardedHook 子类）熔断观测 ──
     // 状态与序列化归 GuardedHookCircuitState（同一子域，独立文件）。
@@ -204,13 +247,12 @@ object NativeHookStatus {
 
     fun markInlineLoadSucceeded(statusJson: String) {
         val parsed = NativeStatusSnapshotParser.parse(statusJson)
-        nativeStatus = parsed
         inlineLibraryLoaded = true
         inlineHookInitialized = parsed.coreAvailable
         lastInlineError = parsed.lastError
         inlineState = deriveInlineState(parsed)
         inlineDisabledByPlatform = false
-        if (inlineState == STATE_DISABLED) {
+        if (inlineState == INLINE_STATE_DISABLED) {
             inlineRetryExhausted = true
             inlineNextRetryAt = 0L
         }
@@ -225,6 +267,7 @@ object NativeHookStatus {
             // 此处兜底标记为平台能力问题，避免快照出现"未初始化却无原因"的盲区。
             inlineLastFailureCode = ErrorCodes.HOOK_FUSE_CAPABILITY_UNAVAILABLE
         }
+        nativeStatus = parsed
         publishSnapshot()
     }
 
@@ -236,7 +279,7 @@ object NativeHookStatus {
     fun markInlineNativeFailure(code: String, detail: String) {
         inlineLastFailureCode = code
         if (detail.isNotBlank()) {
-            lastInlineError = detail.take(MAX_TEXT_LENGTH)
+            lastInlineError = detail.take(NativeHookStatus.MAX_TEXT_LENGTH)
         }
         publishSnapshot()
     }
@@ -244,12 +287,12 @@ object NativeHookStatus {
     fun markInlineLoadFailed(error: Throwable) {
         inlineLibraryLoaded = false
         inlineHookInitialized = false
-        nativeStatus = NativeStatusSnapshot(lastError = describe(error))
-        lastInlineError = describe(error)
-        inlineState = STATE_NOT_LOADED
+        val lastError = describe(error)
+        inlineState = INLINE_STATE_NOT_LOADED
         inlineDisabledByPlatform = false
         // 动态库加载/JNI 注册层失败：区别于符号缺失类失败。
         inlineLastFailureCode = ErrorCodes.HOOK_FUSE_LIB_LOAD_FAILED
+        nativeStatus = NativeStatusSnapshot(lastError = lastError)
         publishSnapshot()
     }
 
@@ -257,8 +300,8 @@ object NativeHookStatus {
         inlineRetryCount = retryCount
         inlineNextRetryAt = nextRetryAt
         inlineRetryExhausted = false
-        if (inlineState == STATE_NOT_LOADED || inlineState == STATE_INLINE_LOADED) {
-            inlineState = STATE_FUSE_WAITING
+        if (inlineState == INLINE_STATE_NOT_LOADED || inlineState == INLINE_STATE_INLINE_LOADED) {
+            inlineState = INLINE_STATE_FUSE_WAITING
         }
         publishSnapshot()
     }
@@ -267,7 +310,7 @@ object NativeHookStatus {
         inlineRetryExhausted = true
         inlineNextRetryAt = 0L
         lastInlineError = error
-        inlineState = STATE_HOOK_UNAVAILABLE
+        inlineState = INLINE_STATE_HOOK_UNAVAILABLE
         inlineDisabledByPlatform = false
         publishSnapshot()
     }
@@ -282,7 +325,7 @@ object NativeHookStatus {
         inlineRetryExhausted = true
         inlineNextRetryAt = 0L
         lastInlineError = reason
-        inlineState = STATE_DISABLED
+        inlineState = INLINE_STATE_DISABLED
         inlineDisabledByPlatform = true
         nativeStatus = NativeStatusSnapshot(
             fuseAvailable = fuseAvailable,
@@ -301,10 +344,10 @@ object NativeHookStatus {
     }
 
     fun markInlinePlatformSupported() {
-        if (inlineState != STATE_DISABLED) {
-            return
-        }
-        inlineState = STATE_NOT_LOADED
+        // 基线语义：inline 尚未处于 DISABLED 时不做任何事——
+        // 不清 nativeStatus、不重置 mount 证据、不发布快照。
+        if (inlineState != INLINE_STATE_DISABLED) return
+        inlineState = INLINE_STATE_NOT_LOADED
         inlineLibraryLoaded = false
         inlineHookInitialized = false
         inlineRetryCount = 0
@@ -313,13 +356,19 @@ object NativeHookStatus {
         inlineDisabledByPlatform = false
         lastInlineError = ""
         nativeStatus = NativeStatusSnapshot()
+        // 平台支持状态变更导致 Native 挂载点既有应用证据不再有效：
+        // 历史 applied identity（generation/epoch/revision）仅保留为诊断信息，
+        // 不再作为当前有效应用的证明；lastApplySuccess 必须失效化，
+        // freshness 不能保留 CURRENT，否则 NativeSyncPolicy 可能误判 SYNCED。
+        lastMountPointsApplySuccess = false
         mountPointsState = POLICY_STATE_PENDING
+        mountPointsFreshnessState = FRESHNESS_UNKNOWN
         publishSnapshot()
     }
 
     fun shouldRetryInlineInitialization(now: Long): Boolean {
         if (inlineRetryExhausted) return false
-        if (inlineState == STATE_DISABLED) return false
+        if (inlineState == INLINE_STATE_DISABLED) return false
         if (isInlinePolicyBridgeAvailable()) return false
         return inlineNextRetryAt <= 0L || now >= inlineNextRetryAt
     }
@@ -328,15 +377,13 @@ object NativeHookStatus {
 
     fun currentInlineState(): String = inlineState
 
-    fun isInlineDisabled(): Boolean = inlineState == STATE_DISABLED
+    fun isInlineDisabled(): Boolean = inlineState == INLINE_STATE_DISABLED
 
-    fun isInlineDisabledByPlatform(): Boolean =
-        inlineState == STATE_DISABLED && inlineDisabledByPlatform
+    fun isInlineDisabledByPlatform(): Boolean = inlineState == INLINE_STATE_DISABLED && inlineDisabledByPlatform
 
-    fun isInlinePolicyBridgeAvailable(): Boolean =
-        inlineState == STATE_HOOK_READY_FULL ||
-                inlineState == STATE_HOOK_READY_CORE ||
-                inlineState == STATE_HOOK_DEGRADED
+    fun isInlinePolicyBridgeAvailable(): Boolean = inlineState == INLINE_STATE_HOOK_READY_FULL ||
+            inlineState == INLINE_STATE_HOOK_READY_CORE ||
+            inlineState == INLINE_STATE_HOOK_DEGRADED
 
     fun markMountPointsApplySucceeded(
         generation: Long,
@@ -346,23 +393,82 @@ object NativeHookStatus {
     ) {
         lastMountPointsApplySuccess = true
         mountPointsGeneration = generation
-        // 已应用代次确认：仅成功路径更新；失败/不支持路径绝不碰它，
-        // 否则会把尚未成功应用的配置误判为正常。
         mountPointsAppliedEpoch = publisherEpoch
+        mountPointsHasAppliedSnapshot = true
         lastMountPointsApplyAt = System.currentTimeMillis()
         lastMountPointsApplyGeneration = generation
         lastMountPointsApplyCount = count
         lastMountPointsApplyError = ""
         mountPointsAppliedRevision = redirectRevision
+        mountPointsAppliedCount = count
         mountPointsLastAttemptRevision = redirectRevision
         mountPointsConfiguredRevision = redirectRevision
         mountPointsPublishedRevision = redirectRevision
         mountPointsObservedAt = System.currentTimeMillis()
+        mountPointsFreshnessState = FRESHNESS_CURRENT
+        mountPointsFreshnessError = ""
+        recordMountPointsSnapshotRead(publisherEpoch, generation, redirectRevision)
         mountPointsState = when {
             count == 0 -> POLICY_STATE_NO_RULE
             redirectRevision.isBlank() -> POLICY_STATE_PENDING
             else -> POLICY_STATE_APPLIED
         }
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_MOUNT_READ)
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_MOUNT_APPLY)
+        publishSnapshot()
+    }
+
+    /** 已读取当前 mount 快照，但不代表该快照已应用到 Native。 */
+    fun markMountPointsSnapshotFresh(
+        publisherEpoch: String,
+        generation: Long,
+        redirectRevision: String,
+    ) {
+        recordMountPointsSnapshotRead(publisherEpoch, generation, redirectRevision)
+        mountPointsFreshnessState = FRESHNESS_CURRENT
+        mountPointsFreshnessError = ""
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_MOUNT_READ)
+        publishSnapshot()
+    }
+
+    /**
+     * 快照 identity 与已应用到 Native 的 identity（applied 三元组）一致时，只恢复
+     * freshness。返回 false 表示缺少可验证的 applied evidence，调用方必须走原应用流程。
+     */
+    fun markMountPointsFreshIfApplied(
+        publisherEpoch: String,
+        generation: Long,
+        redirectRevision: String,
+    ): Boolean {
+        if (!mountPointsHasAppliedSnapshot || mountPointsAppliedEpoch != publisherEpoch ||
+            mountPointsGeneration != generation || mountPointsAppliedRevision != redirectRevision
+        ) {
+            return false
+        }
+        // 当前 snapshot 回到既有成功应用的 identity 时，旧 apply 失败只属于其他
+        // identity 的尝试；恢复当前执行状态，但保留 lastApplyError 作为诊断事实。
+        recordMountPointsSnapshotRead(publisherEpoch, generation, redirectRevision)
+        lastMountPointsApplySuccess = true
+        mountPointsState = when {
+            mountPointsAppliedCount == 0 -> POLICY_STATE_NO_RULE
+            mountPointsAppliedRevision.isBlank() -> POLICY_STATE_PENDING
+            else -> POLICY_STATE_APPLIED
+        }
+        mountPointsFreshnessState = FRESHNESS_CURRENT
+        mountPointsFreshnessError = ""
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_MOUNT_READ)
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_MOUNT_APPLY)
+        publishSnapshot()
+        return true
+    }
+
+    fun markMountPointsReadUnavailable(error: Throwable) {
+        mountPointsFreshnessState = if (mountPointsSnapshotRead) {
+            FRESHNESS_STALE
+        } else {
+            FRESHNESS_UNKNOWN
+        }
+        mountPointsFreshnessError = describe(error)
         publishSnapshot()
     }
 
@@ -408,9 +514,8 @@ object NativeHookStatus {
         redirectRevision: String,
         error: Throwable,
     ) {
+        // UNSUPPORTED 短路时域不写入，无需发布快照。
         if (mountPointsState == POLICY_STATE_UNSUPPORTED) {
-            // 平台明确不支持时，适配器和上层消费器可能各自记录一次失败；
-            // 保留 UNSUPPORTED，不能被通用异常路径降级成普通 PENDING。
             return
         }
         lastMountPointsApplySuccess = false
@@ -422,7 +527,7 @@ object NativeHookStatus {
         mountPointsConfiguredRevision = redirectRevision
         mountPointsPublishedRevision = redirectRevision
         mountPointsObservedAt = System.currentTimeMillis()
-        mountPointsState = if (mountPointsAppliedRevision.isNotBlank()) {
+        mountPointsState = if (mountPointsHasAppliedSnapshot) {
             POLICY_STATE_STALE
         } else {
             POLICY_STATE_PENDING
@@ -432,75 +537,178 @@ object NativeHookStatus {
 
     /** Java Hook 已接受重定向正文；这不是行为层面的 EFFECTIVE 证明。 */
     fun markRedirectPolicyApplied(revision: String, generation: Long, hasRules: Boolean) {
+        markRedirectPolicyApplied(revision, generation, hasRules, "")
+    }
+
+    fun markRedirectPolicyApplied(
+        revision: String,
+        generation: Long,
+        hasRules: Boolean,
+        publisherEpoch: String,
+    ) {
         val observedAt = System.currentTimeMillis()
         redirectConfiguredRevision = revision
         redirectPublishedRevision = revision
         redirectAppliedRevision = revision
+        redirectAppliedPublisherEpoch = publisherEpoch
         redirectAppliedGeneration = generation
+        redirectHasAppliedSnapshot = true
         redirectLastError = ""
         redirectObservedAt = observedAt
+        redirectFreshnessState = FRESHNESS_CURRENT
         redirectPolicyState = when {
             !hasRules -> POLICY_STATE_NO_RULE
             revision.isBlank() -> POLICY_STATE_PENDING
             else -> POLICY_STATE_APPLIED
         }
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_REDIRECT)
         publishSnapshot()
     }
 
+    fun markRedirectPolicyFreshIfApplied(
+        publisherEpoch: String,
+        generation: Long,
+        revision: String,
+    ): Boolean {
+        if (!redirectHasAppliedSnapshot || redirectAppliedPublisherEpoch != publisherEpoch ||
+            redirectAppliedGeneration != generation || redirectAppliedRevision != revision
+        ) {
+            return false
+        }
+        redirectFreshnessState = FRESHNESS_CURRENT
+        redirectLastError = ""
+        redirectObservedAt = System.currentTimeMillis()
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_REDIRECT)
+        publishSnapshot()
+        return true
+    }
+
     fun markRedirectPolicyFailed(revision: String, error: String) {
-        redirectConfiguredRevision = revision
-        redirectPublishedRevision = revision
+        if (revision.isNotBlank()) {
+            redirectConfiguredRevision = revision
+            redirectPublishedRevision = revision
+        }
         redirectObservedAt = System.currentTimeMillis()
         redirectLastError = error.take(MAX_TEXT_LENGTH)
-        redirectPolicyState = if (redirectAppliedRevision.isNotBlank()) {
-            POLICY_STATE_STALE
+        redirectFreshnessState = if (redirectHasAppliedSnapshot) {
+            FRESHNESS_STALE
         } else {
-            POLICY_STATE_PENDING
+            FRESHNESS_UNKNOWN
         }
         publishSnapshot()
     }
 
     /** Java Hook 已接受只读正文；这不是行为层面的 EFFECTIVE 证明。 */
-    fun markReadOnlyPolicyApplied(revision: String, generation: Long, hasRules: Boolean) {
+    fun markReadOnlyPolicyApplied(
+        revision: String,
+        generation: Long,
+        hasRules: Boolean,
+        publisherEpoch: String = "",
+    ) {
         val observedAt = System.currentTimeMillis()
         readOnlyConfiguredRevision = revision
         readOnlyPublishedRevision = revision
         readOnlyAppliedRevision = revision
+        readOnlyAppliedPublisherEpoch = publisherEpoch
         readOnlyAppliedGeneration = generation
+        readOnlyHasAppliedSnapshot = true
         readOnlyLastError = ""
         readOnlyObservedAt = observedAt
+        readOnlyFreshnessState = FRESHNESS_CURRENT
         readOnlyPolicyState = when {
             !hasRules -> POLICY_STATE_NO_RULE
             revision.isBlank() -> POLICY_STATE_PENDING
             else -> POLICY_STATE_APPLIED
         }
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_READ_ONLY)
         publishSnapshot()
     }
 
+    fun markReadOnlyPolicyFreshIfApplied(
+        publisherEpoch: String,
+        generation: Long,
+        revision: String,
+    ): Boolean {
+        if (!readOnlyHasAppliedSnapshot || readOnlyAppliedPublisherEpoch != publisherEpoch ||
+            readOnlyAppliedGeneration != generation || readOnlyAppliedRevision != revision
+        ) {
+            return false
+        }
+        readOnlyFreshnessState = FRESHNESS_CURRENT
+        readOnlyLastError = ""
+        readOnlyObservedAt = System.currentTimeMillis()
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_READ_ONLY)
+        publishSnapshot()
+        return true
+    }
+
     fun markReadOnlyPolicyFailed(revision: String, error: String) {
-        readOnlyConfiguredRevision = revision
-        readOnlyPublishedRevision = revision
+        if (revision.isNotBlank()) {
+            readOnlyConfiguredRevision = revision
+            readOnlyPublishedRevision = revision
+        }
         readOnlyObservedAt = System.currentTimeMillis()
         readOnlyLastError = error.take(MAX_TEXT_LENGTH)
-        readOnlyPolicyState = if (readOnlyAppliedRevision.isNotBlank()) {
-            POLICY_STATE_STALE
+        readOnlyFreshnessState = if (readOnlyHasAppliedSnapshot) {
+            FRESHNESS_STALE
         } else {
-            POLICY_STATE_PENDING
+            FRESHNESS_UNKNOWN
         }
         publishSnapshot()
     }
 
+    fun markCapabilitiesFresh(publisherEpoch: String = capabilitiesPublisherEpoch, generation: Long = capabilitiesGeneration) {
+        capabilitiesPublisherEpoch = publisherEpoch
+        capabilitiesGeneration = generation
+        capabilitiesHasSnapshot = true
+        capabilitiesFreshnessState = FRESHNESS_CURRENT
+        capabilitiesFreshnessError = ""
+        markPolicyCacheHealthy(generation, POLICY_DOMAIN_CAPABILITIES)
+        publishSnapshot()
+    }
+
+    fun markCapabilitiesFreshIfCurrent(publisherEpoch: String, generation: Long): Boolean {
+        if (capabilitiesPublisherEpoch != publisherEpoch || capabilitiesGeneration != generation) {
+            return false
+        }
+        markCapabilitiesFresh(publisherEpoch, generation)
+        return true
+    }
+
+    fun markCapabilitiesReadUnavailable(error: Throwable) {
+        capabilitiesFreshnessState = if (capabilitiesHasSnapshot) {
+            FRESHNESS_STALE
+        } else {
+            FRESHNESS_UNKNOWN
+        }
+        capabilitiesFreshnessError = describe(error)
+        publishSnapshot()
+    }
+
+    fun isRedirectPolicyFresh(): Boolean = redirectFreshnessState == FRESHNESS_CURRENT
+    fun isReadOnlyPolicyFresh(): Boolean = readOnlyFreshnessState == FRESHNESS_CURRENT
+    fun isCapabilitiesFresh(): Boolean = capabilitiesFreshnessState == FRESHNESS_CURRENT
+    fun isMountPointsFresh(): Boolean = mountPointsFreshnessState == FRESHNESS_CURRENT
+
+    @JvmOverloads
     fun markFuseJavaGateScanned(
         discoveredCount: Int,
         hookedMethods: List<String>,
         unknownMethods: List<String>,
+        uidSkippedMethods: List<String>,
         failedMethods: List<String>,
+        scanComplete: Boolean = true,
     ) {
         fuseJavaGateStatus = FuseJavaGateStatus(
             discoveredCount = discoveredCount,
             hookedMethods = hookedMethods,
             unknownMethods = unknownMethods,
+            uidSkippedMethods = uidSkippedMethods,
             failedMethods = failedMethods,
+            scanComplete = scanComplete,
+            applicableCriticalMethods = applicableCriticalMethods(
+                hookedMethods, unknownMethods, uidSkippedMethods, failedMethods,
+            ),
         )
         publishSnapshot()
     }
@@ -512,34 +720,54 @@ object NativeHookStatus {
      * 常量；[generation] 为失败发生时已知的策略代际（与 ErrorEvent.generation
      * 语义一致），仅作诊断对照，不推进 [policyCacheLastGoodGeneration]。
      */
-    fun markPolicyCacheFailed(code: String, detail: String?, generation: Long) {
-        policyCacheLastFailureCode = code
-        policyCacheLastFailureGeneration = generation
-        policyCacheLastError = detail?.take(MAX_TEXT_LENGTH) ?: ""
+    fun markPolicyCacheFailed(
+        code: String,
+        detail: String?,
+        generation: Long,
+        domain: String = "general",
+    ) {
+        synchronized(policyCacheFailureLock) {
+            policyCacheFailures[domain] = PolicyCacheFailure(
+                code = code,
+                detail = detail?.take(NativeHookStatus.MAX_TEXT_LENGTH) ?: "",
+                generation = generation,
+                at = System.currentTimeMillis(),
+            )
+            updatePolicyCacheFailureSummaryLocked()
+        }
         publishSnapshot()
     }
 
     /** 标记策略缓存加载成功：清空失败字段并单调推进最后成功代际。 */
-    fun markPolicyCacheHealthy(generation: Long) {
-        if (generation > policyCacheLastGoodGeneration) {
-            policyCacheLastGoodGeneration = generation
+    fun markPolicyCacheHealthy(generation: Long, domain: String = "general") {
+        synchronized(policyCacheFailureLock) {
+            if (generation > policyCacheLastGoodGeneration) {
+                policyCacheLastGoodGeneration = generation
+            }
+            policyCacheFailures.remove(domain)
+            updatePolicyCacheFailureSummaryLocked()
         }
-        policyCacheLastFailureCode = ""
-        policyCacheLastFailureGeneration = 0L
-        policyCacheLastError = ""
         publishSnapshot()
+    }
+
+    private fun updatePolicyCacheFailureSummaryLocked() {
+        val latestEntry = policyCacheFailures.maxByOrNull { it.value.at }
+        policyCacheLastFailureDomain = latestEntry?.key.orEmpty()
+        policyCacheLastFailureCode = latestEntry?.value?.code.orEmpty()
+        policyCacheLastFailureGeneration = latestEntry?.value?.generation ?: 0L
+        policyCacheLastError = latestEntry?.value?.detail.orEmpty()
     }
 
     /** hooks callback binder 桥注册开始。 */
     fun markBridgeRegistering() {
-        bridgeState = BRIDGE_STATE_REGISTERING
+        bridgeState = "REGISTERING"
         bridgeLastAttemptAt = System.currentTimeMillis()
         publishSnapshot()
     }
 
     /** hooks callback binder 桥注册成功：重置失败文本与重试进度。 */
     fun markBridgeRegistered() {
-        bridgeState = BRIDGE_STATE_REGISTERED
+        bridgeState = "REGISTERED"
         bridgeLastError = ""
         bridgeAttemptCount = 0
         bridgeLastAttemptAt = System.currentTimeMillis()
@@ -553,7 +781,7 @@ object NativeHookStatus {
      * [markBridgeRegistering] 走 REGISTERING 状态。
      */
     fun markBridgeRetryScheduled(attempt: Int) {
-        bridgeState = BRIDGE_STATE_RETRYING
+        bridgeState = "RETRYING"
         bridgeAttemptCount = attempt
         bridgeLastAttemptAt = System.currentTimeMillis()
         publishSnapshot()
@@ -561,8 +789,8 @@ object NativeHookStatus {
 
     /** hooks callback binder 桥注册失败（含重试路径）。 */
     fun markBridgeFailed(error: String) {
-        bridgeState = BRIDGE_STATE_FAILED
-        bridgeLastError = error.take(MAX_TEXT_LENGTH)
+        bridgeState = "FAILED"
+        bridgeLastError = error.take(NativeHookStatus.MAX_TEXT_LENGTH)
         bridgeLastAttemptAt = System.currentTimeMillis()
         publishSnapshot()
     }
@@ -625,8 +853,13 @@ object NativeHookStatus {
         runCatching {
             val json = toJson()
             if (HookDataBusBridge.writeSnapshot(DataBusProtocol.SNAPSHOT_NATIVE_HOOK_STATUS, json)) {
-                HookDataBusBridge.signal(DataBusProtocol.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)
+                if (!HookDataBusBridge.signal(DataBusProtocol.SIGNAL_NATIVE_HOOK_STATUS_CHANGED)) {
+                    Log.w(TAG, "status snapshot signal was not confirmed")
+                }
+            } else {
+                Log.w(TAG, "status snapshot was not committed to DataBus")
             }
+            Unit
         }.onFailure {
             Log.w(TAG, "publishSnapshot failed", it)
         }
@@ -646,26 +879,49 @@ object NativeHookStatus {
                 put("initialized", policyCacheInitialized)
                 put("initializedAt", policyCacheInitializedAt)
                 put("lastFailureCode", policyCacheLastFailureCode)
+                put("lastFailureDomain", policyCacheLastFailureDomain)
                 put("lastFailureGeneration", policyCacheLastFailureGeneration)
                 put("lastError", policyCacheLastError)
                 put("lastGoodGeneration", policyCacheLastGoodGeneration)
                 put("applicationState", aggregatePolicyState())
-                put("redirectState", redirectPolicyState)
-                put("readOnlyState", readOnlyPolicyState)
+                put("redirectState", effectivePolicyState(redirectFreshnessState, redirectPolicyState))
+                put("redirectAppliedState", redirectPolicyState)
+                put("redirectFreshnessState", redirectFreshnessState)
                 put("redirectConfiguredRevision", redirectConfiguredRevision)
                 put("redirectPublishedRevision", redirectPublishedRevision)
                 put("redirectAppliedRevision", redirectAppliedRevision)
+                put("redirectAppliedPublisherEpoch", redirectAppliedPublisherEpoch)
                 put("redirectAppliedGeneration", redirectAppliedGeneration)
                 put("redirectExecutor", REDIRECT_EXECUTOR)
                 put("redirectLastError", redirectLastError)
                 put("redirectObservedAt", redirectObservedAt)
+                put("readOnlyState", effectivePolicyState(readOnlyFreshnessState, readOnlyPolicyState))
+                put("readOnlyAppliedState", readOnlyPolicyState)
+                put("readOnlyFreshnessState", readOnlyFreshnessState)
                 put("readOnlyConfiguredRevision", readOnlyConfiguredRevision)
                 put("readOnlyPublishedRevision", readOnlyPublishedRevision)
                 put("readOnlyAppliedRevision", readOnlyAppliedRevision)
+                put("readOnlyAppliedPublisherEpoch", readOnlyAppliedPublisherEpoch)
                 put("readOnlyAppliedGeneration", readOnlyAppliedGeneration)
                 put("readOnlyExecutor", READ_ONLY_EXECUTOR)
                 put("readOnlyLastError", readOnlyLastError)
                 put("readOnlyObservedAt", readOnlyObservedAt)
+                put("platformCapabilitiesFreshnessState", capabilitiesFreshnessState)
+                put("platformCapabilitiesFreshnessError", capabilitiesFreshnessError)
+                put("platformCapabilitiesPublisherEpoch", capabilitiesPublisherEpoch)
+                put("platformCapabilitiesGeneration", capabilitiesGeneration)
+                put("domainFailures", JSONObject().apply {
+                    synchronized(policyCacheFailureLock) {
+                        policyCacheFailures.forEach { (domain, failure) ->
+                            put(domain, JSONObject().apply {
+                                put("code", failure.code)
+                                put("generation", failure.generation)
+                                put("detail", failure.detail)
+                                put("at", failure.at)
+                            })
+                        }
+                    }
+                })
             })
             put("bridgeRegistration", JSONObject().apply {
                 put("state", bridgeState)
@@ -696,9 +952,15 @@ object NativeHookStatus {
                 put("appliedToExecutor", lastMountPointsApplySuccess)
                 put("applicationState", mountPointsState)
                 put("state", mountPointsState)
+                put("freshnessState", mountPointsFreshnessState)
+                put("freshnessError", mountPointsFreshnessError)
+                put("snapshotReadPublisherEpoch", mountPointsSnapshotPublisherEpoch)
+                put("snapshotReadGeneration", mountPointsSnapshotGeneration)
+                put("snapshotReadRevision", mountPointsSnapshotRevision)
                 put("configuredRevision", mountPointsConfiguredRevision)
                 put("publishedRevision", mountPointsPublishedRevision)
                 put("appliedRedirectRevision", mountPointsAppliedRevision)
+                put("appliedCount", mountPointsAppliedCount)
                 put("executor", MOUNT_POINTS_EXECUTOR)
                 put("lastError", lastMountPointsApplyError)
                 put("observedAt", mountPointsObservedAt)
@@ -715,53 +977,59 @@ object NativeHookStatus {
         }.toString()
     }
 
-    private fun aggregatePolicyState(): String = when {
-        mountPointsState == POLICY_STATE_APPLYING ||
-                redirectPolicyState == POLICY_STATE_APPLYING ||
-                readOnlyPolicyState == POLICY_STATE_APPLYING -> POLICY_STATE_APPLYING
-        mountPointsState == POLICY_STATE_STALE -> POLICY_STATE_STALE
-        redirectPolicyState == POLICY_STATE_STALE || readOnlyPolicyState == POLICY_STATE_STALE ->
-            POLICY_STATE_STALE
-        mountPointsState == POLICY_STATE_UNSUPPORTED ||
-                redirectPolicyState == POLICY_STATE_UNSUPPORTED ||
-                readOnlyPolicyState == POLICY_STATE_UNSUPPORTED -> POLICY_STATE_UNSUPPORTED
-        mountPointsState == POLICY_STATE_NO_RULE &&
-                redirectPolicyState == POLICY_STATE_NO_RULE &&
-                readOnlyPolicyState == POLICY_STATE_NO_RULE -> POLICY_STATE_NO_RULE
-        mountPointsState == POLICY_STATE_PENDING ||
-                redirectPolicyState == POLICY_STATE_PENDING ||
-                readOnlyPolicyState == POLICY_STATE_PENDING -> POLICY_STATE_PENDING
-        mountPointsState == POLICY_STATE_APPLIED ||
-                redirectPolicyState == POLICY_STATE_APPLIED ||
-                readOnlyPolicyState == POLICY_STATE_APPLIED -> POLICY_STATE_APPLIED
-        else -> POLICY_STATE_PENDING
+    private fun effectivePolicyState(freshness: String, appliedState: String): String = when {
+        freshness == FRESHNESS_STALE -> POLICY_STATE_STALE
+        freshness == FRESHNESS_UNKNOWN && appliedState == POLICY_STATE_PENDING -> POLICY_STATE_PENDING
+        else -> appliedState
     }
 
     private fun deriveInlineState(status: NativeStatusSnapshot): String = when {
-        !status.fuseAvailable -> STATE_DISABLED
-        !status.fuseLibraryLoaded -> STATE_FUSE_WAITING
-        status.fullAvailable -> STATE_HOOK_READY_FULL
-        status.coreAvailable && status.startsWithHooked -> STATE_HOOK_READY_CORE
-        status.coreAvailable -> STATE_HOOK_DEGRADED
-        status.fuseLibraryLoaded -> STATE_HOOK_UNAVAILABLE
-        inlineLibraryLoaded -> STATE_INLINE_LOADED
-        else -> STATE_NOT_LOADED
+        !status.fuseAvailable -> INLINE_STATE_DISABLED
+        !status.fuseLibraryLoaded -> INLINE_STATE_FUSE_WAITING
+        status.fullAvailable -> INLINE_STATE_HOOK_READY_FULL
+        status.coreAvailable && status.startsWithHooked -> INLINE_STATE_HOOK_READY_CORE
+        status.coreAvailable -> INLINE_STATE_HOOK_DEGRADED
+        status.fuseLibraryLoaded -> INLINE_STATE_HOOK_UNAVAILABLE
+        inlineLibraryLoaded -> INLINE_STATE_INLINE_LOADED
+        else -> INLINE_STATE_NOT_LOADED
     }
 
-    private data class FuseJavaGateStatus(
-        val discoveredCount: Int = 0,
-        val hookedMethods: List<String> = emptyList(),
-        val unknownMethods: List<String> = emptyList(),
-        val failedMethods: List<String> = emptyList(),
-    ) {
-        fun toJson(): JSONObject = JSONObject().apply {
-            put("discoveredCount", discoveredCount)
-            put("hookedCount", hookedMethods.size)
-            put("unknownCount", unknownMethods.size)
-            put("failedCount", failedMethods.size)
-            put("hookedMethods", JSONArray(hookedMethods))
-            put("unknownMethods", JSONArray(unknownMethods))
-            put("failedMethods", JSONArray(failedMethods))
+    private fun aggregatePolicyState(): String {
+        val mountState = effectiveMountState()
+        val redirectState = effectivePolicyState(redirectFreshnessState, redirectPolicyState)
+        val readOnlyState = effectivePolicyState(readOnlyFreshnessState, readOnlyPolicyState)
+        return when {
+            mountPointsState == POLICY_STATE_APPLYING -> POLICY_STATE_APPLYING
+            mountState == POLICY_STATE_STALE || redirectState == POLICY_STATE_STALE ||
+                    readOnlyState == POLICY_STATE_STALE || capabilitiesFreshnessState == FRESHNESS_STALE ->
+                POLICY_STATE_STALE
+            mountState == POLICY_STATE_UNSUPPORTED || redirectState == POLICY_STATE_UNSUPPORTED ||
+                    readOnlyState == POLICY_STATE_UNSUPPORTED -> POLICY_STATE_UNSUPPORTED
+            mountState == POLICY_STATE_NO_RULE && redirectState == POLICY_STATE_NO_RULE &&
+                    readOnlyState == POLICY_STATE_NO_RULE -> POLICY_STATE_NO_RULE
+            mountState == POLICY_STATE_PENDING || redirectState == POLICY_STATE_PENDING ||
+                    readOnlyState == POLICY_STATE_PENDING || capabilitiesFreshnessState == FRESHNESS_UNKNOWN ->
+                POLICY_STATE_PENDING
+            mountState == POLICY_STATE_APPLIED || redirectState == POLICY_STATE_APPLIED ||
+                    readOnlyState == POLICY_STATE_APPLIED -> POLICY_STATE_APPLIED
+            else -> POLICY_STATE_PENDING
         }
+    }
+
+    private fun effectiveMountState(): String = when {
+        mountPointsFreshnessState == FRESHNESS_STALE -> POLICY_STATE_STALE
+        mountPointsFreshnessState == FRESHNESS_UNKNOWN && mountPointsState == POLICY_STATE_PENDING -> POLICY_STATE_PENDING
+        else -> mountPointsState
+    }
+
+    private fun recordMountPointsSnapshotRead(
+        publisherEpoch: String,
+        generation: Long,
+        redirectRevision: String,
+    ) {
+        mountPointsSnapshotRead = true
+        mountPointsSnapshotPublisherEpoch = publisherEpoch
+        mountPointsSnapshotGeneration = generation
+        mountPointsSnapshotRevision = redirectRevision
     }
 }

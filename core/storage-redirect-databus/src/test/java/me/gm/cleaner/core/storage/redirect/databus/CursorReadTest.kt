@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
+import java.nio.file.Files
 
 /**
  * 游标三态读取契约测试。
@@ -11,13 +13,44 @@ import org.junit.Test
  * 覆盖复核指定的转换测试：OK → UNREADABLE 后，即使调用方把内存游标置为 ""，
  * 清理与健康层仍以可信状态为准。
  *
- * 测试边界（诚实划分）：
- * - 可 JVM 断言：枚举完整性、内容可信判定（纯函数）、非法队列白名单拒绝。
- * - 不可 JVM 断言：真实文件系统的存在性/常规性/读取异常三态。
- *   BUS_ROOT 硬编码指向设备路径，单测无法隔离——改由设备验收覆盖，
- *   不在此处用环境敏感断言假装覆盖。
+ * 文件读取三态仍通过纯判据覆盖；事件写入的 fail-closed 行为使用临时根目录，
+ * 不触碰设备 BUS_ROOT。
  */
 class CursorReadTest {
+
+    @Test
+    fun `不可读游标在计数器目录创建前拒绝写入`() = withTemporaryBusRoot { busRoot ->
+        val queue = DataBusProtocol.EVENT_FILESYSTEM
+        val cursorFile = File(File(busRoot, DataBus.DIR_CURSORS), "$queue.cursor")
+        cursorFile.parentFile!!.mkdirs()
+        cursorFile.writeText("corrupted", Charsets.UTF_8)
+
+        val eventDir = File(File(busRoot, DataBus.DIR_EVENTS), queue)
+        val result = DataBusEventWriter.writeEventLocked(queue, eventDir, "{}", busRoot)
+
+        assertEquals(-1L, result)
+        assertFalse(File(busRoot, DataBus.DIR_COUNTERS).exists())
+        assertFalse(eventDir.exists())
+    }
+
+    @Test
+    fun `不可读游标不推进既有计数器且不写事件`() = withTemporaryBusRoot { busRoot ->
+        val queue = DataBusProtocol.EVENT_FILESYSTEM
+        val cursorFile = File(File(busRoot, DataBus.DIR_CURSORS), "$queue.cursor")
+        cursorFile.parentFile!!.mkdirs()
+        cursorFile.writeText("corrupted", Charsets.UTF_8)
+
+        val counterFile = File(File(busRoot, DataBus.DIR_COUNTERS), "$queue.seq")
+        counterFile.parentFile!!.mkdirs()
+        counterFile.writeText("8292", Charsets.UTF_8)
+        val eventDir = File(File(busRoot, DataBus.DIR_EVENTS), queue)
+
+        val result = DataBusEventWriter.writeEventLocked(queue, eventDir, "{}", busRoot)
+
+        assertEquals(-1L, result)
+        assertEquals("8292", counterFile.readText(Charsets.UTF_8))
+        assertFalse(eventDir.exists())
+    }
 
     @Test
     fun `三态枚举完整`() {
@@ -87,6 +120,128 @@ class CursorReadTest {
     }
 
     @Test
+    fun `清理回退当前队列队首后由持久化计数器保留游标上界`() {
+        val cursor = "00000000000000008292-1791549618189-12963-a72c.json"
+        val counter = DataBusEventWriter.SequenceCounterRead.Value(8292L)
+
+        assertTrue(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = counter,
+            ),
+        )
+    }
+
+    @Test
+    fun `游标序号超过计数器和现存队列时不可信`() {
+        val cursor = "00000000000000008293-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Value(8292L),
+            ),
+        )
+    }
+
+    @Test
+    fun `缺失或损坏计数器时只有现存队列覆盖游标才可信`() {
+        val cursor = "00000000000000008292-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Absent,
+            ),
+        )
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Unreadable,
+            ),
+        )
+        assertTrue(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                counter = DataBusEventWriter.SequenceCounterRead.Unreadable,
+            ),
+        )
+    }
+
+    @Test
+    fun `缺失计数器且队列为空时不信任现存游标`() {
+        val cursor = "00000000000000000000-1791549618189-12963-a72c.json"
+
+        assertFalse(
+            DataBusPrune.isCursorWithinSequenceHighWatermark(
+                cursor = cursor,
+                queueMaxSequence = 0L,
+                queueHasEvents = false,
+                counter = DataBusEventWriter.SequenceCounterRead.Absent,
+            ),
+        )
+    }
+
+    @Test
+    fun `计数器损坏内容不会折算为零`() {
+        assertEquals(8292L, DataBusEventWriter.parseSequenceCounterContent("8292"))
+        assertEquals(0L, DataBusEventWriter.parseSequenceCounterContent("0"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent(""))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("broken"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("-1"))
+        assertEquals(null, DataBusEventWriter.parseSequenceCounterContent("9223372036854775808"))
+    }
+
+    @Test
+    fun `损坏或缺失计数器只从能覆盖游标的现存队列恢复`() {
+        assertTrue(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertTrue(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Absent,
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8291L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 0L,
+                queueHasEvents = false,
+                cursor = DataBusEventWriter.CursorSequenceRead.Value(8292L),
+            ),
+        )
+        assertFalse(
+            DataBusEventWriter.canRecoverSequenceCounterFromQueue(
+                queueMaxSequence = 8292L,
+                queueHasEvents = true,
+                cursor = DataBusEventWriter.CursorSequenceRead.Unreadable,
+            ),
+        )
+    }
+
+    @Test
     fun `越顶游标下存量队首都满足删除游标门禁_故越顶必须判不可信`() {
         // 安全 rationale：shouldPruneEvent 的游标门禁是 `name <= cursor`；
         // 一旦游标越顶，存量文件全部满足门禁（仅剩时间门禁），
@@ -117,5 +272,14 @@ class CursorReadTest {
         val method = DataBus::class.java.methods.first { it.name == "readCursor" }
         assertEquals(String::class.java, method.returnType)
         assertEquals(1, method.parameterTypes.size)
+    }
+
+    private fun withTemporaryBusRoot(block: (File) -> Unit) {
+        val root = Files.createTempDirectory("databus-cursor-write-test").toFile()
+        try {
+            block(root)
+        } finally {
+            root.deleteRecursively()
+        }
     }
 }

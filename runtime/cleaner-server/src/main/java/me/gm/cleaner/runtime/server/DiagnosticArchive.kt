@@ -562,14 +562,18 @@ object DiagnosticArchive {
         addCommand(
             zip,
             "logs/logcat_media_provider_pid.txt",
-            "MPID=$(${'$'}(pidof com.android.providers.media.module " +
-                    "com.android.providers.media " +
-                    "com.google.android.providers.media.module 2>/dev/null | awk '{print ${'$'}1}')); " +
-                    "if [ -z \"${'$'}MPID\" ]; then " +
-                    "echo 'media provider process is not running (no pid found)'; " +
-                    "else /system/bin/logcat -d -v threadtime --pid=${'$'}MPID -t 2000; fi",
+            mediaProviderPidLogcatCommand(),
         )
     }
+
+    /** Builds the shell command separately so its quoting and PID flow can be unit tested. */
+    internal fun mediaProviderPidLogcatCommand(): String =
+        "MPID=${'$'}(pidof com.android.providers.media.module " +
+                "com.android.providers.media " +
+                "com.google.android.providers.media.module 2>/dev/null | awk '{print ${'$'}1}'); " +
+                "if [ -z \"${'$'}MPID\" ]; then " +
+                "echo 'media provider process is not running (no pid found)'; " +
+                "else /system/bin/logcat -d -v threadtime --pid=${'$'}MPID -t 2000; fi"
 
     private fun addAutoLogs(zip: ZipOutputStream) {
         val dir = File(AUTO_LOG_DIR)

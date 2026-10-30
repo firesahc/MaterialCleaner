@@ -4,6 +4,8 @@ import android.util.Log
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * DataBus 事件保留与清理（游标读取三态 + 物理删除）。
@@ -61,11 +63,13 @@ internal object DataBusPrune {
         val cursorFile = File("${DataBus.BUS_ROOT}/${DataBus.DIR_CURSORS}/$queue.cursor")
         return try {
             val path = cursorFile.toPath()
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            val cursorAttributes = try {
+                Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            } catch (_: NoSuchFileException) {
                 // 确定不存在：新队列
                 return DataBusProtocol.CursorRead.ABSENT to ""
             }
-            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (!cursorAttributes.isRegularFile) {
                 // 存在但无法确认内容（软链/目录）：不可信
                 Log.w(TAG, "Cursor is not a regular file: $queue")
                 return DataBusProtocol.CursorRead.UNREADABLE to ""
@@ -75,17 +79,28 @@ internal object DataBusPrune {
                 Log.w(TAG, "Cursor unreadable (blank or illegal format): $queue")
                 return DataBusProtocol.CursorRead.UNREADABLE to ""
             }
-            // 越顶异常检测：格式可信的游标仍可能指向队列队首之后
-            // （如游标损坏成更大的合法文件名、队列被外部清空重建）。
-            // 此时游标依据不可确认，按 UNREADABLE 处理（删 0 并暴露状态）。
-            // 注意：这只是"越顶"异常检测，不是真实性证明——范围内伪造游标
-            // 仍会被接受（已接受边界），完整性由消费推进协议保证。
-            val max = DataBus.getLastEventFilename(queue)
+            // 队列当前最大事件会随合法清理回退，不能单独当作历史上界。
+            // counters/{queue}.seq 保留已分配序号，游标只比较文件名中的序号前缀。
+            // 没有可信计数器时，仅允许当前队列中的事件证明游标未越顶。
+            val max = getLastEventFilenameStrict(queue)
             if (max == null) {
                 Log.w(TAG, "Cursor credibility unknown (queue listing failed): $queue")
                 return DataBusProtocol.CursorRead.UNREADABLE to ""
             }
-            if (max.isNotEmpty() && content > max) {
+            val queueHasEvents = max.isNotEmpty()
+            val queueMaxSequence = if (queueHasEvents) {
+                DataBusEventWriter.parseEventSequence(max)
+            } else {
+                0L
+            }
+            val counter = DataBusEventWriter.readSequenceCounterDetailed(queue)
+            if (!isCursorWithinSequenceHighWatermark(
+                    cursor = content,
+                    queueMaxSequence = queueMaxSequence,
+                    queueHasEvents = queueHasEvents,
+                    counter = counter,
+                )
+            ) {
                 Log.w(TAG, "Cursor beyond queue top, treating as unreadable: $queue")
                 return DataBusProtocol.CursorRead.UNREADABLE to ""
             }
@@ -93,6 +108,34 @@ internal object DataBusPrune {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to read cursor: $queue", e)
             DataBusProtocol.CursorRead.UNREADABLE to ""
+        }
+    }
+
+    /**
+     * 在区分真实缺失与不可读的前提下读取队列顶部。
+     * 事件资格仍严格复用 [isEventFile]，与消费和清理使用同一口径。
+     */
+    private fun getLastEventFilenameStrict(queue: String): String? {
+        val eventDir = File("${DataBus.BUS_ROOT}/${DataBus.DIR_EVENTS}/$queue")
+        return try {
+            val attributes = try {
+                Files.readAttributes(
+                    eventDir.toPath(),
+                    BasicFileAttributes::class.java,
+                    LinkOption.NOFOLLOW_LINKS,
+                )
+            } catch (_: NoSuchFileException) {
+                return ""
+            }
+            if (!attributes.isDirectory) return null
+            val entries = eventDir.listFiles() ?: return null
+            entries.asSequence()
+                .filter(::isEventFile)
+                .maxByOrNull { it.name }
+                ?.name ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to inspect event queue: $queue", e)
+            null
         }
     }
 
@@ -109,6 +152,33 @@ internal object DataBusPrune {
     internal fun isCredibleCursorContent(content: String): Boolean {
         if (content.isEmpty()) return false
         return DataBusProtocol.EVENT_FILE_NAME_PATTERN.matchEntire(content) != null
+    }
+
+    /**
+     * 游标可信上界：当前队列最大序号与持久化发号计数器的较大值。
+     *
+     * 缺失/损坏计数器不能折算成 0 后继续授权：只有当前队列存在可解析事件，
+     * 且该事件的序号覆盖游标时，才可用现存队列作兼容性证明。队列空或游标
+     * 高于现存队列时仍返回不可信，清理入口因此删除 0 个源事件。
+     */
+    internal fun isCursorWithinSequenceHighWatermark(
+        cursor: String,
+        queueMaxSequence: Long?,
+        queueHasEvents: Boolean,
+        counter: DataBusEventWriter.SequenceCounterRead,
+    ): Boolean {
+        val cursorSequence = DataBusEventWriter.parseEventSequence(cursor) ?: return false
+        val upperBound = when (counter) {
+            is DataBusEventWriter.SequenceCounterRead.Value ->
+                maxOf(counter.sequence, queueMaxSequence ?: 0L)
+
+            DataBusEventWriter.SequenceCounterRead.Absent,
+            DataBusEventWriter.SequenceCounterRead.Unreadable -> {
+                if (!queueHasEvents || queueMaxSequence == null) return false
+                queueMaxSequence
+            }
+        }
+        return cursorSequence <= upperBound
     }
 
     /**

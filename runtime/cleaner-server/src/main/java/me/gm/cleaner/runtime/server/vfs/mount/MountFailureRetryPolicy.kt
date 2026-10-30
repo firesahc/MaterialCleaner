@@ -12,16 +12,30 @@ internal data class MountFailureDisposition(
 )
 
 internal object MountFailureRetryPolicy {
-    /** 这些 stage 表示事务本身或环境已不可信，重试必然复现。 */
+    /** 这些 stage 不重试；目标门控阶段通常已由 Mounter 在记录挂载失败前处理。 */
     private val permanentStages = setOf(
         "invalid_args",
         "invalid_source",
         "invalid_target",
         "target_identity",
+        "target_gone",
         "namespace_transaction_timeout",
         "namespace_rollback_failed",
         "baseline_recovery_failed",
     )
+
+    /** target_identity 仅表示已确认身份不匹配；读取/解析错误用 target_identity_error。 */
+    private val expectedTargetDisappearanceStages = setOf(
+        "target_identity",
+        "target_gone",
+    )
+
+    /**
+     * 目标已消失或身份不再匹配是进程生命周期结果，不应记作挂载失败。
+     * 若 namespace 已脏则不能跳过安全处置，仍按污染路径 fail-closed。
+     */
+    fun isExpectedTargetDisappearance(stage: String, namespaceDirty: Boolean): Boolean =
+        !namespaceDirty && stage in expectedTargetDisappearanceStages
 
     /** 权限/不支持类 errno：重试无法改变结果。 */
     private val permanentErrnos = setOf(

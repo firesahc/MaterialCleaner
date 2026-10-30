@@ -35,6 +35,18 @@ class NativeSyncPolicyTest {
     }
 
     @Test
+    fun `Bridge读取故障时即使保留旧成功应用也不得判SYNCED`() {
+        val input = base().copy(snapshotFreshnessState = "STALE")
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `旧状态缺少freshness证据时不得判SYNCED`() {
+        val input = base().copy(snapshotFreshnessState = "UNKNOWN")
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
     fun `旧epoch generation更大也不得判SYNCED`() {
         // 最初的事故：旧 epoch 下 nativeGen=12 > 新 snapshotGen=7，但 Native 持有旧配置。
         // 关键断言是“不得 SYNCED”；此处存在针对当前配置的执行中 attempt，故判收敛中。
@@ -183,6 +195,47 @@ class NativeSyncPolicyTest {
     }
 
     @Test
+    fun `PENDING且lastApplySuccess=true不得判SYNCED`() {
+        // markInlinePlatformSupported() 重置 mountPointsState=PENDING 但不清除 lastApplySuccess，
+        // 形成 applicationState=PENDING 与 lastApplySuccess=true 的矛盾组合。
+        // SYNCED 必须显式要求 applicationState 属于已应用终态。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "PENDING",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `STALE且lastApplySuccess=true不得判SYNCED`() {
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "STALE",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `APPLIED且lastApplySuccess=true且generation达标判SYNCED`() {
+        // 正常路径：applicationState 为已应用终态时，才允许 SYNCED。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "APPLIED",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `NO_RULE且lastApplySuccess=true且generation达标判SYNCED`() {
+        // 空规则若已成功清空旧挂载点，可视为同步完成。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "NO_RULE",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
     fun `UNSUPPORTED优先于旧成功记录`() {
         // 契约封闭：纯策略必须对任意输入总计。hook 侧 markMountPointsApplyUnsupported
         // 会同步清除 success 记录，故该组合本不可达；仍按终态优先排序，
@@ -191,6 +244,17 @@ class NativeSyncPolicyTest {
             lastApplySuccess = true, applicationState = "UNSUPPORTED",
         )
         assertEquals(NativeSyncPolicy.Verdict.UNSUPPORTED, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `APPLYING且lastApplySuccess=true不得判SYNCED而判CONVERGING`() {
+        // 一次成功应用后可能立即开始下一次应用，此时 lastApplySuccess=true 但
+        // applicationState=APPLYING，不应判 SYNCED，而应判 CONVERGING。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "APPLYING",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.CONVERGING, NativeSyncPolicy.evaluate(input))
     }
 
     @Test
@@ -204,13 +268,14 @@ class NativeSyncPolicyTest {
     }
 
     @Test
-    fun `snapshotEpoch未知时退化为generation比较`() {
-        // 向后兼容旧版快照（无 epoch 字段）
+    fun `snapshotEpoch未知时不得以generation比较判SYNCED`() {
+        // snapshotEpoch 为空、appliedEpoch 为旧 epoch：身份无法证明，
+        // 不得仅凭 generation 比较判定当前配置已同步。
         val input = base().copy(
             snapshotEpoch = "", snapshotGen = 7L,
             appliedEpoch = "epoch-old", appliedGen = 12L, lastApplySuccess = true,
         )
-        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
     }
 
     @Test
@@ -225,5 +290,17 @@ class NativeSyncPolicyTest {
         // 同步机制正在处理当前配置，收敛中是正确的。
         val input = base().copy(appliedGen = 6L, applicationState = "APPLYING")
         assertEquals(NativeSyncPolicy.Verdict.CONVERGING, NativeSyncPolicy.evaluate(input))
+    }
+
+    @Test
+    fun `双侧epoch均为空且旧成功记录generation更大时不得判SYNCED`() {
+        // 双侧 epoch 均为空时，身份无法证明，不能仅凭 generation 比较判定当前配置已同步。
+        // 即使 lastApplySuccess 为 true 且 appliedGen > snapshotGen，也必须返回 STALE。
+        val input = base().copy(
+            snapshotEpoch = "", snapshotGen = 7L,
+            appliedEpoch = "", appliedGen = 12L, lastApplySuccess = true,
+            applicationState = "APPLIED",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
     }
 }

@@ -230,31 +230,105 @@ static void fail_child(int sock, const char *stage, int err, int index = -1,
     sys__exit(1);
 }
 
-/// wait for system mount
-static bool wait_zygote(int pid) {
-    const int sleep_time = 5 * 1000;
-    int slept_time = 0;
-    std::string path = StringPrintf("/proc/%d/attr/current"_iobfs.c_str(), pid);
-    if (access(path.c_str(), F_OK)) {
-        return false;
+/// zygote 等待结果：目标消失、真正超时和读取故障必须分别处理。
+enum class ZygoteWaitResult {
+    OK,
+    GONE,
+    TIMEOUT,
+    ERROR,
+};
+
+static bool is_target_gone_errno(int error) {
+    return error == ENOENT || error == ESRCH;
+}
+
+/// attr/current 的 ENOENT 可能只是该 proc 属性不可用；只有 PID 目录也消失才算目标退出。
+static ZygoteWaitResult classify_target_path_error(int pid, int error) {
+    if (!is_target_gone_errno(error)) {
+        return ZygoteWaitResult::ERROR;
     }
+    const std::string proc_path = StringPrintf("/proc/%d"_iobfs.c_str(), pid);
+    if (access(proc_path.c_str(), F_OK) == 0) {
+        return ZygoteWaitResult::ERROR;
+    }
+    return is_target_gone_errno(errno) ? ZygoteWaitResult::GONE
+                                       : ZygoteWaitResult::ERROR;
+}
+
+struct TargetIdentityFailure {
+    const char *stage;
+    int error;
+};
+
+/// 只有明确身份不匹配或 /proc/<pid> 确认消失才属于目标生命周期结果；
+/// stat/status 的读写、权限及解析故障必须保留为普通身份读取错误。
+static TargetIdentityFailure classify_target_identity_failure(pid_t pid, int error) {
+    if (error == ESTALE) {
+        return {"target_identity", ESTALE};
+    }
+    if (is_target_gone_errno(error) &&
+        classify_target_path_error(pid, error) == ZygoteWaitResult::GONE) {
+        return {"target_gone", error};
+    }
+    return {"target_identity_error", error != 0 ? error : EIO};
+}
+
+/// 等待目标离开 zygote context。失败原因通过 out_errno 返回。
+static ZygoteWaitResult wait_zygote(int pid, int *out_errno) {
+    if (out_errno == nullptr) {
+        return ZygoteWaitResult::ERROR;
+    }
+    *out_errno = 0;
+    if (pid <= 0) {
+        *out_errno = EINVAL;
+        return ZygoteWaitResult::ERROR;
+    }
+
+    const int sleep_time_us = 5 * 1000;
+    int slept_time_us = 0;
+    const std::string path = StringPrintf("/proc/%d/attr/current"_iobfs.c_str(), pid);
+    if (access(path.c_str(), F_OK) != 0) {
+        const int error = errno;
+        *out_errno = error;
+        return classify_target_path_error(pid, error);
+    }
+
     char nice_name[PATH_MAX];
     while (true) {
-        int fd = sys_open(path.c_str(), O_RDONLY, 0);
-        nice_name[sys_read(fd, nice_name, sizeof(nice_name) - 1)] = 0;
+        const int fd = TEMP_FAILURE_RETRY(sys_open(path.c_str(), O_RDONLY | O_CLOEXEC, 0));
+        if (fd < 0) {
+            const int error = errno;
+            *out_errno = error;
+            return classify_target_path_error(pid, error);
+        }
+
+        const ssize_t read_bytes = TEMP_FAILURE_RETRY(
+                sys_read(fd, nice_name, sizeof(nice_name) - 1));
+        const int read_errno = errno;
         sys_close(fd);
+
+        if (read_bytes < 0) {
+            *out_errno = read_errno;
+            return classify_target_path_error(pid, read_errno);
+        }
+        if (read_bytes == 0 || static_cast<size_t>(read_bytes) >= sizeof(nice_name)) {
+            *out_errno = EIO;
+            return ZygoteWaitResult::ERROR;
+        }
+        nice_name[read_bytes] = '\0';
+
         if (!strcmp("u:r:zygote:s0"_iobfs.c_str(), nice_name)) {
-            usleep(sleep_time);
-            slept_time += sleep_time;
-            if (slept_time > 5 * 1000 * 1000) {
-                // Waited more than 5s.
-                return false;
+            TEMP_FAILURE_RETRY(usleep(sleep_time_us));
+            slept_time_us += sleep_time_us;
+            if (slept_time_us > 5 * 1000 * 1000) {
+                *out_errno = ETIMEDOUT;
+                return ZygoteWaitResult::TIMEOUT;
             }
         } else {
 #ifdef DEBUG
-            // LOGE("wait %d for %dms"_iobfs.c_str(), pid, slept_time / 1000);
+            // LOGE("wait %d for %dms"_iobfs.c_str(), pid, slept_time_us / 1000);
 #endif
-            return true;
+            return ZygoteWaitResult::OK;
         }
     }
 }
@@ -523,15 +597,26 @@ namespace Mount {
             return make_mount_status(-1, "invalid_args", EINVAL, -1, nullptr, nullptr,
                                      MountPhase::PREPARE);
         }
-        if (!wait_zygote(pid)) {
-            return make_mount_status(-1, "wait_zygote", errno == 0 ? ETIMEDOUT : errno,
-                                     -1, nullptr, nullptr, MountPhase::PREPARE);
+        int wait_errno = 0;
+        const ZygoteWaitResult wait_result = wait_zygote(pid, &wait_errno);
+        if (wait_result != ZygoteWaitResult::OK) {
+            const char *stage = "wait_zygote_error";
+            if (wait_result == ZygoteWaitResult::GONE) {
+                stage = "target_gone";
+            } else if (wait_result == ZygoteWaitResult::TIMEOUT) {
+                stage = "wait_zygote";
+            }
+            const int error = wait_errno != 0 ? wait_errno : EIO;
+            return make_mount_status(-1, stage, error, -1, nullptr, nullptr,
+                                     MountPhase::PREPARE);
         }
         // 事务登记目标身份：starttime 在 PID 复用后必然变化，是全流程防误伤的锚点。
         unsigned long long target_start_time = 0;
         if (!read_target_identity(pid, static_cast<uid_t>(uid), &target_start_time)) {
-            return make_mount_status(-1, "target_identity", errno == 0 ? ESRCH : errno,
-                                     -1, nullptr, nullptr, MountPhase::PREPARE);
+            const TargetIdentityFailure failure =
+                    classify_target_identity_failure(pid, errno);
+            return make_mount_status(-1, failure.stage, failure.error, -1, nullptr,
+                                     nullptr, MountPhase::PREPARE);
         }
         int sv[2];
         if (socketpair(AF_UNIX, SOCK_DGRAM, 0, sv) != 0) {
@@ -607,10 +692,16 @@ namespace Mount {
         // setns 后二次确认身份：采集与进入之间目标若死亡且 PID 被复用，
         // 继续操作会把挂载打进无关进程的 namespace。
         unsigned long long confirmed_start_time = 0;
-        if (!read_target_identity(pid, static_cast<uid_t>(uid), &confirmed_start_time) ||
-            confirmed_start_time != target_start_time) {
-            fail_child(sock, "target_identity", errno == 0 ? ESRCH : errno, -1,
-                       nullptr, nullptr, MountPhase::NAMESPACE_ENTERED);
+        if (!read_target_identity(pid, static_cast<uid_t>(uid), &confirmed_start_time)) {
+            const TargetIdentityFailure failure =
+                    classify_target_identity_failure(pid, errno);
+            fail_child(sock, failure.stage, failure.error, -1, nullptr, nullptr,
+                       MountPhase::NAMESPACE_ENTERED);
+        }
+        if (confirmed_start_time != target_start_time) {
+            // 成功读取到的身份锚点不同，明确作为已确认的 PID 身份替换处理。
+            fail_child(sock, "target_identity", ESTALE, -1, nullptr, nullptr,
+                       MountPhase::NAMESPACE_ENTERED);
         }
 #ifdef REMOUNT_STORAGE
         write_mount_progress(sock, MountPhase::NAMESPACE_ENTERED);

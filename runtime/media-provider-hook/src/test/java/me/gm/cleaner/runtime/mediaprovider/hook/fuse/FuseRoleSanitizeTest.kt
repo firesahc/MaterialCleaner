@@ -13,7 +13,7 @@ class FuseRoleSanitizeTest {
     }
 
     @Test
-    fun `uid为负一表示推断直接透传`() {
+    fun `uid为负一表示未核验直接透传给安装门控`() {
         val types = arrayOf<Class<*>>(String::class.java, String::class.java)
         assertArrayEquals(intArrayOf(0, 1, -1, -1), sanitizeRoleIndices(0, 1, -1, -1, types))
     }

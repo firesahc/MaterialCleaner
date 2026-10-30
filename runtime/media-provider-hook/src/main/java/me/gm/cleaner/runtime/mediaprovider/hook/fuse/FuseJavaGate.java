@@ -6,6 +6,7 @@ import me.gm.cleaner.runtime.mediaprovider.hook.media.MediaProviderHooksService;
 import me.gm.cleaner.runtime.mediaprovider.hook.media.QuerySessionCache;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.HookPolicyCache;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.NativeHookStatus;
+import me.gm.cleaner.core.common.err.ErrorCodes;
 
 import android.os.FileObserver;
 import android.system.OsConstants;
@@ -24,7 +25,6 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
-import me.gm.cleaner.core.storage.redirect.databus.DataBus;
 import org.json.JSONObject;
 import me.gm.cleaner.core.storage.redirect.databus.DataBusProtocol;
 
@@ -92,6 +92,7 @@ public class FuseJavaGate {
         final List<DiscoveredMethod> discovered = scanFuseMethods();
         final List<String> hookedMethods = new ArrayList<>();
         final List<String> unknownMethods = new ArrayList<>();
+        final List<String> uidSkippedMethods = new ArrayList<>();
         final List<String> failedMethods = new ArrayList<>();
 
         for (final DiscoveredMethod dm : discovered) {
@@ -109,8 +110,7 @@ public class FuseJavaGate {
                         + " (unanalyzable params)");
                 continue;
             }
-            // 签名清洗：仅 path 自身非法时拒绝安装；path2/uid 推断噪声钳制为 -1
-            // 走运行时回退（resolveUid/各 handler 已有 guarded 保护），恢复基线覆盖率。
+            // 签名清洗：path 非法时拒绝安装；path2/uid 无效时钳制为 -1。
             // 静态方法允许安装——handler 异常由 GuardedHook 隔离，基线已证明安全。
             final ParamRoles roles = sanitizeRoles(dm.method, rawRoles);
             if (roles == null) {
@@ -119,6 +119,12 @@ public class FuseJavaGate {
                 continue;
             }
             final String signature = dm.method.getName() + " " + Arrays.toString(dm.method.getParameterTypes());
+            final String uidSkipReason = FuseUidGateKt.uidResolutionSkipReason(
+                    roles.uidIndex, dm.method.getParameterTypes());
+            if (uidSkipReason != null) {
+                uidSkippedMethods.add(signature + " (" + uidSkipReason + ")");
+                continue;
+            }
             try {
                 installHook(dm.method, handler, roles);
                 hookedMethods.add(signature);
@@ -135,14 +141,18 @@ public class FuseJavaGate {
         for (final String s : unknownMethods) {
             Log.w("MC_REDIRECT", "[FuseJavaGate] UNKNOWN FUSE method: " + s);
         }
+        for (final String s : uidSkippedMethods) {
+            Log.w("MC_REDIRECT", "[FuseJavaGate] UID-UNRESOLVED FUSE method skipped: " + s);
+        }
         for (final String s : failedMethods) {
             Log.e("MC_REDIRECT", "[FuseJavaGate] FAILED FUSE method: " + s);
         }
         Log.i("MC_REDIRECT", "[FuseJavaGate] initFuseHooks complete: "
                 + hookedMethods.size() + " hooked, " + unknownMethods.size()
-                + " unknown, " + failedMethods.size() + " failed");
+                + " unknown, " + uidSkippedMethods.size() + " skipped for unresolved UID, "
+                + failedMethods.size() + " failed");
         NativeHookStatus.INSTANCE.markFuseJavaGateScanned(
-                discovered.size(), hookedMethods, unknownMethods, failedMethods);
+                discovered.size(), hookedMethods, unknownMethods, uidSkippedMethods, failedMethods);
     }
 
     /**
@@ -212,7 +222,7 @@ public class FuseJavaGate {
     private BehaviorHandler fileOp(final int eventType) {
         return (param, roles, methodName) -> {
             final String path = (String) param.args[roles.pathIndex];
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " cannot find uid");
                 return;
@@ -220,7 +230,7 @@ public class FuseJavaGate {
             final String packageName = getCallingPackageName(param.thisObject, uid);
             dispatchFileSystemEvent(packageName, path, eventType, methodName, uid);
             final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
-            if (mService.isReadOnly(mountedPath, uid)) {
+            if (mService.isReadOnly(path, uid)) {
                 param.setResult(OsConstants.EPERM);
             }
         };
@@ -235,7 +245,7 @@ public class FuseJavaGate {
         return (param, roles, methodName) -> {
             final String oldPath = (String) param.args[roles.pathIndex];
             final String newPath = (String) param.args[roles.path2Index];
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " cannot find uid");
                 return;
@@ -248,7 +258,7 @@ public class FuseJavaGate {
                     methodName, uid);
             final String mountedOldPath = redirectFusePath(param, roles.pathIndex, uid, methodName + ".oldPath");
             final String mountedNewPath = redirectFusePath(param, roles.path2Index, uid, methodName + ".newPath");
-            if (mService.isReadOnly(mountedOldPath, uid) || mService.isReadOnly(mountedNewPath, uid)) {
+            if (mService.isReadOnly(oldPath, uid) || mService.isReadOnly(newPath, uid)) {
                 param.setResult(OsConstants.EPERM);
             }
         };
@@ -261,7 +271,7 @@ public class FuseJavaGate {
      */
     private BehaviorHandler simpleRedirect() {
         return (param, roles, methodName) -> {
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " cannot find uid, skipping redirect");
                 return;
@@ -279,7 +289,7 @@ public class FuseJavaGate {
     private BehaviorHandler openOp() {
         return (param, roles, methodName) -> {
             final String originalPath = (String) param.args[roles.pathIndex];
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " cannot find uid, skipping redirect");
                 return;
@@ -293,7 +303,7 @@ public class FuseJavaGate {
                 final Object modeArg = param.args[roles.modeIndex];
                 modeBits = modeArg instanceof Integer ? (Integer) modeArg : null;
             }
-            final boolean readOnly = mountedPath != null && mService.isReadOnly(mountedPath, uid);
+            final boolean readOnly = mService.isReadOnly(originalPath, uid);
             if (FuseOpenModePolicyKt.shouldDenyOpen(modeBits, readOnly)) {
                 rejectOpenHandle(param, methodName);
             }
@@ -314,12 +324,12 @@ public class FuseJavaGate {
      * 品种 D — multiArgConsistency：多 String 参数同步（onFileLookupForFuse / onFileOpenForFuse）。
      * <p>
      * 行为链：路径重定向 → 将所有等于原始路径的 String 参数同步更新为挂载后路径。
-     * uid 位置不确定，通过 {@link #resolveUid} 运行时推断。
+     * uid 位置必须由核验过的方法签名确定；未知签名不会安装此 Hook。
      */
     private BehaviorHandler multiArgConsistency() {
         return (param, roles, methodName) -> {
             final String originalPath = (String) param.args[roles.pathIndex];
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName
                         + " cannot find uid — signature available in hook log");
@@ -343,7 +353,7 @@ public class FuseJavaGate {
     private BehaviorHandler accessCheck() {
         return (param, roles, methodName) -> {
             final String path = (String) param.args[roles.pathIndex];
-            final int uid = resolveUid(param, roles, methodName);
+            final int uid = resolveUid(param, roles);
             if (uid < 0) {
                 Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " cannot find uid");
                 return;
@@ -365,7 +375,7 @@ public class FuseJavaGate {
                 }
                 final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
                 if (accessType != DIRECTORY_ACCESS_FOR_READ
-                        && mService.isReadOnly(mountedPath, uid)) {
+                        && mService.isReadOnly(path, uid)) {
                     param.setResult(OsConstants.EPERM);
                 }
             } else if (extraArg instanceof Boolean) {
@@ -376,7 +386,7 @@ public class FuseJavaGate {
                         (forCreate ? FileObserver.CREATE : FileObserver.DELETE) | DIR,
                         methodName, uid);
                 final String mountedPath = redirectFusePath(param, roles.pathIndex, uid, methodName);
-                if (mService.isReadOnly(mountedPath, uid)) {
+                if (mService.isReadOnly(path, uid)) {
                     param.setResult(OsConstants.EPERM);
                 }
             } else {
@@ -397,7 +407,11 @@ public class FuseJavaGate {
      */
     private BehaviorHandler uidTracking() {
         return (param, roles, methodName) -> {
-            final int uid = (int) param.args[roles.uidIndex];
+            final int uid = resolveUid(param, roles);
+            if (uid < 0) {
+                Log.w("MC_REDIRECT", "[FuseJavaGate] " + methodName + " has no runtime UID value");
+                return;
+            }
             final String path = (String) param.args[roles.pathIndex];
             final String packageName = getCallingPackageName(param.thisObject, uid);
             QuerySessionCache.maybeAccessQueriedPath(packageName, uid, path);
@@ -409,22 +423,19 @@ public class FuseJavaGate {
     // ════════════════════════════════════════════════════════════════
 
     /**
-     * 统一 uid 解析：优先使用静态分析的 uidIndex，回退到运行时值推断。
-     * <p>
-     * 当 {@link ParamRoles#uidIndex} >= 0 时直接取值；
-     * 否则调用 {@link #findCallingUid(String, Object[])} 在运行时扫描参数列表，
-     * 利用方法名提示 + 值 >= 10000 启发式定位 uid。
+     * 只从签名分析阶段核验过的位置读取 UID；运行时不扫描其他 int 参数。
      */
     private int resolveUid(final XC_MethodHook.MethodHookParam param,
-                           final ParamRoles roles, final String methodName) {
-        if (roles.uidIndex >= 0) {
-            final Object arg = param.args[roles.uidIndex];
-            if (arg instanceof Integer) {
-                return (int) arg;
-            }
-            // uidIndex 指向的不是 int —— 运行时回退
+                           final ParamRoles roles) {
+        if (roles.uidIndex < 0 || roles.uidIndex >= param.args.length) {
+            return -1;
         }
-        return findCallingUid(methodName, param.args);
+        final Object arg = param.args[roles.uidIndex];
+        if (!(arg instanceof Integer)) {
+            return -1;
+        }
+        final int uid = (Integer) arg;
+        return uid >= 0 ? uid : -1;
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -442,7 +453,7 @@ public class FuseJavaGate {
         /**
          * @param param      Xposed 方法 Hook 参数（args、thisObject、result 等）
          * @param roles      静态分析得到的参数角色（path/uid/index 等）
-         * @param methodName 方法名（用于日志和运行时 uid 推断提示）
+         * @param methodName 方法名（用于日志）
          */
         void handle(XC_MethodHook.MethodHookParam param, ParamRoles roles, String methodName)
                 throws Throwable;
@@ -566,8 +577,8 @@ public class FuseJavaGate {
      *   此类 hook 在运行时必定 ClassCast，安装毫无意义）</li>
      *   <li>path2 下标：越界 / 非 String / 与 path 重合即钳制为 -1，
      *   由各 handler 的运行时逻辑与 GuardedHook 兜底（基线行为）</li>
-     *   <li>uid 下标：-1 表示运行时推断，直接保留；越界 / 非 int-Integer /
-     *   与 path/path2 重合即钳制为 -1，由 {@link #resolveUid} 值推断回退</li>
+     *   <li>uid 下标：-1 表示签名未核验，调用方会阻止安装 UID 依赖 Hook；越界 / 非 int-Integer /
+     *   与 path/path2 重合即钳制为 -1，同样阻止安装</li>
      *   <li>静态方法：允许通过。handler 异常由 GuardedHook 隔离不污染宿主，
      *   基线已 hook 此类 synthetic lambda 且运行正常，拒绝反而造成覆盖回归</li>
      * </ul>
@@ -610,9 +621,7 @@ public class FuseJavaGate {
         // 通过 DataBus 事件队列分发（异步，不影响主流程）。
         // 仅使用 DataBus 路径——不再通过 Binder 同步调用 onFileSystemEvent。
         // FileSystemEventConsumer 通过定时轮询 DataBus 消费事件。
-        // 这消除了文件事件热路径对 Server Binder 的强依赖：
-        // - Server 不可用时事件不丢失（积压在 DataBus 中）
-        // - Server 恢复后通过消费者游标续消费
+        // Server callback 不可用时不改写共享目录，由 Hook 健康快照记录写入失败。
         try {
             final var event = new JSONObject();
             event.put("schemaVersion", 1);
@@ -626,12 +635,26 @@ public class FuseJavaGate {
             event.put("policyGeneration", HookPolicyCache.INSTANCE.getRedirectPolicyGeneration());
             event.put("nativeMountPointsGeneration",
                     HookPolicyCache.INSTANCE.getNativeMountPointsGeneration());
-            HookDataBusBridge.INSTANCE.writeEvent(DataBusProtocol.EVENT_FILESYSTEM, event.toString());
+            final long seq = HookDataBusBridge.INSTANCE.writeEvent(
+                    DataBusProtocol.EVENT_FILESYSTEM, event.toString());
+            if (seq < 0) {
+                recordDataBusWriteFailure("filesystem_event_write", "not_committed");
+                return;
+            }
             // 数据面契约 6.4: 写事件后发 signal，消除消费者端 2s 轮询延迟
-            HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_FILESYSTEM_EVENTS_CHANGED);
+            if (!HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_FILESYSTEM_EVENTS_CHANGED)) {
+                recordDataBusWriteFailure("filesystem_event_signal", "not_confirmed");
+            }
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[FuseJavaGate] DataBus write failed", e);
+            recordDataBusWriteFailure("filesystem_event_write", e.getClass().getSimpleName());
         }
+    }
+
+    private void recordDataBusWriteFailure(final String stage, final String reason) {
+        NativeHookStatus.INSTANCE.recordHookError(
+                ErrorCodes.HOOK_JAVA_BUS_WRITE_FAILED,
+                "stage=" + stage + ", reason=" + reason);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -681,32 +704,4 @@ public class FuseJavaGate {
         }
     }
 
-    private int findCallingUid(final String methodName, final Object[] args) {
-        if ("onFileOpenForFuse".equals(methodName) && args.length > 2 &&
-                args[2] instanceof Integer) {
-            return (int) args[2];
-        }
-        if ("onFileLookupForFuse".equals(methodName) && args.length > 1 &&
-                args[1] instanceof Integer) {
-            return (int) args[1];
-        }
-        return findCallingUid(args);
-    }
-
-    private int findCallingUid(final Object[] args) {
-        var firstInt = -1;
-        for (int i = 1; i < args.length; i++) {
-            if (!(args[i] instanceof Integer)) {
-                continue;
-            }
-            final var value = (int) args[i];
-            if (firstInt < 0) {
-                firstInt = value;
-            }
-            if (value >= 10000) {
-                return value;
-            }
-        }
-        return firstInt;
-    }
 }

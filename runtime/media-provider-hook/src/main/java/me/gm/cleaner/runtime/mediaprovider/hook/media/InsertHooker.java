@@ -2,6 +2,7 @@ package me.gm.cleaner.runtime.mediaprovider.hook.media;
 
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.HookDataBusBridge;
 import me.gm.cleaner.runtime.mediaprovider.hook.policy.HookPolicyCache;
+import me.gm.cleaner.runtime.mediaprovider.hook.policy.NativeHookStatus;
 
 import android.content.ContentValues;
 import android.net.Uri;
@@ -22,7 +23,7 @@ import java.util.regex.Pattern;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedHelpers;
 
-import me.gm.cleaner.core.storage.redirect.databus.DataBus;
+import me.gm.cleaner.core.common.err.ErrorCodes;
 import me.gm.cleaner.runtime.mediaprovider.hook.bridge.AbstractGuardedHook;
 import org.json.JSONObject;
 import me.gm.cleaner.core.storage.redirect.databus.DataBusProtocol;
@@ -300,11 +301,24 @@ public class InsertHooker extends AbstractGuardedHook {
             event.put("reason", "REDIRECTED_TO_INTERNAL");
             final var seq = HookDataBusBridge.INSTANCE.writeEvent(
                     DataBusProtocol.EVENT_REDIRECT_NOTICE, event.toString());
-            if (seq >= 0) {
-                HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED);
+            if (seq < 0) {
+                Log.w("MC_REDIRECT", "[InsertHooker] redirect notice was not committed to DataBus");
+                recordDataBusWriteFailure("redirect_notice_write", "not_committed");
+                return;
+            }
+            if (!HookDataBusBridge.INSTANCE.signal(DataBusProtocol.SIGNAL_REDIRECT_NOTICE_EVENTS_CHANGED)) {
+                Log.w("MC_REDIRECT", "[InsertHooker] redirect notice signal was not confirmed");
+                recordDataBusWriteFailure("redirect_notice_signal", "not_confirmed");
             }
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[InsertHooker] DataBus write failed", e);
+            recordDataBusWriteFailure("redirect_notice_write", e.getClass().getSimpleName());
         }
+    }
+
+    private static void recordDataBusWriteFailure(String stage, String reason) {
+        NativeHookStatus.INSTANCE.recordHookError(
+                ErrorCodes.HOOK_JAVA_BUS_WRITE_FAILED,
+                "stage=" + stage + ", reason=" + reason);
     }
 }

@@ -81,18 +81,25 @@ class RuntimeStatusAggregator(
             false
         }
         val recoverySnapshot = recoverySnapshotProvider()
+        // Hook 状态只读取、解析一次，再作为同一观测快照交给两个 Hook 层 reporter。
+        val hookStatusSnapshot = NativeHookLayerReporter.readStatusSnapshot(
+            now = now,
+            mediaProviderHookConnected = mediaProviderHookConnected,
+        )
         val hookReport = MediaProviderHookLayerReporter.collect(
             generation = gen,
             now = now,
             hooksBridgeConnected = hooksBridgeConnected,
             mediaProviderHookConnected = mediaProviderHookConnected,
             recovery = recoverySnapshot,
+            coverage = hookStatusSnapshot.fuseJavaGate,
+            freshness = hookStatusSnapshot.freshness,
         )
 
         val nativeReport = NativeHookLayerReporter.collect(
             generation = gen,
             now = now,
-            mediaProviderHookConnected = mediaProviderHookConnected,
+            statusSnapshot = hookStatusSnapshot,
         )
 
         val busReport = DataBusLayerReporter.collect(gen, now)

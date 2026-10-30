@@ -16,6 +16,7 @@ class FuseParameterAnalyzerTest {
     class FakeFuseMethods {
         fun renameForFuse(oldPath: String, newPath: String, uid: Int) {}
         fun openWithFuse(path: String, displayName: String, uid: Int) {}
+        fun openWithFuse(path: String, candidateUid: Int, candidateMode: Int) {}
         fun openWithFuse(
             path: String,
             uid: Int,
@@ -71,7 +72,7 @@ class FuseParameterAnalyzerTest {
         assertNotNull(roles)
         assertEquals(0, roles.pathIndex)
         assertEquals(-1, roles.path2Index)
-        assertEquals(2, roles.uidIndex)
+        assertEquals(-1, roles.uidIndex)
     }
 
     @Test
@@ -166,5 +167,19 @@ class FuseParameterAnalyzerTest {
         val roles = ParameterAnalyzer.analyze(m, false)
         assertNotNull(roles)
         assertEquals(-1, roles.modeIndex)
+        assertEquals(-1, roles.uidIndex)
+    }
+
+    @Test
+    fun `未核验的多个int不推断uid`() {
+        val m = method(
+            "openWithFuse",
+            String::class.java,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+        )
+        val roles = ParameterAnalyzer.analyze(m)
+        assertNotNull(roles)
+        assertEquals(-1, roles.uidIndex)
     }
 }
