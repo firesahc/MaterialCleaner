@@ -47,7 +47,7 @@ internal object NativeSyncPolicy {
         /** hook 侧 applicationState：APPLYING / APPLIED / STALE / UNSUPPORTED / PENDING / NO_RULE。 */
         val applicationState: String,
         val now: Long,
-        /** configured_mount_points 快照读取 freshness；未知或过期时不能判 SYNCED。 */
+        /** mount points 快照读取 freshness；未知或过期时不能判 SYNCED。 */
         val snapshotFreshnessState: String = "CURRENT",
     )
 
