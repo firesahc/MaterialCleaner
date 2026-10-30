@@ -195,6 +195,43 @@ class NativeSyncPolicyTest {
     }
 
     @Test
+    fun `PENDING且lastApplySuccess=true不得判SYNCED`() {
+        // markInlinePlatformSupported() 重置 mountPointsState=PENDING 但不清除 lastApplySuccess，
+        // 形成 applicationState=PENDING 与 lastApplySuccess=true 的矛盾组合。
+        // SYNCED 必须显式要求 applicationState 属于已应用终态。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "PENDING",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    fun `STALE且lastApplySuccess=true不得判SYNCED`() {
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "STALE",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.STALE, NativeSyncPolicy.evaluate(input))
+    }
+
+    fun `APPLIED且lastApplySuccess=true且generation达标判SYNCED`() {
+        // 正常路径：applicationState 为已应用终态时，才允许 SYNCED。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "APPLIED",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+    }
+
+    fun `NO_RULE且lastApplySuccess=true且generation达标判SYNCED`() {
+        // 空规则若已成功清空旧挂载点，可视为同步完成。
+        val input = base().copy(
+            appliedEpoch = "epoch-new", appliedGen = 7L, lastApplySuccess = true,
+            applicationState = "NO_RULE",
+        )
+        assertEquals(NativeSyncPolicy.Verdict.SYNCED, NativeSyncPolicy.evaluate(input))
+    }
+
     fun `UNSUPPORTED优先于旧成功记录`() {
         // 契约封闭：纯策略必须对任意输入总计。hook 侧 markMountPointsApplyUnsupported
         // 会同步清除 success 记录，故该组合本不可达；仍按终态优先排序，

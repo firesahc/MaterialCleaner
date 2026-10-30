@@ -67,7 +67,8 @@ internal object NativeSyncPolicy {
         val epochConsistent = i.snapshotEpoch.isNotBlank() &&
                 i.appliedEpoch == i.snapshotEpoch
         val genSatisfied = i.snapshotGen <= 0L || i.appliedGen >= i.snapshotGen
-        if (i.lastApplySuccess && epochConsistent && genSatisfied) {
+        if (i.lastApplySuccess && epochConsistent && genSatisfied &&
+            (i.applicationState == "APPLIED" || i.applicationState == "NO_RULE")) {
             return Verdict.SYNCED
         }
         // CONVERGING 必须证明“当前仍在执行”。仅有 attempt 历史不足以证明进展：
