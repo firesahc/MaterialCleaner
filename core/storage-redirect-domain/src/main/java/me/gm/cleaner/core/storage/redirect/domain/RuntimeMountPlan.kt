@@ -63,7 +63,8 @@ object MountPlanDeriver {
                 OrderedRedirectInterpreter.isCanonicalAbsolutePath(target)
         }
 
-    private fun toOrderedRules(zipped: List<Pair<String, String>>): List<OrderedRedirectRule> =
+    /** 将原始规则对转换为领域层可解释的有序规则：过滤空白/非规范对，分配顺序索引。供界面层等外部调用方复用。 */
+    fun toOrderedRules(zipped: List<Pair<String, String>>): List<OrderedRedirectRule> =
         validPairs(zipped).mapIndexed { index, (source, target) ->
             OrderedRedirectRule(
                 ruleId = RuleId("mount-plan-${(source + target).hashCode()}"),
