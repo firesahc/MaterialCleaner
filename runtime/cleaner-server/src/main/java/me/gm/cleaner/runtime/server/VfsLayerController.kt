@@ -100,7 +100,7 @@ class VfsLayerController {
         val userIds = mutableListOf<Int>()
         val startUpAwarePids = observer.getStartUpAwarePids(packageName)
         val mountFailedPids = observer.getMountFailedPids()
-        val mkdir = observer.getMountedPackages().contains(packageName)
+        val mkdir = observer.getPreparedPackages().contains(packageName)
         // 只有已配置重定向的包才走 uid 权威判定，非重定向包保持 pkgList 语义，
         // 避免把不在重定向配置中的查询误判成没有进程。
         val uidMappingReady = VfsRuntimePolicy.getStorageRedirectPackages()
@@ -166,7 +166,7 @@ class VfsLayerController {
             ?: return empty
         val startUpAwarePids = observer.getAllStartUpAwarePids()
         val mountFailedPids = observer.getMountFailedPids()
-        val mountedPackages = observer.getMountedPackages()
+        val mountedPackages = observer.getPreparedPackages()
         val srPackages = VfsRuntimePolicy.getStorageRedirectPackages()
         val processes = selectProcesses(flags, startUpAwarePids)
         // 映射就绪用 uid 权威归属，未就绪保守回退 pkgList，绝不直接返回空。
@@ -208,7 +208,7 @@ class VfsLayerController {
     fun collectReport(generation: Long, now: Long): LayerReport {
         val observer = ObserverManager.getObserver(BaseProcessObserver::class.java)
         return if (observer != null) {
-            val mountedPackages = observer.getMountedPackages().size
+            val mountedPackages = observer.getPreparedPackages().size
             val recordedPids = observer.getAllStartUpAwarePids().size
             val mountFailedPids = observer.getMountFailedPids().size
             val mountTotalAttempts = observer.getTotalMountAttempts()

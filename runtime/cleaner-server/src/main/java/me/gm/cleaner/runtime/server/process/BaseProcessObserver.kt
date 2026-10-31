@@ -69,7 +69,7 @@ abstract class BaseProcessObserver : BaseObserver() {
 
     fun getMountFailedPids(): Set<Int> = mounter.getMountFailedPids()
 
-    fun getMountedPackages(): Set<String> = mounter.getMountedPackages()
+    fun getPreparedPackages(): Set<String> = mounter.getPreparedPackages()
 
     fun getTotalMountAttempts(): Int = mounter.getTotalAttempts()
 
