@@ -37,6 +37,15 @@ class Mounter {
     private val rmdirPackages: MutableSet<String> = mutableSetOf()
     private var rmdirQueueSize: Int = 0
 
+    /** 当前 cleaner-server 受管理的根目录集合。每个元素如 "/storage/emulated/0"、"/storage/emulated/999"。 */
+    private val managedRoots: MutableSet<String> = mutableSetOf<String>().apply {
+        // 向后兼容：默认加入当前外部存储根，使单用户场景无需显式调用 registerManagedRoot 即可正常工作。
+        val defaultRoot = RuntimeFileUtils.externalStorageDir.path
+        if (defaultRoot.isNotBlank()) {
+            add(defaultRoot)
+        }
+    }
+
     /** mount 尝试总次数（含重试），用于 collectStatus metrics */
     val totalAttempts: AtomicInteger = AtomicInteger(0)
     /** mount 失败总次数（含重试耗尽），用于 collectStatus metrics */
@@ -385,14 +394,16 @@ class Mounter {
     }
 
     private fun record(mkdirRecord: MutableSet<String>, dir: String) {
-        // 只接受**严格子路径**（不含卷根本身）。旧实现以 externalStorageDir.parent
-        // （/storage/emulated）为界，于是 /storage/emulated/0 也被纳入 mkdirList：
-        // 一是对卷根做 chmod/chown 会改到整个用户存储的属主（chown 到 AID_MEDIA_RW），
-        // 二是 removeMountDirsLocked 会尝试 rmdir 它。卷根只由系统 vold 管理。
-        if (RuntimeFileUtils.childOf(RuntimeFileUtils.externalStorageDir.path, dir)) {
+        // 只接受位于任一受管理根目录之下的严格子路径（不含卷根本身）。
+        // 支持跨用户重定向：source 与 target 可分别位于不同 userId 的存储根（如用户 0 → 用户 999）。
+        // 卷根本身由 vold 管理，不建也不删。
+        if (managedRoots.any { RuntimeFileUtils.childOf(it, dir) }) {
             mkdirRecord.add(dir)
             val parent = File(dir).parent ?: return
-            record(mkdirRecord, parent)
+            // 递归父级时，只递归至所属 root 处，不越界进入其他 root。
+            if (managedRoots.any { RuntimeFileUtils.childOf(it, parent) }) {
+                record(mkdirRecord, parent)
+            }
         }
     }
 
@@ -419,16 +430,24 @@ class Mounter {
      * 管理，本模块既不建也不删。滤掉它们不影响功能：`auto_prepare_dirs` 的
      * `mkdirs()` 本身就会递归补齐缺失的父级（`FileUtils.cpp` 的 mkdirs 实现），
      * 不依赖 Java 侧先把父目录列出来。
+     *
+     * ## 跨用户支持
+     *
+     * `plan.mkdirList` 中的 source 与 target 可分别位于不同 userId 的存储根
+     *（如用户 0 的文件夹重定向到用户 999）。本方法对每个受管理的根分别筛选
+     *属于该 root 的条目，再展开为可回收集合并合并，从而支持跨根边界。
      */
     private fun registerMkdirListLocked(packageName: String, plan: RuntimeMountPlan) {
         if (mkdirRecords.containsKey(packageName)) {
             return
         }
-        val root = RuntimeFileUtils.externalStorageDir.path
-        mkdirRecords.putAll(
-            packageName,
-            MountDirRecords.expandForReclaim(root, plan.mkdirList),
-        )
+        // 对每个受管理的根，分别筛选属于该 root 的 mkdirList 并展开为可回收集合，最后合并。
+        // 支持跨用户：source 与 target 可分别位于不同 userId 的存储根。
+        val reclaimable = managedRoots.flatMap { root ->
+            plan.mkdirList.filter { it.startsWith(root) }
+                .let { MountDirRecords.expandForReclaim(root, it) }
+        }.toSet()
+        mkdirRecords.putAll(packageName, reclaimable)
     }
 
     fun forProcListAsync(
@@ -668,14 +687,15 @@ class Mounter {
             .values
             .flatten()
             .toSet()
-        val root = RuntimeFileUtils.externalStorageDir.path
         val dirs = mkdirRecords[packageName]
             .filter { !others.contains(it) }
-            // 结构目录永不回收：mkdirList 必然把它们（作为挂载点的父级）带进来，
-            // 而 rmdir 只对空目录生效 —— 万一某个设备上 Android/data 恰好为空，
-            // 删掉它会连累整个用户存储的 app 目录结构。只有真正的挂载点/承载源
-            // 目录才由本模块回收。
-            .filter { !ProtectedSystemDirs.isProtected(root, it) }
+            // 结构目录永不回收：对每个受管理的根，判定该目录是否为结构目录。
+            // 支持跨用户：不同 userId 的存储根有各自的结构目录保护（如 /storage/emulated/999/Android/data）。
+            // 万一某个设备上结构目录恰好为空，删掉它会连累整个用户存储的 app 目录结构。
+            // 只有真正的挂载点/承载源目录才由本模块回收。
+            .filter { dir ->
+                managedRoots.none { root -> ProtectedSystemDirs.isProtected(root, dir) }
+            }
             .sortedByDescending { it.length }
         mkdirRecords.removeAll(packageName)
         dirs.forEach { dir ->
@@ -790,7 +810,30 @@ class Mounter {
             takeKeys.map { it.first }.distinct()
         }
 
+    /** 注册一个受管理的根目录（供跨用户场景调用，如 "/storage/emulated/999"）。 */
+    fun registerManagedRoot(root: String) = synchronized(lock) {
+        if (root.isNotBlank()) {
+            managedRoots.add(root)
+            Log.i("MC_REDIRECT", "[Mounter] registerManagedRoot root=$root")
+        }
+    }
+
+    /** 移除一个受管理的根目录。 */
+    fun unregisterManagedRoot(root: String) = synchronized(lock) {
+        val removed = managedRoots.remove(root)
+        if (removed) {
+            Log.i("MC_REDIRECT", "[Mounter] unregisterManagedRoot root=$root")
+        }
+        removed
+    }
+
+    /** 获取当前受管理的根目录集合的副本。 */
+    fun getManagedRoots(): Set<String> = synchronized(lock) {
+        managedRoots.toSet()
+    }
+
     fun onDestroy() {
+        managedRoots.clear()
         thread.quit()
     }
 
