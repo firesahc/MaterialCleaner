@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 import me.gm.cleaner.core.common.err.ErrorCodes
 import me.gm.cleaner.core.common.err.ErrorEvent
 import me.gm.cleaner.core.config.ServicePreferences
@@ -46,6 +47,8 @@ object CleanerServerLauncher {
     private val launchMutex = Mutex()
     /** 启动后台 Binder 重试作业，用于在服务停止或 launch 无效时取消 */
     private var startupRetryJob: Job? = null
+    /** 当前启动代际，用于旧重试任务与新启动任务的代际隔离。 */
+    private val launchGeneration = AtomicInteger(0)
 
     suspend fun launch(
         context: Context,
@@ -66,6 +69,8 @@ object CleanerServerLauncher {
         // 取消启动后台重试，避免服务停止后协程继续运行
         startupRetryJob?.cancel()
         startupRetryJob = null
+        // 增加 generation，使任何尚未执行副作用的旧重试任务失效
+        launchGeneration.incrementAndGet()
         CleanerClient.exit()
         CleanerClient.resetConnection()
         CleanerClient.killServerProcess()
@@ -78,6 +83,7 @@ object CleanerServerLauncher {
         reason: LaunchReason,
         isLaunchStillValid: () -> Boolean
     ): LaunchResult {
+        val generation = launchGeneration.incrementAndGet()
         suspend fun ensureValid(stage: String): Boolean {
             val valid = isLaunchStillValid() && ServiceBootStateStore.shouldRun()
             if (!valid) {
@@ -153,7 +159,7 @@ object CleanerServerLauncher {
             CleanerClient.resetConnection()
             // 不立即杀死服务器进程，而是调度后台重试，避免开机期间 Hook Binder
             // 握手失败导致策略空窗（5.5.11 开机策略空窗修复）。
-            scheduleStartupRetry(reason, isLaunchStillValid)
+            scheduleStartupRetry(reason, isLaunchStillValid, generation)
             return LaunchResult.Retrying
         }
         if (!ensureValid("after_wait_for_binder")) return LaunchResult.Failure
@@ -192,7 +198,8 @@ object CleanerServerLauncher {
      */
     private fun scheduleStartupRetry(
         reason: LaunchReason,
-        isLaunchStillValid: () -> Boolean
+        isLaunchStillValid: () -> Boolean,
+        generation: Int
     ) {
         // 避免重复启动重试协程
         startupRetryJob?.takeIf { it.isActive }?.let {
@@ -213,7 +220,15 @@ object CleanerServerLauncher {
                     Log.i(TAG, "startup retry stopped: launch no longer valid")
                     return@launch
                 }
+                if (generation != launchGeneration.get()) {
+                    Log.i(TAG, "startup retry stopped: generation changed, current generation=${launchGeneration.get()}, task generation=$generation")
+                    return@launch
+                }
                 if (CleanerClient.pingBinder()) {
+                    if (generation != launchGeneration.get()) {
+                        Log.i(TAG, "startup retry: binder connected but generation changed, skipping config reload")
+                        return@launch
+                    }
                     Log.i(TAG, "startup retry: binder connected, reloading server configuration")
                     reloadServerConfiguration()
                     return@launch
