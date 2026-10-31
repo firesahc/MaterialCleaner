@@ -15,6 +15,7 @@ import me.gm.cleaner.client.BootTargetSource
 import me.gm.cleaner.client.BootTargetState
 import me.gm.cleaner.client.CleanerServerLauncher
 import me.gm.cleaner.client.LaunchReason
+import me.gm.cleaner.client.LaunchResult
 import me.gm.cleaner.client.ServiceBootStateStore
 import me.gm.cleaner.dao.RootPreferences
 import me.gm.cleaner.core.common.RuntimeFileUtils.toUserId
@@ -66,10 +67,13 @@ class BootCompleteReceiver : BroadcastReceiver() {
     private suspend fun launchForBootWithRetry(context: Context) {
         repeat(MAX_BOOT_LAUNCH_ATTEMPTS) { attempt ->
             if (!isBootLaunchStillValid()) return
-            val success = CleanerServerLauncher.launch(context, LaunchReason.BOOT) {
+            val result = CleanerServerLauncher.launch(context, LaunchReason.BOOT) {
                 isBootLaunchStillValid()
             }
-            if (success || !isBootLaunchStillValid()) return
+            // Retrying 表示后台重试任务已启动，无需在此处再次启动 Server，
+            // 避免与后台重试任务竞争导致 Server 进程被重复杀掉。
+            if (result == LaunchResult.Success || result == LaunchResult.Retrying
+                    || !isBootLaunchStillValid()) return
             if (attempt < MAX_BOOT_LAUNCH_ATTEMPTS - 1) {
                 delay(bootBackoffMillis(attempt + 1))
             }

@@ -232,10 +232,10 @@ object ServerStateMachine {
         _state.value = ServerState.STARTING
         if (BuildConfig.DEBUG) Log.i(TAG, "start($source): token=$token")
 
-        val success = CleanerServerLauncher.launch(context, source.toLaunchReason()) {
+        val result = CleanerServerLauncher.launch(context, source.toLaunchReason()) {
             isLaunchValid(token)
         }
-        finishLaunch(token, success)
+        finishLaunch(token, result)
     }
 
     suspend fun recoverIfTargetRunning(
@@ -263,10 +263,10 @@ object ServerStateMachine {
         _state.value = ServerState.STARTING
         if (BuildConfig.DEBUG) Log.i(TAG, "recover($reason): token=$token")
 
-        val success = CleanerServerLauncher.launch(context, reason) {
+        val result = CleanerServerLauncher.launch(context, reason) {
             isLaunchValid(token)
         }
-        finishLaunch(token, success)
+        finishLaunch(token, result)
     }
 
     suspend fun stop(source: StopSource) = withContext(Dispatchers.IO) {
@@ -368,7 +368,7 @@ object ServerStateMachine {
         _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
     }
 
-    private fun finishLaunch(token: Long, success: Boolean): Boolean {
+    private fun finishLaunch(token: Long, result: LaunchResult): Boolean {
         if (!isLaunchValid(token)) {
             if (BuildConfig.DEBUG) Log.i(TAG, "finishLaunch: token=$token invalid")
             _state.value = ServerState.STOPPED
@@ -376,13 +376,22 @@ object ServerStateMachine {
             return false
         }
 
-        return if (success) {
-            _state.value = ServerState.RUNNING
-            crashCount = 0
-            true
-        } else {
-            _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
-            false
+        return when (result) {
+            LaunchResult.Success -> {
+                _state.value = ServerState.RUNNING
+                crashCount = 0
+                true
+            }
+            LaunchResult.Failure -> {
+                _state.value = if (ServiceBootStateStore.shouldRun()) ServerState.FAILED else ServerState.STOPPED
+                false
+            }
+            LaunchResult.Retrying -> {
+                // 后台重试仍在进行，保持 STARTING 状态，不判定为失败。
+                // 后台重试成功后会再次触发状态更新。
+                _state.value = ServerState.STARTING
+                false
+            }
         }
     }
 
