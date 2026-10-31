@@ -19,40 +19,73 @@ private const val APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY = "apply_template_on_packa
 private const val WIZARD_ROOT_DIR_NAME_KEY = "wizard_root_dir_name"
 
 object ServiceMoreOptionsPreferences {
+    private const val TAG = "ServiceMoreOptions"
     private lateinit var preferences: SharedPreferences
 
     fun init(context: Context) {
-        preferences = PreferenceManager.getDefaultSharedPreferences(context)
+        preferences = try {
+            PreferenceManager.getDefaultSharedPreferences(context)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "init getDefaultSharedPreferences failed", e)
+            androidx.preference.PreferenceManager.getDefaultSharedPreferences(
+                context.createDeviceProtectedStorageContext()
+            )
+        }
     }
 
     val openWizardByDefault: Boolean
-        get() = preferences.getBoolean(OPEN_WIZARD_BY_DEFAULT_KEY, false)
+        get() = try {
+            preferences.getBoolean(OPEN_WIZARD_BY_DEFAULT_KEY, false)
+        } catch (e: Exception) {
+            Log.w(TAG, "read open_wizard_by_default failed", e)
+            false
+        }
 
     val appCategoryRepo: String
-        get() = preferences.getString(
-            APP_CATEGORY_REPO_KEY,
+        get() = try {
+            preferences.getString(
+                APP_CATEGORY_REPO_KEY,
+                APP_CATEGORY_DEFAULT
+            ) ?: APP_CATEGORY_DEFAULT
+        } catch (e: Exception) {
+            Log.w(TAG, "read app_category_repo failed", e)
             APP_CATEGORY_DEFAULT
-        )!!
+        }
 
     val isUsingDefaultRepo: Boolean
         get() = appCategoryRepo == APP_CATEGORY_DEFAULT
 
     // Q1 根目录重定向的承载目录：files 或 sdcard（Android/data/<pkg>/sdcard）
     val wizardRootDirName: String
-        get() = preferences.getString(WIZARD_ROOT_DIR_NAME_KEY, "files") ?: "files"
+        get() = try {
+            preferences.getString(WIZARD_ROOT_DIR_NAME_KEY, "files") ?: "files"
+        } catch (e: Exception) {
+            Log.w(TAG, "read wizard_root_dir_name failed", e)
+            "files"
+        }
 
     val autoCompleteByRecordMerge: Boolean
-        get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_MERGE_KEY, true)
+        get() = try {
+            preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_MERGE_KEY, true)
+        } catch (e: Exception) {
+            Log.w(TAG, "read auto_complete_by_record_merge failed", e)
+            true
+        }
 
     val autoCompleteByRecordRespect: Boolean
-        get() = preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_RESPECT_KEY, true)
+        get() = try {
+            preferences.getBoolean(AUTO_COMPLETE_BY_RECORD_RESPECT_KEY, true)
+        } catch (e: Exception) {
+            Log.w(TAG, "read auto_complete_by_record_respect failed", e)
+            true
+        }
 
     val editMountRulesTemplate: WizardAnswers
         get() {
             val raw = try {
                 preferences.getString(EDIT_MOUNT_RULES_TEMPLATE_KEY, null)
-            } catch (e: Throwable) {
-                Log.w("ServiceMoreOptions", "read mount template key failed", e)
+            } catch (e: Exception) {
+                Log.w(TAG, "read mount template key failed", e)
                 return WizardAnswers(true)
             }
             if (raw == null) {
@@ -60,16 +93,26 @@ object ServiceMoreOptionsPreferences {
             }
             return try {
                 raw.toParcelable()
-            } catch (e: Throwable) {
+            } catch (e: Exception) {
                 // Issue #4：解析失败不再删除持久化，避免一次错位变成永久丢数据，留给 CREATOR 双读迁移。
-                Log.w("ServiceMoreOptions", "parse mount template failed, keep raw for migration", e)
+                Log.w(TAG, "parse mount template failed, keep raw for migration", e)
                 WizardAnswers(true)
             }
         }
 
     val editReadOnlyTemplate: Set<String>
-        get() = preferences.getStringSet(EDIT_READ_ONLY_TEMPLATE_KEY, emptySet())!!
+        get() = try {
+            preferences.getStringSet(EDIT_READ_ONLY_TEMPLATE_KEY, emptySet()) ?: emptySet()
+        } catch (e: Exception) {
+            Log.w(TAG, "read edit_read_only_template failed", e)
+            emptySet()
+        }
 
     val applyTemplateOnPackageAdded: Boolean
-        get() = preferences.getBoolean(APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY, false)
+        get() = try {
+            preferences.getBoolean(APPLY_TEMPLATE_ON_PACKAGE_ADDED_KEY, false)
+        } catch (e: Exception) {
+            Log.w(TAG, "read apply_template_on_package_added failed", e)
+            false
+        }
 }

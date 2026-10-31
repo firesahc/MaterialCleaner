@@ -80,8 +80,17 @@
         <provider
             android:name=".client.HooksBridgeProvider"
             android:authorities="${applicationId}.hooks_bridge"
+            android:directBootAware="true"
             android:exported="true"
-            android:enabled="true" />
+            android:enabled="true">
+            <!--
+                directBootAware 必须为 true：本 provider 是 cleaner-server（root 进程）启动时
+                唯一的握手入口。缺它时它要等 **用户解锁** 才被 AMS 安装，而 server 的 onStart
+                已经发送了握手请求，必然拿到 null。对比同级 BinderProvider 一直有该属性，
+                所以能及时响应 call。
+                onCreate 只有 getContext/getApplicationContext，全类零 CE 存储引用，direct boot 安全。
+            -->
+        </provider>
 
         <provider
             android:name="androidx.core.content.FileProvider"
