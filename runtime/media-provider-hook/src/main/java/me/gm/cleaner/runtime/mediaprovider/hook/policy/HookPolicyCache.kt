@@ -160,6 +160,26 @@ object HookPolicyCache {
         }
 
     /**
+     * 媒体库写入审计总开关：随 redirect_policy 快照透传，
+     * InsertHooker 读取此开关决定是否为每次 insert 留结构化审计流水。
+     */
+    var auditMediaInsert: Boolean
+        get() = preferences.auditMediaInsert
+        private set(value) {
+            preferences = preferences.copy(auditMediaInsert = value)
+        }
+
+    /**
+     * 媒体库写入拒绝总开关：随 redirect_policy 快照透传，
+     * InsertHooker 读取此开关决定是否在命中不可访问/只读规则时短路 insertFile。
+     */
+    var denyMediaInsertWrites: Boolean
+        get() = preferences.denyMediaInsertWrites
+        private set(value) {
+            preferences = preferences.copy(denyMediaInsertWrites = value)
+        }
+
+    /**
      * 从 DataBus 加载最后一次快照初始化缓存。
      * 应在 MediaProvider 进程初始化时调用一次。
      */

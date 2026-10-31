@@ -31,6 +31,7 @@ object DataBusProtocol {
     // ── 事件子目录 ──
     const val EVENT_FILESYSTEM = "filesystem"
     const val EVENT_REDIRECT_NOTICE = "redirect_notice"
+    const val EVENT_MEDIA_INSERT_AUDIT = "media_insert_audit"
 
     // ── Lease 子目录 ──
     const val LEASE_QUERY_SESSIONS = "query_sessions"
@@ -57,6 +58,7 @@ object DataBusProtocol {
     internal val validEventQueues = setOf(
         EVENT_FILESYSTEM,
         EVENT_REDIRECT_NOTICE,
+        EVENT_MEDIA_INSERT_AUDIT,
     )
     internal val validLeaseCategories = setOf(
         LEASE_QUERY_SESSIONS,

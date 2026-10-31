@@ -154,6 +154,20 @@ public class InsertHooker extends AbstractGuardedHook {
         final var callingPkg = mHook.getCallingPackage(param.thisObject);
         final var originalData = data;
 
+        // DENY: 命中不可访问/只读规则时短路 insertFile，补上挂载层之外的写入通路缺口
+        if (HookPolicyCache.INSTANCE.getDenyMediaInsertWrites() && data != null && !data.isEmpty()
+                && (HookPolicyCache.INSTANCE.isReadOnly(callingPkg, data)
+                    || HookPolicyCache.INSTANCE.isDenied(callingPkg))) {
+            Log.w("MC_REDIRECT", "[InsertHooker] DENIED insertFile pkg=" + callingPkg + " path=" + data);
+            param.setResult(null);
+            return;
+        }
+
+        // AUDIT: 每次 insert 留结构化审计流水，用来回答「应用到底有没有通过 MediaStore 建条目」
+        if (HookPolicyCache.INSTANCE.getAuditMediaInsert()) {
+            emitInsertAuditNotice(callingPkg, originalData, data, "INSERT");
+        }
+
         final var localMountedPath = HookPolicyCache.INSTANCE.getMountedPath(callingPkg, data);
         if (localMountedPath != null && !data.equals(localMountedPath) &&
                 TextUtils.isEmpty(extractPathOwnerPackageName(localMountedPath))) {
@@ -313,6 +327,35 @@ public class InsertHooker extends AbstractGuardedHook {
         } catch (Exception e) {
             Log.e("MC_REDIRECT", "[InsertHooker] DataBus write failed", e);
             recordDataBusWriteFailure("redirect_notice_write", e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * 向 DataBus 写入媒体库写入审计事件。
+     * 使用独立队列 EVENT_MEDIA_INSERT_AUDIT，避免与重定向提示事件混淆。
+     * 异步写入，不影响主流程。审计失败不阻断 insert 流程。
+     */
+    private static void emitInsertAuditNotice(String packageName, String originalPath,
+                                              String dataPath, String type) {
+        try {
+            final var event = new JSONObject();
+            event.put("schemaVersion", 1);
+            event.put("timeMillis", System.currentTimeMillis());
+            event.put("packageName", packageName);
+            event.put("originalPath", originalPath);
+            event.put("dataPath", dataPath);
+            event.put("type", type);
+            event.put("reason", "INSERT_AUDIT");
+            final var seq = HookDataBusBridge.INSTANCE.writeEvent(
+                    DataBusProtocol.EVENT_MEDIA_INSERT_AUDIT, event.toString());
+            if (seq < 0) {
+                Log.w("MC_REDIRECT", "[InsertHooker] insert audit notice was not committed to DataBus");
+                recordDataBusWriteFailure("insert_audit_notice_write", "not_committed");
+                return;
+            }
+        } catch (Exception e) {
+            Log.e("MC_REDIRECT", "[InsertHooker] insert audit DataBus write failed", e);
+            recordDataBusWriteFailure("insert_audit_notice_write", e.getClass().getSimpleName());
         }
     }
 

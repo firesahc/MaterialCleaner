@@ -27,6 +27,8 @@ private const val AUTO_LOGGING_KEY = "auto_logging"
 private const val RECORD_SHARED_STORAGE_KEY = "record_shared_storage"
 private const val RECORD_EXTERNAL_APP_SPECIFIC_STORAGE_KEY = "record_external_app_specific_storage"
 private const val FUSE_BPF_BLOCK_ALL_KEY = "fuse_bpf_block_all"
+private const val AUDIT_MEDIA_INSERT_KEY = "audit_media_insert"
+private const val DENY_MEDIA_INSERT_WRITES_KEY = "deny_media_insert_writes"
 private const val UPSERT_KEY = "upsert"
 
 object ServicePreferences {
@@ -197,4 +199,34 @@ object ServicePreferences {
     // @Server
     val upsert: Boolean
         get() = preferences.getBoolean(UPSERT_KEY, true)
+
+    /**
+     * 媒体库写入审计总开关，默认关闭。
+     *
+     * 关闭时 InsertHooker 在未命中重定向规则的情况下完全静默（与历史行为一致）；
+     * 打开后每次 insert 都会留一条结构化审计流水（日志 + DataBus 事件），
+     * 用来回答「应用到底有没有通过 MediaStore 建条目」这个问题。
+     *
+     * 真相归偏好层：本字段是该开关在偏好侧的唯一真相，下游 Cache 只做透传。
+     */
+    // @App
+    // @Server
+    val auditMediaInsert: Boolean
+        get() = preferences.getBoolean(AUDIT_MEDIA_INSERT_KEY, false)
+
+    /**
+     * 媒体库写入**拒绝**总开关，默认关闭。
+     *
+     * 打开后 {@code InsertHooker} 在命中「不可访问」或「只读」规则时短路本次
+     * {@code insertFile}（{@code setResult(null)}），使应用**无法**经 MediaStore
+     * 建条目 —— 补上「挂载层之外还有一条写入通路」这个缺口。
+     *
+     * 默认 false ⇒ 老快照下行为与历史完全一致（放行）。
+     *
+     * 真相归偏好层：本字段是该开关在偏好侧的唯一真相，下游 Cache 只做透传。
+     */
+    // @App
+    // @Server
+    val denyMediaInsertWrites: Boolean
+        get() = preferences.getBoolean(DENY_MEDIA_INSERT_WRITES_KEY, false)
 }
